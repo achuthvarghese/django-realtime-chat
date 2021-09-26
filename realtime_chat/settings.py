@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "channels",
+    "accounts.apps.AccountsConfig",
 ]
 
 MIDDLEWARE = [
@@ -68,7 +69,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "realtime_chat.wsgi.application"
+# WSGI_APPLICATION = "realtime_chat.wsgi.application"
 ASGI_APPLICATION = "realtime_chat.asgi.application"
 
 # Database
@@ -124,3 +125,7 @@ STATIC_URL = "/static/"
 # https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# Authentication and Authorization
+AUTH_USER_MODEL = "accounts.User"
