@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "channels",
     "accounts.apps.AccountsConfig",
+    "chats.apps.ChatsConfig",
+    "debug_toolbar",
 ]
 
 MIDDLEWARE = [
@@ -49,6 +51,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "debug_toolbar.middleware.DebugToolbarMiddleware",
 ]
 
 ROOT_URLCONF = "realtime_chat.urls"
@@ -129,3 +132,9 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Authentication and Authorization
 AUTH_USER_MODEL = "accounts.User"
+
+
+# Debug toolbar
+INTERNAL_IPS = [
+    '127.0.0.1',
+]
