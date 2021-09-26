@@ -1,0 +1,6 @@
+{% extends "chats/base.html" %}
+
+{% block body %}
+	<a href="{% url 'chats:index' %}">Home</a>
+	<p>Chat with <b>{{ chat_with.get_full_name }}</b></p>
+{% endblock %}
