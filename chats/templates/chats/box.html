@@ -4,3 +4,33 @@
 	<a href="{% url 'chats:index' %}">Home</a>
 	<p>Chat with <b>{{ chat_with.get_full_name }}</b></p>
 {% endblock %}
+
+{% block scripts %}
+	<script>
+		(function (e) {
+			const win_loc = window.location
+			const host = win_loc.host
+			const href = win_loc.href
+
+			const url = new URL(href)
+			const chat_with = url.searchParams.get('with')
+
+			const ws_url = `ws://${host}/chat/${chat_with}`
+
+			const ws = new WebSocket(ws_url)
+
+			ws.onopen = function (e) {
+				console.log("OPEN", e)
+				ws.send(JSON.stringify({ "message": "Hello from client" }))
+			}
+
+			ws.onerror = function (e) {
+				console.log("ERROR", e)
+			}
+
+			ws.onclose = function (e) {
+				console.log("CLOSE", e)
+			}
+		})();
+	</script>
+{% endblock %}
