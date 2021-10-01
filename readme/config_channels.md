@@ -1,8 +1,10 @@
-# Django Real-Time Chat
+# Channels Basic Setup
 
-A messaging system using Django and Django Channels written in Python.
+Install [channels]
 
-## Channels Setup
+```sh
+pip install -U channels
+```
 
 Add channels to `INSTALLED_APPS` in [settings.py]
 
@@ -40,20 +42,12 @@ ASGI_APPLICATION = "realtime_chat.asgi.application"
 Once development server is run using the `runserver` command, the server would use the ASGI application object specified in `ASGI_APPLICATION` instead of the default WSGI application.
 ![image01]
 
-## Additional READMEs
-
-### Setup and configurations
-
-- [Channels basic setup][config_channels.md]
-- [Channel layers setup][config_channel_layers.md]
-- [Django static files][config_static_files.md]
+<!-- External Links -->
+[channels]: https://pypi.org/project/channels/
 
 <!-- File links -->
-[settings.py]: ./realtime_chat/settings.py
-[asgi.py]: ./realtime_chat/asgi.py
-[config_channels.md]: ./readme/config_channels.md
-[config_static_files.md]: ./readme/config_static_files.md
-[config_channel_layers.md]: ./readme/config_channel_layers.md
+[settings.py]: ../realtime_chat/settings.py
+[asgi.py]: ../realtime_chat/asgi.py
 
 <!-- Image links -->
-[image01]: ./screenshots/image01.PNG (Running local dev server using ASGI application)
+[image01]: ../screenshots/image01.PNG (Running local dev server using ASGI application)
