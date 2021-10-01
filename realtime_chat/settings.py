@@ -124,6 +124,9 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 
+STATIC_ROOT = "static"
+
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
 
@@ -136,5 +139,5 @@ AUTH_USER_MODEL = "accounts.User"
 
 # Debug toolbar
 INTERNAL_IPS = [
-    '127.0.0.1',
+    "127.0.0.1",
 ]
