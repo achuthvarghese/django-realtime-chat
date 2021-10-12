@@ -12,7 +12,6 @@
 
     ws.onopen = function (e) {
         console.log("OPEN", e)
-        // ws_send({ "message": "Hello from client" })
     }
 
     ws.onerror = function (e) {
@@ -26,9 +25,16 @@
     ws.onmessage = function (e) {
         data = JSON.parse(e.data)
         msg = data["message"]
-        // author = data["author"]
-        
-        create_p_and_scroll(msg)
+        author = data["author"]
+
+        if(data["status"]==401) {
+            window.location.replace(win_loc.origin)
+        }
+
+        if(data["status"]==200) {
+            align = ( div_msgs.dataset.id != author ) ? "left" : "right"
+            create_p_and_scroll(msg, align)
+        }
     }
 
     input_msg = document.getElementById("msg")

@@ -1,6 +1,10 @@
 {% extends "chats/base.html" %}
 {% load static %}
 
+{% block style %}
+	<link rel="stylesheet" href="{% static 'chats/main.css' %}">
+{% endblock %}
+
 {% block body %}
 	<b>{{ body }}</b>
 
