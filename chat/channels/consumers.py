@@ -56,7 +56,7 @@ class ChatConsumer(WebsocketConsumer):
         self.send(text_data=json.dumps({"message": message, "ts": now}))
 
     def save_message(self, message):
-        obj = Message.objects.create(content=message, room=self.room)
+        obj = Message.objects.create(content=message, room=self.room, user=self.user)
         obj.save()
         return obj
 
