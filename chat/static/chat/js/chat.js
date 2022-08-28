@@ -54,4 +54,7 @@
         send_message(message = Math.random())
     }
 
+    active_room_a_tag = document.getElementById(`room_${room_id}`)
+    active_room_a_tag.classList.add('active')
+    active_room_a_tag.ariaCurrent = true
 })();
