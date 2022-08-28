@@ -1,1 +1,23 @@
 /* Chat stylesheet */
+
+.container,
+#chat-room {
+    height: calc(100vh - 50px);
+}
+
+.message {
+    clear: both;
+    position: relative;
+    width: fit-content;
+    max-width: 90%;
+}
+
+.message-left {
+    float: left;
+    text-align: start;
+}
+
+.message-right {
+    float: right;
+    text-align: end;
+}

@@ -12,23 +12,37 @@ class ChatConsumer(WebsocketConsumer):
     def connect(self):
         print("WS Connection: Accept")
         self.room_id = str(self.scope["url_route"]["kwargs"]["room_id"])
+        self.room = None
 
         if self.room_id:
             self.room = self.get_room(self.room_id)
-            self.room_name = f"room_{self.room.id}"
-            self.room_group_name = f"chat_{self.room_name}"
+            if self.room:
+                self.room_name = f"room_{self.room.id}"
+                self.room_group_name = f"chat_{self.room_name}"
 
-            async_to_sync(self.channel_layer.group_add)(
-                self.room_group_name, self.channel_name
-            )
-            self.groups.append(self.room_group_name)
-            self.accept()
-        else:
-            self.close()
+                async_to_sync(self.channel_layer.group_add)(
+                    self.room_group_name, self.channel_name
+                )
+                self.groups.append(self.room_group_name)
+                self.accept()
+            else:
+                now = str(timezone.now())
+                self.accept()
+                self.send(
+                    text_data=json.dumps(
+                        {"code": 404, "message": "Room not found", "ts": now}
+                    )
+                )
+                self.close()
+        # else:
+        #     now = str(timezone.now())
+        #     self.accept()
+        #     self.send(text_data=json.dumps({"code":"RIDNF", "message": "Provide Room ID", "ts": now}))
+        #     self.close()
 
     def disconnect(self, close_code):
         print("WS Connection: Disconnect")
-        if self.channel_layer:
+        if self.room and self.channel_layer:
             async_to_sync(self.channel_layer.group_discard)(
                 self.room_group_name, self.channel_name
             )

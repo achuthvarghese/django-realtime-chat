@@ -33,6 +33,11 @@
 
     ws.onmessage = function (e) {
         console.log("MESSAGE", e)
+        if (JSON.parse(e.data).code == 404) {
+            alert(JSON.parse(e.data).message)
+            window.location = `http://${host}`
+        }
+
     }
 
     function send_message(message = "", data = {}) {
