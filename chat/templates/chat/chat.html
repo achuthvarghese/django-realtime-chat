@@ -39,16 +39,17 @@
                     <div class="card-header text-uppercase fw-bold">
                         Messages
                     </div>
-                    <div class="card-body overflow-auto">
+                    <div class="card-body overflow-auto" id="messages">
                         {% for message in room_messages %}
                         <div
                             class="message message-{% if user == message.user %}right{% else %}left{% endif %} border rounded mb-1 p-1">
                             {{ message.content }} <br><span class="text-muted fw-lighter">by {{ message.user.username }}
-                                on {{ message.created_at }}</span></div>
+                                on {{ message.created_at|date:"M j, Y, g:i A" }}</span></div>
                         {% endfor %}
                     </div>
                     <div class="card-footer">
-                        <button id="btn" class="btn btn-primary">Send Random #</button>
+                        <input type="text" name="message" id="message" class="form-control float-start w-75 m-0" required value="">
+                        <button id="btn" class="btn btn-primary float-end w-auto">Send</button>
                     </div>
                 </div>
             </div>
@@ -58,7 +59,8 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-A3rJD856KowSb7dwlZdYEkO39Gagi7vIsF0jrRAoQmDKKtQBHUuLZ9AsSv4jD4Xa"
         crossorigin="anonymous"></script>
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js" referrerpolicy="no-referrer"></script>
+    {{ user.username|json_script:"user" }}
     <script src="{% static 'chat/js/chat.js' %}"></script>
 </body>
 

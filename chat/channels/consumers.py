@@ -59,15 +59,15 @@ class ChatConsumer(WebsocketConsumer):
 
         # Send message to room group
         async_to_sync(self.channel_layer.group_send)(
-            self.room_group_name, {"type": "chat_response", "message": message.content}
+            self.room_group_name, {"type": "chat_response", "message": message}
         )
 
     def chat_response(self, event):
         message = event["message"]
-        now = str(timezone.now())
+        # now = str(timezone.now())
 
         # Send message to WebSocket
-        self.send(text_data=json.dumps({"message": message, "ts": now}))
+        self.send(text_data=json.dumps({"message": message.content, "user": message.user.username, "created_at": message.created_at}, default=str))
 
     def save_message(self, message):
         obj = Message.objects.create(content=message, room=self.room, user=self.user)
