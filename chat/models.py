@@ -15,9 +15,17 @@ class Message(models.Model):
 
 
 class Room(models.Model):
+    class RoomTypes(models.TextChoices):
+        PRIVATE = "private", "Private"
+        GROUP = "group", "Group"
+
     name = models.CharField(max_length=50)
     members = models.ManyToManyField(User, related_name="rooms")
     created_at = models.DateTimeField(auto_now_add=True)
+    type = models.CharField(
+        max_length=10, default=RoomTypes.PRIVATE, choices=RoomTypes.choices
+    )
 
     def __str__(self):
-        return str(self.name)
+        return f"{self.type} :: {self.name}"
+
