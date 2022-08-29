@@ -2,7 +2,6 @@
 
 
 (function (e) {
-    console.log("echo")
 
     const user = JSON.parse(document.getElementById('user').textContent);
 
@@ -66,7 +65,8 @@
         }))
     };
 
-    // test
+
+    // Send message
     btn = document.getElementById('btn')
     btn.onclick = function () {
         console.log('click')
@@ -83,9 +83,12 @@
         }
     }
 
+
+    // Set active class to current chat head
     active_room_a_tag = document.getElementById(`room_${room_id}`)
     active_room_a_tag.classList.add('active')
     active_room_a_tag.ariaCurrent = true
+
 
     // Scroll to the latest message
     function scrollToLatest() {
@@ -94,5 +97,16 @@
     }
 
     scrollToLatest()
+
+
+    // Convert datetime to locale datetime
+    span_dates = document.getElementsByClassName('date')
+    for (let span_date = 0; span_date < span_dates.length; span_date++) {
+        element = span_dates[span_date];
+        parseDate = moment(element.dataset.date)
+        console.log(parseDate)
+        dateCreated = parseDate.format('MMM D, YYYY, h:mm A')
+        element.textContent = dateCreated
+    }
 
 })();
