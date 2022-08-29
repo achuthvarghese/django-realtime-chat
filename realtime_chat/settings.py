@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "debug_toolbar",
     "chat.apps.ChatConfig",
     "channels",
+    "account.apps.AccountConfig",
 ]
 
 MIDDLEWARE = [
@@ -139,7 +140,7 @@ if DEBUG:
 # https://channels.readthedocs.io/en/stable/installation.html
 
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
     },
 }
