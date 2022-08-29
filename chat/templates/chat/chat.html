@@ -1,5 +1,6 @@
 {% load static %}
 {% load chattags %}
+{% load tz %}
 <!DOCTYPE html>
 <html lang="en">
 
@@ -46,7 +47,7 @@
                         <div
                             class="message message-{% if user == message.user %}right{% else %}left{% endif %} border rounded mb-1 p-1">
                             {{ message.content }} <br><span class="text-muted fw-lighter">by {{ message.user.username }}
-                                on {{ message.created_at|date:"M j, Y, g:i A" }}</span></div>
+                                on {{ message.created_at|timezone:"Asia/Kolkata"|date:"M j, Y, g:i A" }}</span></div>
                         {% endfor %}
                     </div>
                     <div class="card-footer">
