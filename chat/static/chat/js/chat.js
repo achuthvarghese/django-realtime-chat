@@ -104,7 +104,6 @@
     for (let span_date = 0; span_date < span_dates.length; span_date++) {
         element = span_dates[span_date];
         parseDate = moment(element.dataset.date)
-        console.log(parseDate)
         dateCreated = parseDate.format('MMM D, YYYY, h:mm A')
         element.textContent = dateCreated
     }
