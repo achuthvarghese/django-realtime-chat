@@ -75,6 +75,7 @@ TEMPLATES = [
 # WSGI_APPLICATION = "realtime_chat.wsgi.application"
 ASGI_APPLICATION = "realtime_chat.asgi.application"
 
+
 # Database
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases
 
@@ -122,10 +123,12 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
 
 # Django Debug Toolbar
 # https://django-debug-toolbar.readthedocs.io/en/latest/installation.html
@@ -136,6 +139,7 @@ if DEBUG:
     hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
     INTERNAL_IPS = [ip[: ip.rfind(".")] + ".1" for ip in ips] + ["127.0.0.1"]
 
+
 # Django Channels
 # https://channels.readthedocs.io/en/stable/installation.html
 
@@ -144,3 +148,11 @@ CHANNEL_LAYERS = {
         "BACKEND": "channels.layers.InMemoryChannelLayer",
     },
 }
+
+
+# Authentication
+# https://docs.djangoproject.com/en/4.0/ref/settings/#auth
+
+LOGIN_URL = "/account/login/"
+
+LOGIN_REDIRECT_URL = "/"

@@ -1,8 +1,10 @@
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 
 from chat.models import Message, Room
 
 
+@login_required
 def chat(request):
     rooms = request.user.rooms.all()
     room_messages = []
