@@ -1,0 +1,89 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="achuthvarghese">
+    <title>Real Time Chat | {{ title }}</title>
+
+    <!-- Bootstrap stylesheet -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css"
+        integrity="sha384-gH2yIJqKdNHPEq0n4Mqa/HGKIhSkIHeL5AyhkYV8i59U5AR6csBvApHHNl/vI1Bx" crossorigin="anonymous">
+
+    <!-- Custom styles for this template -->
+    <link rel="stylesheet" href="{% static 'account/css/signup.css' %}">
+</head>
+
+<body class="text-center">
+    <div class="container form-signup w-100 m-auto">
+        <form method="post" action="{% url 'account:signup' %}">
+            {% csrf_token %}
+
+            <h1 class="h3 mb-3 fw-normal ">Create Account</h1>
+
+            <div class="row text-start">
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        <input type="text" name="first_name" class="form-control" id="floatingFirstName"
+                            placeholder="First Name">
+                        <label for="floatingFirstName">First Name</label>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        <input type="text" name="last_name" class="form-control" id="floatingLastName"
+                            placeholder="Lst Name">
+                        <label for="floatingLastName">Last Name</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row text-start">
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        <input type="text" name="username" class="form-control" id="floatingUsername"
+                            placeholder="Username">
+                        <label for="floatingUsername">Username</label>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        <input type="email" name="email" class="form-control" id="floatingEmail" placeholder="Email">
+                        <label for="floatingEmail">Email</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row text-start">
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        <input type="password" name="password1" class="form-control" id="floatingPassword1"
+                            placeholder="Password">
+                        <label for="floatingPassword1">Password</label>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        <input type="password" name="password2" class="form-control" id="floatingPassword2"
+                            placeholder="Confirm Password">
+                        <label for="floatingPassword2">Confirm Password</label>
+                    </div>
+                </div>
+            </div>
+
+            <button class="w-100 btn btn-lg btn-primary" type="submit">Signup</button>
+
+            <div class="checkbox mt-3">
+                <label>
+                    <a href="{% url 'account:login' %}">Already have an account? Login here</a>
+                </label>
+            </div>
+        </form>
+    </div>
+</body>
+
+</html>
