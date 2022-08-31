@@ -1,28 +1,36 @@
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.shortcuts import redirect, render
 
+from account.forms import UserLoginForm
+
 User = get_user_model()
 
 
 def user_login(request):
     template = "account/login.html"
+    form = UserLoginForm
     context = {
         "title": "Login",
+        "form": form,
     }
     if request.method == "POST":
-        username = request.POST.get("username")
-        password = request.POST.get("password")
-        user = authenticate(username=username, password=password)
-        if user is not None:
-            login(request, user)
-            return redirect("chat:chat")
+        form = UserLoginForm(request.POST)
+        if form.is_valid():
+            username = form.cleaned_data["username"]
+            password = form.cleaned_data["password"]
+            user = authenticate(username=username, password=password)
+            if user is not None:
+                login(request, user)
+                return redirect("chat:chat")
+            else:
+                context.update({"form": form})
         else:
-            return redirect("account:login")
+            print(form.errors)
+            context.update({"form": form})
     else:
         if request.user.is_authenticated:
             return redirect("chat:chat")
-        else:
-            return render(request, template, context)
+    return render(request, template, context)
 
 
 def user_logout(request):
