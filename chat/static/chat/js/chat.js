@@ -13,27 +13,31 @@
     const room_id = url.searchParams.get('room') || ''
 
     if (room_id == '') {
-        throw new Error(`http://${host}?room=<room_id>`)
+        return
+        // throw new Error(`http://${host}?room=<room_id>`)
     }
 
     const ws_url = `ws://${host}/chat/${room_id}`
 
     const ws = new WebSocket(ws_url)
 
+    // Handle WebSocket on opening a connection
     ws.onopen = function (e) {
-        console.log("OPEN", e)
+        console.log("WS Open")
     }
 
+    // Handle WebSocket on occurance of error
     ws.onerror = function (e) {
-        console.log("ERROR", e)
+        console.log("WS Error")
     }
 
+    // Handle WebSocket connection while closeing
     ws.onclose = function (e) {
-        console.log("CLOSE", e)
+        console.log("WS Close")
     }
 
+    // Handle when message is received on WebSocket
     ws.onmessage = function (e) {
-        console.log("MESSAGE", e.data)
         if (JSON.parse(e.data).code == 404) {
             alert(JSON.parse(e.data).message)
             window.location = `http://${host}`
@@ -58,6 +62,7 @@
 
     }
 
+    // Function to send messages on WebSocket
     function send_message(message = "", data = {}) {
         ws.send(JSON.stringify({
             "message": message,
@@ -69,10 +74,8 @@
     // Send message
     btn = document.getElementById('btn')
     btn.onclick = function () {
-        console.log('click')
         messageInput = document.getElementById("message")
         textContent = messageInput.value
-        console.log(textContent)
 
         if (textContent != '') {
             messageInput.classList.remove('border-danger')
