@@ -1,13 +1,11 @@
 # This is a workflow to analyse the code for formatting issues
-# and imports sorting order.
+# and sorting issues in the imports.
 
 name: Check Python Code Format and Imports
 
 # Controls when the workflow will run
 on:
-  # Trigger the workflow on push to dev branch or pull request to master branch
-  push:
-    branches: ["dev"]
+  # Trigger the workflow pull request to master branch
   pull_request:
     branches: ["master"]
 
@@ -45,9 +43,9 @@ jobs:
 
       # Runs black command to check for code format issues
       - name: Analyse the code with black for format issues
-        run: black --check --diff --verbose .
+        run: black --check --diff .
 
       # Runs isort command to check for imports sort issues
       - name: Analyse the code with isort for imports ordering
         if: ${{ always() }}
-        run: isort --check --diff --verbose .
+        run: isort --check --diff .
