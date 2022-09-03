@@ -1,18 +1,19 @@
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.shortcuts import redirect, render
 
-from account.forms import UserLoginForm
+from account.forms import UserLoginForm, UserSignUpForm
 
 User = get_user_model()
 
 
 def user_login(request):
     template = "account/login.html"
-    form = UserLoginForm
+    form = UserLoginForm()
     context = {
         "title": "Login",
         "form": form,
     }
+
     if request.method == "POST":
         form = UserLoginForm(request.POST)
         if form.is_valid():
@@ -40,31 +41,29 @@ def user_logout(request):
 
 def user_signup(request):
     template = "account/signup.html"
+    form = UserSignUpForm()
     context = {
         "title": "Signup",
+        "form": form,
     }
 
     if request.method == "POST":
-        first_name = request.POST.get("first_name")
-        last_name = request.POST.get("last_name")
-        username = request.POST.get("username")
-        email = request.POST.get("email")
-        password1 = request.POST.get("password1")
-        password2 = request.POST.get("password2")
+        form = UserSignUpForm(request.POST)
+        if form.is_valid():
+            first_name = request.POST.get("first_name")
+            last_name = request.POST.get("last_name")
+            username = request.POST.get("username")
+            email = request.POST.get("email")
+            password1 = request.POST.get("password1")
 
-        if password1 != password2:
-            return redirect("account:signup")
-
-        if username and email and password1 and password2:
             user = User.objects.create_user(username, email, password1)
             user.first_name = first_name
             user.last_name = last_name
             user.save()
             return redirect("account:login")
         else:
-            return redirect("account:signup")
+            context.update({"form": form})
     else:
         if request.user.is_authenticated:
             return redirect("chat:chat")
-        else:
-            return render(request, template, context)
+    return render(request, template, context)

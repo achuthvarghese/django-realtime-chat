@@ -1,46 +1,41 @@
 {% extends "account/base.html" %}
-{% load static %} 
+{% load static %}
 
 {% block styles %}
     <link rel="stylesheet" href="{% static 'account/css/signup.css' %}" />
-{% endblock %} 
+{% endblock %}
 
 {% block body %}
     <div class="container form-signup w-100 m-auto">
         <form method="post" action="{% url 'account:signup' %}">
             {% csrf_token %}
 
+            {% if form.errors %}
+            <div class="container-fluid p-0">
+                {% for field in form %}
+                {% for error in field.errors %}
+                <div class="alert alert-danger alert-dismissible fade show mb-2" role="alert">
+                    {{ error|escape }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
             <h1 class="h3 mb-3 fw-normal">Create Account</h1>
 
             <div class="row text-start">
                 <div class="col-12 col-sm-6">
                     <div class="form-floating">
-                        <input type="text" name="first_name" class="form-control" id="floatingFirstName"
-                            placeholder="First Name" />
-                        <label for="floatingFirstName">First Name</label>
+                        {{ form.first_name }}
+                        {{ form.first_name.label_tag }}
                     </div>
                 </div>
                 <div class="col-12 col-sm-6">
                     <div class="form-floating">
-                        <input type="text" name="last_name" class="form-control" id="floatingLastName"
-                            placeholder="Lst Name" />
-                        <label for="floatingLastName">Last Name</label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row text-start">
-                <div class="col-12 col-sm-6">
-                    <div class="form-floating">
-                        <input type="text" name="username" class="form-control" id="floatingUsername"
-                            placeholder="Username" />
-                        <label for="floatingUsername">Username</label>
-                    </div>
-                </div>
-                <div class="col-12 col-sm-6">
-                    <div class="form-floating">
-                        <input type="email" name="email" class="form-control" id="floatingEmail" placeholder="Email" />
-                        <label for="floatingEmail">Email</label>
+                        {{ form.last_name }}
+                        {{ form.last_name.label_tag }}
                     </div>
                 </div>
             </div>
@@ -48,16 +43,29 @@
             <div class="row text-start">
                 <div class="col-12 col-sm-6">
                     <div class="form-floating">
-                        <input type="password" name="password1" class="form-control" id="floatingPassword1"
-                            placeholder="Password" />
-                        <label for="floatingPassword1">Password</label>
+                        {{ form.username }}
+                        {{ form.username.label_tag }}
                     </div>
                 </div>
                 <div class="col-12 col-sm-6">
                     <div class="form-floating">
-                        <input type="password" name="password2" class="form-control" id="floatingPassword2"
-                            placeholder="Confirm Password" />
-                        <label for="floatingPassword2">Confirm Password</label>
+                        {{ form.email }}
+                        {{ form.email.label_tag }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row text-start">
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        {{ form.password1 }}
+                        {{ form.password1.label_tag }}
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        {{ form.password2 }}
+                        {{ form.password2.label_tag }}
                     </div>
                 </div>
             </div>
