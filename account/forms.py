@@ -8,11 +8,21 @@ User = get_user_model()
 class BaseForm(forms.Form):
     def __init__(self, *args, **kwargs):
         super(BaseForm, self).__init__(*args, **kwargs)
+
         self.label_suffix = ""
 
         for field_name, field in self.fields.items():
             if "required" in field.error_messages:
                 field.error_messages["required"] = f"{field.label} is required."
+
+    def clean(self):
+        super(BaseForm, self).clean()
+
+        for field_name in self.errors:
+            field = self.fields.get(field_name)
+            field_css_class = field.widget.attrs.get("class")
+            field.widget.attrs.update({"class": f"{field_css_class} border-danger"})
+        return self.cleaned_data
 
 
 class UserLoginForm(BaseForm):
@@ -40,34 +50,24 @@ class UserLoginForm(BaseForm):
 
     def clean_username(self):
         username = self.cleaned_data["username"]
+
         user = User.objects.filter(username=username).exists()
+
         if not user:
-            username_field_css_class = self.fields.get("username").widget.attrs.get(
-                "class"
-            )
-            self.fields.get("username").widget.attrs.update(
-                {"class": f"{username_field_css_class} border-danger"}
-            )
             raise forms.ValidationError("Please check your credentials.")
         return username
 
     def clean(self):
-        super(UserLoginForm, self).clean()
         username = self.cleaned_data.get("username")
         password = self.cleaned_data.get("password")
+
         if username and password:
             user = authenticate(username=username, password=password)
             if user is None:
-                password_field_css_class = self.fields.get("username").widget.attrs.get(
-                    "class"
-                )
-                self.fields.get("password").widget.attrs.update(
-                    {"class": f"{password_field_css_class} border-danger"}
-                )
                 self.add_error(
                     "password", forms.ValidationError("Please check your credentials.")
                 )
-        return self.cleaned_data
+        return super(UserLoginForm, self).clean()
 
 
 class UserSignUpForm(BaseForm):
@@ -136,15 +136,11 @@ class UserSignUpForm(BaseForm):
 
     def clean_username(self):
         username = self.cleaned_data.get("username")
+
         user = User.objects.filter(username=username).exists()
+
         if user:
-            username_field_css_class = self.fields.get("username").widget.attrs.get(
-                "class"
-            )
-            self.fields.get("username").widget.attrs.update(
-                {"class": f"{username_field_css_class} border-danger"}
-            )
-            raise forms.ValidationError("Username already exists.")
+            raise forms.ValidationError("Username already exists.", code="exists")
         return username
 
     def clean_password1(self):
@@ -153,42 +149,27 @@ class UserSignUpForm(BaseForm):
         username = self.cleaned_data.get("username")
         password1 = self.cleaned_data.get("password1")
         email = self.cleaned_data.get("email")
+
         user = User(
             username=username,
             first_name=first_name,
             last_name=last_name,
             email=email,
         )
+
         try:
             validate_password(password1, user=user)
-        except forms.ValidationError as exception:
-            password_field_css_class = self.fields.get("password1").widget.attrs.get(
-                "class"
-            )
-            self.fields.get("password1").widget.attrs.update(
-                {"class": f"{password_field_css_class} border-danger"}
-            )
-            raise exception
+        except forms.ValidationError as validation_errors:
+            raise validation_errors
         return password1
 
     def clean_password2(self):
         password1 = self.cleaned_data.get("password1")
         password2 = self.cleaned_data.get("password2")
+
         if not self.errors.get("password1"):
             if password1 != password2:
-                password_field_css_class = self.fields.get(
-                    "password1"
-                ).widget.attrs.get("class")
-                self.fields.get("password1").widget.attrs.update(
-                    {"class": f"{password_field_css_class} border-danger"}
+                raise forms.ValidationError(
+                    "Passwords does not match.", code="mismatch"
                 )
-                password_field_css_class = self.fields.get(
-                    "password2"
-                ).widget.attrs.get("class")
-                self.fields.get("password2").widget.attrs.update(
-                    {"class": f"{password_field_css_class} border-danger"}
-                )
-                self.add_error(
-                    "password2", forms.ValidationError("Passwords does not match.")
-                )
-        return password1
+        return password2
