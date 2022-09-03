@@ -1,6 +1,7 @@
-from chat.models import Room
 from django import template
 from django.utils.safestring import mark_safe
+
+from chat.models import Room
 
 register = template.Library()
 
