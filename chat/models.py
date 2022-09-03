@@ -28,4 +28,3 @@ class Room(models.Model):
 
     def __str__(self):
         return f"{self.type} :: {self.name}"
-

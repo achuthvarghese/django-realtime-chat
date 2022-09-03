@@ -1,0 +1,14 @@
+/* Account Signup stylesheet */
+
+.form-signup {
+    max-width: 600px;
+    padding: 15px;
+}
+
+.form-signup .form-floating:focus-within {
+    z-index: 2;
+}
+
+.form-signup input {
+    margin-bottom: 10px;
+}

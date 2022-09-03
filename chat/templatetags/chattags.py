@@ -1,5 +1,7 @@
-from chat.models import Room
 from django import template
+from django.utils.safestring import mark_safe
+
+from chat.models import Room
 
 register = template.Library()
 
@@ -15,4 +17,4 @@ def get_room_title(context, room):
             )
         else:
             room_title = room.name
-    return room_title
+    return mark_safe(room_title)

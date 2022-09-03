@@ -1,0 +1,51 @@
+# This is a workflow to analyse the code for formatting issues
+# and sorting issues in the imports.
+
+name: Check Python Code Format and Imports
+
+# Controls when the workflow will run
+on:
+  # Trigger the workflow pull request to master branch
+  pull_request:
+    branches: ["master"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job
+  check_format_and_imports:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Not using for now
+    # strategy:
+    #   matrix:
+    #     python-version: ["3.8", "3.9", "3.10"]
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE
+      - uses: actions/checkout@v3
+
+      # Setup python environments
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10" # ${{ matrix.python-version }}
+
+      # Install required packages for formatting and sorting
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install black isort
+
+      # Runs black command to check for code format issues
+      - name: Analyse the code with black for format issues
+        run: black --check --diff .
+
+      # Runs isort command to check for imports sort issues
+      - name: Analyse the code with isort for imports ordering
+        if: ${{ always() }}
+        run: isort --check --diff .

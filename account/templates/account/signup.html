@@ -1,0 +1,82 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block styles %}
+    <link rel="stylesheet" href="{% static 'account/css/signup.css' %}" />
+{% endblock %}
+
+{% block body %}
+    <div class="container form-signup w-100 m-auto">
+        <form method="post" action="{% url 'account:signup' %}">
+            {% csrf_token %}
+
+            {% if form.errors %}
+            <div class="container-fluid p-0">
+                {% for field in form %}
+                {% for error in field.errors %}
+                <div class="alert alert-danger alert-dismissible fade show mb-2" role="alert">
+                    {{ error|escape }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+                {% endfor %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <h1 class="h3 mb-3 fw-normal">Create Account</h1>
+
+            <div class="row text-start">
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        {{ form.first_name }}
+                        {{ form.first_name.label_tag }}
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        {{ form.last_name }}
+                        {{ form.last_name.label_tag }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row text-start">
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        {{ form.username }}
+                        {{ form.username.label_tag }}
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        {{ form.email }}
+                        {{ form.email.label_tag }}
+                    </div>
+                </div>
+            </div>
+
+            <div class="row text-start">
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        {{ form.password1 }}
+                        {{ form.password1.label_tag }}
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <div class="form-floating">
+                        {{ form.password2 }}
+                        {{ form.password2.label_tag }}
+                    </div>
+                </div>
+            </div>
+
+            <button class="w-100 btn btn-lg btn-primary" type="submit">Signup</button>
+
+            <div class="checkbox mt-3">
+                <label>
+                    <a href="{% url 'account:login' %}">Already have an account? Login here</a>
+                </label>
+            </div>
+        </form>
+    </div>
+{% endblock %}

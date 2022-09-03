@@ -2,10 +2,10 @@ import json
 from pprint import pprint
 
 from asgiref.sync import async_to_sync
-from chat.models import Message, Room
+from channels.generic.websocket import WebsocketConsumer
 from django.utils import timezone
 
-from channels.generic.websocket import WebsocketConsumer
+from chat.models import Message, Room
 
 
 class ChatConsumer(WebsocketConsumer):
@@ -67,7 +67,16 @@ class ChatConsumer(WebsocketConsumer):
         # now = str(timezone.now())
 
         # Send message to WebSocket
-        self.send(text_data=json.dumps({"message": message.content, "user": message.user.username, "created_at": message.created_at}, default=str))
+        self.send(
+            text_data=json.dumps(
+                {
+                    "message": message.content,
+                    "user": message.user.username,
+                    "created_at": message.created_at,
+                },
+                default=str,
+            )
+        )
 
     def save_message(self, message):
         obj = Message.objects.create(content=message, room=self.room, user=self.user)
