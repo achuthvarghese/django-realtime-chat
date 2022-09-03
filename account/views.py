@@ -14,23 +14,26 @@ def user_login(request):
         "form": form,
     }
 
+    if request.user.is_authenticated:
+        return redirect("chat:chat")
+
     if request.method == "POST":
         form = UserLoginForm(request.POST)
+
         if form.is_valid():
             username = form.cleaned_data["username"]
             password = form.cleaned_data["password"]
+
             user = authenticate(username=username, password=password)
+
             if user is not None:
                 login(request, user)
                 return redirect("chat:chat")
             else:
                 context.update({"form": form})
         else:
-            print(form.errors)
             context.update({"form": form})
-    else:
-        if request.user.is_authenticated:
-            return redirect("chat:chat")
+
     return render(request, template, context)
 
 
@@ -47,8 +50,12 @@ def user_signup(request):
         "form": form,
     }
 
+    if request.user.is_authenticated:
+        return redirect("chat:chat")
+
     if request.method == "POST":
         form = UserSignUpForm(request.POST)
+
         if form.is_valid():
             first_name = request.POST.get("first_name")
             last_name = request.POST.get("last_name")
@@ -60,10 +67,9 @@ def user_signup(request):
             user.first_name = first_name
             user.last_name = last_name
             user.save()
+
             return redirect("account:login")
         else:
             context.update({"form": form})
-    else:
-        if request.user.is_authenticated:
-            return redirect("chat:chat")
+
     return render(request, template, context)
