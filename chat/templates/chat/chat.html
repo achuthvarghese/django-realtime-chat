@@ -44,10 +44,19 @@
                     <div class="card-header text-uppercase fw-bold">
                         Chats
                     </div>
-                    <ul class="list-group list-group-flush" id="list-rooms">
+                    {% if rooms %}
+                    <div class="input-group p-1">
+                        <input type="search" class="form-control" placeholder="Find chat user/group"
+                            aria-label="Find chat user/group" aria-describedby="basic-addon2" id="search-room-input">
+                        <button type="button" class="input-group-text btn btn-primary" id="search-room-btn">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                    {% endif %}
+                    <ul class="list-group list-group-flush mb-2" id="list-rooms">
                         {% for room in rooms %}
                         <a href="{% url 'chat:chat' %}?room={{ room.id }}"
-                            class="list-group-item list-group-item-action" id="room_{{ room.id }}">
+                            class="list-group-item list-group-item-action room" id="room_{{ room.id }}">
                             {% get_room_title room %}
                         </a>
                         {% endfor %}

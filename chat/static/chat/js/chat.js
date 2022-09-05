@@ -12,6 +12,8 @@
     const url = new URL(href)
     const room_id = url.searchParams.get('room') || ''
 
+    searchUserGroup()
+
     if (room_id == '') {
         return
         // throw new Error(`http://${host}?room=<room_id>`)
@@ -109,6 +111,27 @@
         parseDate = moment(element.dataset.date)
         dateCreated = parseDate.format('MMM D, YYYY, h:mm A')
         element.textContent = dateCreated
+    }
+
+    // Search and list for chat user/group name
+    function searchUserGroup() {        
+        search_input = document.getElementById("search-room-input");
+        search_button = document.getElementById("search-room-btn");
+
+        search_input.onsearch = search_button.onclick = () => {
+            search_string = search_input.value.trim()
+            rooms = document.getElementsByClassName('room')
+
+            for (let room = 0; room < rooms.length; room++) {
+                element = rooms[room];
+                string_check = element.textContent.trim().toLowerCase().includes(search_string)
+                if (string_check) {
+                    element.style.display = 'block';
+                } else {
+                    element.style.display = 'none';    
+                }
+            }
+        }
     }
 
 })();
