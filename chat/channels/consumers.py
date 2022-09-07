@@ -1,11 +1,17 @@
 import json
-from pprint import pprint
+from enum import Enum
 
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
 from django.utils import timezone
 
 from chat.models import Message, Room
+
+
+class WSChatType(Enum):
+    CLEAT_ROOM = "clear_room"
+    CHAT_RESPONSE = "chat_response"
+    SAVE_MESSAGE = "save_message"
 
 
 class ChatConsumer(WebsocketConsumer):
@@ -15,7 +21,7 @@ class ChatConsumer(WebsocketConsumer):
         self.room = None
 
         if self.room_id:
-            self.room = self.get_room(self.room_id)
+            self.room = self.get_room()
             if self.room:
                 self.room_name = f"room_{self.room.id}"
                 self.room_group_name = f"chat_{self.room_name}"
@@ -47,45 +53,70 @@ class ChatConsumer(WebsocketConsumer):
                 self.room_group_name, self.channel_name
             )
 
+    def __call_method(self, method="", *args, **kwargs):
+        if not method:
+            return False
+
+        try:
+            method_to_call = self.__getattribute__(method)
+            result = method_to_call(*args, **kwargs)
+            return result
+        except AttributeError as ex:
+            return False
+
     def receive(self, text_data):
         print("WS Connection: Receive")
-        text_data_json = json.loads(text_data)
-        print(text_data_json)
 
-        pprint(self.__dict__)
+        text_data_json = json.loads(text_data)
+        type = text_data_json.get("type")
 
         self.user = self.scope["user"]
-        message = self.save_message(message=text_data_json["message"])
+
+        response_data = {"type": type}
+
+        data = self.__call_method(type, **text_data_json)
+
+        if type == WSChatType.SAVE_MESSAGE.value:
+            response_data["message"] = data.content
+            response_data["user"] = data.user.username
+            response_data["created_at"] = data.created_at
 
         # Send message to room group
         async_to_sync(self.channel_layer.group_send)(
-            self.room_group_name, {"type": "chat_response", "message": message}
+            self.room_group_name, {"type": WSChatType.CHAT_RESPONSE.value, "data": response_data}
         )
 
     def chat_response(self, event):
-        message = event["message"]
-        # now = str(timezone.now())
+        response_data = event["data"]
 
         # Send message to WebSocket
         self.send(
             text_data=json.dumps(
-                {
-                    "message": message.content,
-                    "user": message.user.username,
-                    "created_at": message.created_at,
-                },
+                response_data,
                 default=str,
             )
         )
 
-    def save_message(self, message):
-        obj = Message.objects.create(content=message, room=self.room, user=self.user)
-        obj.save()
-        return obj
+    def save_message(self, *args, message, **kwargs):
+        room_members = self.room.members.all()
+        message_obj = Message.objects.create(
+            content=message, room=self.room, user=self.user
+        )
+        message_obj.visible_for.add(*[member.id for member in room_members])
+        message_obj.save()
+        return message_obj
 
-    def get_room(self, room_id):
+    def clear_room(self, *args, **kwargs):
+        room = self.get_room()
+        messages = room.messages.all()
+        for message in messages:
+            print(message)
+            message.visible_for.remove(self.user)
+        return True
+
+    def get_room(self):
         try:
-            obj = Room.objects.get(id=room_id)
-            return obj
+            room_obj = Room.objects.get(id=self.room_id)
+            return room_obj
         except Room.DoesNotExist as ex:
             return False
