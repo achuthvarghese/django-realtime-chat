@@ -86,9 +86,13 @@
                         {% endfor %}
                     </div>
                     <div class="card-footer">
-                        <input type="text" name="message" id="message" class="form-control float-start w-75 m-0"
-                            required value="">
-                        <button id="btn" class="btn btn-primary float-end w-auto">Send</button>
+                        <div class="input-group p-1">
+                            <input type="text" name="message" id="message" class="form-control m-0"
+                                required value="">
+                            <button type="button" class="input-group-text btn btn-primary" id="send-message-btn">
+                                <i class="bi bi-send-fill"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

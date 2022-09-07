@@ -67,7 +67,7 @@
     };
 
     // Send message
-    btn = document.getElementById("btn");
+    btn = document.getElementById("send-message-btn");
     btn.onclick = () => {
         messageInput = document.getElementById("message");
         textContent = messageInput.value;
