@@ -26,6 +26,11 @@
         console.log("WS Open");
     };
 
+    // Function to send messages on WebSocket
+    function send_message(data = {}) {
+        ws.send(JSON.stringify(data));
+    }
+
     // Handle WebSocket on occurance of error
     ws.onerror = (e) => {
         console.log("WS Error");
@@ -44,31 +49,22 @@
         }
 
         data = JSON.parse(e.data);
-        if (data.type != "save_message") {
-            return;
-        }
 
-        msgNode = document.createElement("div");
-        if (user == data.user) {
-            messageSide = "right";
-        } else {
-            messageSide = "left";
-        }
-        parseDate = moment(data.created_at);
-        dateCreated = parseDate.format("MMM D, YYYY, h:mm A");
-        msgNode.className = `message message-${messageSide} border rounded mb-1 p-1`;
-        msgNode.innerHTML = `${data.message} <br><span class="text-muted fw-lighter">by ${data.user} on ${dateCreated}</span>`;
+        switch (data.type) {
+            case "save_message":
+                appendMessage(data);
+                break;
 
-        mb = document.getElementById("messages");
-        mb.appendChild(msgNode);
+            case "clear_room":
+                clearMessages(data);
+                break;
+
+            default:
+                break;
+        }
 
         scrollToLatest();
     };
-
-    // Function to send messages on WebSocket
-    function send_message(data = {}) {
-        ws.send(JSON.stringify(data));
-    }
 
     // Send message
     btn = document.getElementById("btn");
@@ -90,10 +86,30 @@
         }
     };
 
+    // Clear chat history
+    clearSpan = document.getElementById("clear-room");
+    clearSpan.onclick = () => {
+        console.log(room_id);
+        data = {
+            ts: new Date().toISOString(),
+            type: "clear_room",
+        };
+        send_message((data = data));
+    };
+
     // Set active class to current chat head
-    active_room_a_tag = document.getElementById(`room_${room_id}`);
-    active_room_a_tag.classList.add("active");
-    active_room_a_tag.ariaCurrent = true;
+    activeRoomATag = document.getElementById(`room_${room_id}`);
+    activeRoomATag.classList.add("active");
+    activeRoomATag.ariaCurrent = true;
+
+    // Convert datetime to locale datetime
+    spanDates = document.getElementsByClassName("date");
+    for (let span_date = 0; span_date < spanDates.length; span_date++) {
+        element = spanDates[span_date];
+        parseDate = moment(element.dataset.date);
+        dateCreated = parseDate.format("MMM D, YYYY, h:mm A");
+        element.textContent = dateCreated;
+    }
 
     // Scroll to the latest message
     function scrollToLatest() {
@@ -103,32 +119,40 @@
 
     scrollToLatest();
 
-    // Convert datetime to locale datetime
-    span_dates = document.getElementsByClassName("date");
-    for (let span_date = 0; span_date < span_dates.length; span_date++) {
-        element = span_dates[span_date];
-        parseDate = moment(element.dataset.date);
+    // Add new message to DOM
+    function appendMessage(data) {
+        msgNode = document.createElement("div");
+        if (user == data.user) {
+            messageSide = "right";
+        } else {
+            messageSide = "left";
+        }
+        parseDate = moment(data.created_at);
         dateCreated = parseDate.format("MMM D, YYYY, h:mm A");
-        element.textContent = dateCreated;
+        msgNode.className = `message message-${messageSide} border rounded mb-1 p-1`;
+        msgNode.innerHTML = `${data.message} <br><span class="text-muted fw-lighter">by ${data.user} on ${dateCreated}</span>`;
+
+        mb = document.getElementById("messages");
+        mb.appendChild(msgNode);
     }
 
     // Search and list for chat user/group name
     function searchUserGroup() {
-        search_input = document.getElementById("search-room-input");
-        search_button = document.getElementById("search-room-btn");
+        searchInput = document.getElementById("search-room-input");
+        searchButton = document.getElementById("search-room-btn");
 
-        search_input.onsearch = search_button.onclick = () => {
-            search_string = search_input.value.trim();
+        searchInput.onsearch = searchButton.onclick = () => {
+            search_string = searchInput.value.trim();
             rooms = document.getElementsByClassName("room");
 
             for (let room = 0; room < rooms.length; room++) {
                 element = rooms[room];
                 span = element.children[0];
-                string_check = span.textContent
+                stringCheck = span.textContent
                     .trim()
                     .toLowerCase()
                     .includes(search_string);
-                if (string_check) {
+                if (stringCheck) {
                     element.style.display = "block";
                 } else {
                     element.style.display = "none";
@@ -137,14 +161,9 @@
         };
     }
 
-    // Clear chat history
-    clear_span = document.getElementById("clear-room");
-    clear_span.onclick = () => {
-        console.log(room_id);
-        data = {
-            ts: new Date().toISOString(),
-            type: "clear_room",
-        };
-        send_message((data = data));
-    };
+    // Clear messages
+    function clearMessages(data) {
+        messagesContainer = document.getElementById("messages");
+        messagesContainer.textContent = "";
+    }
 })();

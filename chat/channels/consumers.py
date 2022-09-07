@@ -9,9 +9,13 @@ from chat.models import Message, Room
 
 
 class WSChatType(Enum):
-    CLEAT_ROOM = "clear_room"
+    CLEAR_ROOM = "clear_room"
     CHAT_RESPONSE = "chat_response"
     SAVE_MESSAGE = "save_message"
+
+    @classmethod
+    def has_value(cls, value):
+        return value in [member.value for member in cls]
 
 
 class ChatConsumer(WebsocketConsumer):
@@ -74,16 +78,27 @@ class ChatConsumer(WebsocketConsumer):
 
         response_data = {"type": type}
 
-        data = self.__call_method(type, **text_data_json)
+        # Check if type is valid else respond
+        if WSChatType.has_value(type):
 
-        if type == WSChatType.SAVE_MESSAGE.value:
-            response_data["message"] = data.content
-            response_data["user"] = data.user.username
-            response_data["created_at"] = data.created_at
+            data = self.__call_method(type, **text_data_json)
+
+            if type == WSChatType.SAVE_MESSAGE.value:
+                response_data["message"] = data.content
+                response_data["user"] = data.user.username
+                response_data["created_at"] = data.created_at
+            elif type == WSChatType.CLEAR_ROOM.value:
+                response_data["cleared"] = data
+            else:
+                pass
+
+        else:
+            response_data["message"] = "Invalid type"
 
         # Send message to room group
         async_to_sync(self.channel_layer.group_send)(
-            self.room_group_name, {"type": WSChatType.CHAT_RESPONSE.value, "data": response_data}
+            self.room_group_name,
+            {"type": WSChatType.CHAT_RESPONSE.value, "data": response_data},
         )
 
     def chat_response(self, event):
@@ -110,7 +125,6 @@ class ChatConsumer(WebsocketConsumer):
         room = self.get_room()
         messages = room.messages.all()
         for message in messages:
-            print(message)
             message.visible_for.remove(self.user)
         return True
 
