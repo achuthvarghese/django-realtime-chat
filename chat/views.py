@@ -12,7 +12,9 @@ def chat(request):
     room = None
     try:
         room = Room.objects.get(id=current_room)
-        room_messages = Message.objects.filter(room=current_room)
+        room_messages = Message.objects.filter(
+            room=current_room, visible_for__in=[request.user.id]
+        )
     except Room.DoesNotExist:
         pass
     template = "chat/chat.html"

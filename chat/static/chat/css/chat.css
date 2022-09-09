@@ -1,8 +1,19 @@
 /* Chat stylesheet */
 
+body {
+    background-image: url("http://localhost:8000/static/chat/images/pattern01.png");
+    background-blend-mode: difference;
+    background-size: 300px;
+    background-color: rgb(71 63 36);
+}
+
 .container,
 #chat-room {
     height: calc(100vh - 50px);
+}
+
+.card {
+    box-shadow: rgb(38, 57, 77) 0px 20px 30px -10px;
 }
 
 .message {
