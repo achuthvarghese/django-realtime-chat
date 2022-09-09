@@ -89,7 +89,6 @@
     // Clear chat history
     clearSpan = document.getElementById("clear-room");
     clearSpan.onclick = () => {
-        console.log(room_id);
         data = {
             ts: new Date().toISOString(),
             type: "clear_room",
@@ -163,7 +162,9 @@
 
     // Clear messages
     function clearMessages(data) {
-        messagesContainer = document.getElementById("messages");
-        messagesContainer.textContent = "";
+        if (user == data.for) {
+            messagesContainer = document.getElementById("messages");
+            messagesContainer.textContent = "";
+        }
     }
 })();

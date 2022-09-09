@@ -89,6 +89,7 @@ class ChatConsumer(WebsocketConsumer):
                 response_data["created_at"] = data.created_at
             elif type == WSChatType.CLEAR_ROOM.value:
                 response_data["cleared"] = data
+                response_data["for"] = self.user.username
             else:
                 pass
 
