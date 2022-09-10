@@ -10,11 +10,21 @@
     const url = new URL(href);
     const room_id = url.searchParams.get("room") || "";
 
+    const left = document.getElementById("left");
+    const right = document.getElementById("right");
+
     searchUserGroup();
 
     if (room_id == "") {
+        left.classList.add("d-lg-block")
+        right.classList.add("d-lg-block")
+        right.classList.add("d-none")
         return;
         // throw new Error(`http://${host}?room=<room_id>`)
+    } else {
+        left.classList.add("d-none")
+        left.classList.add("d-lg-block")
+        right.classList.add("d-block")
     }
 
     const ws_url = `ws://${host}/chat/${room_id}`;
