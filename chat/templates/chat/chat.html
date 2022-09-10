@@ -73,6 +73,7 @@
             <div class="col-12 col-lg-8 mb-4" id="right">
                 <div class="card" id="chat-room">
                     <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                        <a href="{% url 'chat:chat' %}" class="btn btn-primary d-lg-none" id="clear-room"><i class="bi bi-arrow-left"></i></a>
                         {% get_room_title room %}
                         <span class="btn btn-danger" id="clear-room"><i class="bi bi-trash"></i></span>
                     </div>
