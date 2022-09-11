@@ -15,7 +15,7 @@ def chat(request):
         room_messages = Message.objects.filter(
             room=current_room, visible_for__in=[request.user.id]
         )
-    except Room.DoesNotExist:
+    except (Room.DoesNotExist, ValueError):
         pass
     template = "chat/chat.html"
     context = {

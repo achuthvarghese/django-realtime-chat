@@ -5,9 +5,12 @@ name: Check Python Code Format and Imports
 
 # Controls when the workflow will run
 on:
-  # Trigger the workflow pull request to master branch
+  # Trigger the workflow pull_request to master branch
   pull_request:
     branches: ["master"]
+  # Trigger the workflow push to master and dev branches
+  push:
+    branches: ["master", "dev"]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:

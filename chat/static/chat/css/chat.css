@@ -1,7 +1,7 @@
 /* Chat stylesheet */
 
 body {
-    background-image: url("http://localhost:8000/static/chat/images/pattern01.png");
+    background-image: url("/static/chat/images/pattern01.png");
     background-blend-mode: difference;
     background-size: 300px;
     background-color: rgb(71 63 36);
