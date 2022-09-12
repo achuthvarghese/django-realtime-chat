@@ -148,7 +148,6 @@
         msgNode.innerHTML = `${data.message} <br><span class="text-muted fw-lighter">by ${data.user} on ${dateCreated}</span>`;
 
         mb = document.getElementById("messages");
-        document.getElementById("no-messages").style.display = "none!important";
         mb.appendChild(msgNode);
     }
 
