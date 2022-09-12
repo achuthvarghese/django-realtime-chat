@@ -12,19 +12,25 @@
 
     const left = document.getElementById("left");
     const right = document.getElementById("right");
+    const chatRoom = document.getElementById("chat-room");
+    const commonCard = document.getElementById("common-card");
 
     searchUserGroup();
 
     if (room_id == "") {
+        
         left.classList.add("d-lg-block")
         right.classList.add("d-lg-block")
         right.classList.add("d-none")
+        chatRoom.classList.add("d-none")
+        commonCard.classList.add("d-flex")
         return;
         // throw new Error(`http://${host}?room=<room_id>`)
     } else {
         left.classList.add("d-none")
         left.classList.add("d-lg-block")
         right.classList.add("d-block")
+        commonCard.classList.add("d-none")
     }
 
     const ws_url = `ws://${host}/chat/${room_id}`;
@@ -142,6 +148,7 @@
         msgNode.innerHTML = `${data.message} <br><span class="text-muted fw-lighter">by ${data.user} on ${dateCreated}</span>`;
 
         mb = document.getElementById("messages");
+        document.getElementById("no-messages").style.display = "none!important";
         mb.appendChild(msgNode);
     }
 

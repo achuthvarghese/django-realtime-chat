@@ -79,11 +79,11 @@
                     </div>
                     <div class="card-body overflow-auto" id="messages">
                         {% for message in room_messages %}
-                        <div
-                            class="message message-{% if user == message.user %}right{% else %}left{% endif %} border rounded mb-1 p-1">
-                            {{ message.content }} <br><span class="text-muted fw-lighter">by {{ message.user.username }}
-                                on </span><span class="date text-muted fw-lighter"
-                                data-date='{{ message.created_at|date:"r" }}'></span></div>
+                        <div class="message message-{% if user == message.user %}right{% else %}left{% endif %} border rounded mb-1 p-1">
+                            {{ message.content }} <br>
+                            <span class="text-muted fw-lighter">by {{ message.user.username }} on </span>
+                            <span class="date text-muted fw-lighter" data-date='{{ message.created_at|date:"r" }}'></span>
+                        </div>
                         {% endfor %}
                     </div>
                     <div class="card-footer">
@@ -93,6 +93,14 @@
                             <button type="button" class="input-group-text btn btn-primary" id="send-message-btn">
                                 <i class="bi bi-send-fill"></i>
                             </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card" id="common-card">
+                    <div class="card-body text-center align-middle d-flex text-secondary">
+                        <div class="w-50 my-auto mx-auto">
+                            <p class="m-0">No messages yet</p>
+                            <p class="m-0">Start a conversation</p>
                         </div>
                     </div>
                 </div>
