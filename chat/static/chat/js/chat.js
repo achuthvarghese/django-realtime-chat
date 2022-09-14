@@ -156,24 +156,26 @@
         searchInput = document.getElementById("search-room-input");
         searchButton = document.getElementById("search-room-btn");
 
-        searchInput.onsearch = searchButton.onclick = () => {
-            search_string = searchInput.value.trim();
-            rooms = document.getElementsByClassName("room");
-
-            for (let room = 0; room < rooms.length; room++) {
-                element = rooms[room];
-                span = element.children[0];
-                stringCheck = span.textContent
-                    .trim()
-                    .toLowerCase()
-                    .includes(search_string);
-                if (stringCheck) {
-                    element.style.display = "block";
-                } else {
-                    element.style.display = "none";
+        if (searchInput && searchButton) {
+            searchInput.onsearch = searchButton.onclick = () => {
+                search_string = searchInput.value.trim();
+                rooms = document.getElementsByClassName("room");
+    
+                for (let room = 0; room < rooms.length; room++) {
+                    element = rooms[room];
+                    span = element.children[0];
+                    stringCheck = span.textContent
+                        .trim()
+                        .toLowerCase()
+                        .includes(search_string);
+                    if (stringCheck) {
+                        element.style.display = "block";
+                    } else {
+                        element.style.display = "none";
+                    }
                 }
-            }
-        };
+            };
+        }
     }
 
     // Clear messages
