@@ -1,3 +1,5 @@
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.db import models
 
@@ -5,6 +7,9 @@ User = get_user_model()
 
 
 class Message(models.Model):
+    id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False, unique=True
+    )
     content = models.TextField()
     room = models.ForeignKey("Room", on_delete=models.CASCADE, related_name="messages")
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -20,6 +25,9 @@ class Room(models.Model):
         PRIVATE = "private", "Private"
         GROUP = "group", "Group"
 
+    id = models.UUIDField(
+        primary_key=True, default=uuid.uuid4, editable=False, unique=True
+    )
     name = models.CharField(max_length=50)
     members = models.ManyToManyField(User, related_name="rooms")
     created_at = models.DateTimeField(auto_now_add=True)
