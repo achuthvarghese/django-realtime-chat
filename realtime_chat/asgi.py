@@ -4,7 +4,7 @@ ASGI config for realtime_chat project.
 It exposes the ASGI callable as a module-level variable named ``application``.
 
 For more information on this file, see
-https://docs.djangoproject.com/en/4.0/howto/deployment/asgi/
+https://docs.djangoproject.com/en/5.2/howto/deployment/asgi/
 """
 
 import os
@@ -14,11 +14,12 @@ from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
 from django.core.asgi import get_asgi_application
 
-import chat.channels.routing
-
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "realtime_chat.settings")
 
+# Initialise Django before importing code that touches models.
 django_asgi_app = get_asgi_application()
+
+import chat.channels.routing  # noqa: E402 isort:skip
 
 application = ProtocolTypeRouter(
     {
