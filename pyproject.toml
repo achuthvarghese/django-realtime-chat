@@ -1,0 +1,14 @@
+[tool.black]
+line-length = 88
+extend-exclude = "migrations"
+
+[tool.isort]
+profile = "black"
+skip_glob = ["*/migrations/*"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "realtime_chat.settings_test"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+addopts = "-ra"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

@@ -1,3 +1,89 @@
-from django.test import TestCase
+import pytest
+from django.contrib.auth import get_user_model
+from django.urls import reverse
 
-# Create your tests here.
+User = get_user_model()
+PASSWORD = "s3cure-Passw0rd!"
+
+
+@pytest.fixture
+def user(db):
+    return User.objects.create_user("maya", "maya@example.com", PASSWORD)
+
+
+@pytest.mark.django_db
+class TestLogin:
+    def test_page_renders(self, client):
+        response = client.get(reverse("account:login"))
+        assert response.status_code == 200
+
+    def test_valid_credentials_log_in(self, client, user):
+        response = client.post(
+            reverse("account:login"), {"username": "maya", "password": PASSWORD}
+        )
+        assert response.status_code == 302
+        assert response.url == reverse("chat:chat")
+        assert "_auth_user_id" in client.session
+
+    def test_wrong_password_is_rejected(self, client, user):
+        response = client.post(
+            reverse("account:login"), {"username": "maya", "password": "nope"}
+        )
+        assert response.status_code == 200
+        assert "_auth_user_id" not in client.session
+
+    def test_authenticated_user_is_redirected(self, client, user):
+        client.force_login(user)
+        response = client.get(reverse("account:login"))
+        assert response.status_code == 302
+
+
+@pytest.mark.django_db
+class TestSignup:
+    def test_page_renders(self, client):
+        response = client.get(reverse("account:signup"))
+        assert response.status_code == 200
+
+    def test_creates_user(self, client):
+        response = client.post(
+            reverse("account:signup"),
+            {
+                "first_name": "Arjun",
+                "last_name": "K",
+                "username": "arjun",
+                "email": "arjun@example.com",
+                "password1": PASSWORD,
+                "password2": PASSWORD,
+            },
+        )
+        assert response.status_code == 302
+        assert User.objects.filter(username="arjun").exists()
+
+    def test_duplicate_username_is_rejected(self, client, user):
+        response = client.post(
+            reverse("account:signup"),
+            {
+                "first_name": "Other",
+                "last_name": "Maya",
+                "username": "maya",
+                "email": "other@example.com",
+                "password1": PASSWORD,
+                "password2": PASSWORD,
+            },
+        )
+        assert response.status_code == 200
+        assert User.objects.filter(username="maya").count() == 1
+
+    def test_mismatched_passwords_are_rejected(self, client):
+        client.post(
+            reverse("account:signup"),
+            {
+                "first_name": "Arjun",
+                "last_name": "K",
+                "username": "arjun",
+                "email": "arjun@example.com",
+                "password1": PASSWORD,
+                "password2": PASSWORD + "x",
+            },
+        )
+        assert not User.objects.filter(username="arjun").exists()
