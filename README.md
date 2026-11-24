@@ -1,59 +1,59 @@
 # Django Real-Time Chat
 
-A messaging system using Django and Django Channels written in Python.
+A messaging app built with Django and Django Channels: direct and group rooms,
+with messages delivered over WebSockets.
 
-## Channels Setup
+## Quick start
 
-Add channels to `INSTALLED_APPS` in [settings.py]
-
-```python
-INSTALLED_APPS = [
-    ...
-    "channels",
-]
+```sh
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env
+python manage.py migrate
+python manage.py runserver
 ```
 
-Update project’s [asgi.py] to wrap the Django ASGI application:
+Open http://localhost:8000, sign up, and create rooms from the Django admin at
+`/admin/` (an in-app way to start chats is on the roadmap).
 
-```python
-import os
+Or with Docker: `docker compose up --build`.
 
-from channels.routing import ProtocolTypeRouter
-from django.core.asgi import get_asgi_application
+## Stack
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "realtime_chat.settings")
+| Part | Version |
+| --- | --- |
+| Python | 3.12, 3.13 |
+| Django | 5.2 LTS |
+| Channels / Daphne | 4.x |
+| Channel layer | In-memory by default, Redis when `REDIS_URL` is set |
+| Database | SQLite |
 
-application = ProtocolTypeRouter(
-    {
-        "http": get_asgi_application(),
-        # Add other protocols later
-    }
-)
-```
+## Documentation
 
-Add the asgi application using `ASGI_APPLICATION` in [settings.py].
+- [Setup and configuration](./docs/setup.md): local, Docker, environment variables, production notes
+- [Testing](./docs/testing.md): running the suite, layout, CI
 
-```python
-ASGI_APPLICATION = "realtime_chat.asgi.application"
-```
-
-Once development server is run using the `runserver` command, the server would use the ASGI application object specified in `ASGI_APPLICATION` instead of the default WSGI application.
-![image01]
-
-## Additional READMEs
-
-### Setup and configurations
+### Background notes
 
 - [Channels basic setup][config_channels.md]
 - [Channel layers setup][config_channel_layers.md]
 - [Django static files][config_static_files.md]
 
+## Project layout
+
+```
+account/        login, signup, logout
+chat/           rooms, messages, chat view
+chat/channels/  WebSocket consumer and routing
+realtime_chat/  settings, URLs, ASGI/WSGI entry points
+docs/           project documentation
+```
+
+## License
+
+See [LICENSE](./LICENSE).
+
 <!-- File links -->
-[settings.py]: ./realtime_chat/settings.py
-[asgi.py]: ./realtime_chat/asgi.py
 [config_channels.md]: ./readme/config_channels.md
 [config_static_files.md]: ./readme/config_static_files.md
 [config_channel_layers.md]: ./readme/config_channel_layers.md
-
-<!-- Image links -->
-[image01]: ./screenshots/image01.PNG (Running local dev server using ASGI application)
