@@ -306,3 +306,119 @@ class TestBroadcastShape:
         assert response["name"] == "Maya Rao"
         assert response["initials"] == "MR"
         await communicator.disconnect()
+
+
+@pytest.mark.django_db
+class TestPeopleSearch:
+    def test_requires_login(self, client):
+        assert client.get(reverse("chat:people"), {"q": "a"}).status_code == 302
+
+    def test_matches_username_and_names(self, client, maya, arjun):
+        arjun.first_name, arjun.last_name = "Arjun", "Kumar"
+        arjun.save()
+        client.force_login(maya)
+        for query in ("arj", "@arjun", "Kumar", "arjun kum"):
+            results = client.get(reverse("chat:people"), {"q": query}).json()["results"]
+            assert [r["username"] for r in results] == ["arjun"], query
+        assert results[0]["name"] == "Arjun Kumar"
+        assert results[0]["initials"] == "AK"
+
+    def test_excludes_self_inactive_and_blank(self, client, maya, arjun):
+        arjun.is_active = False
+        arjun.save()
+        client.force_login(maya)
+        assert client.get(reverse("chat:people"), {"q": "a"}).json()["results"] == []
+        assert client.get(reverse("chat:people"), {"q": " "}).json()["results"] == []
+
+    def test_post_not_allowed(self, client, maya):
+        client.force_login(maya)
+        assert client.post(reverse("chat:people")).status_code == 405
+
+
+@pytest.mark.django_db
+class TestStartDirect:
+    def test_creates_room_and_redirects(self, client, maya, arjun):
+        client.force_login(maya)
+        response = client.post(reverse("chat:start_direct"), {"username": "arjun"})
+        room = Room.objects.get(type=Room.RoomTypes.PRIVATE)
+        assert set(room.members.values_list("username", flat=True)) == {"maya", "arjun"}
+        assert response.url == f"/chat/?room={room.id}"
+
+    def test_reuses_existing_room(self, client, maya, arjun, room):
+        client.force_login(maya)
+        response = client.post(reverse("chat:start_direct"), {"username": "arjun"})
+        assert Room.objects.count() == 1
+        assert response.url == f"/chat/?room={room.id}"
+
+    def test_group_with_same_people_is_not_reused(self, client, maya, arjun):
+        group = Room.objects.create(name="pair", type=Room.RoomTypes.GROUP)
+        group.members.add(maya, arjun)
+        client.force_login(maya)
+        client.post(reverse("chat:start_direct"), {"username": "arjun"})
+        assert Room.objects.filter(type=Room.RoomTypes.PRIVATE).count() == 1
+
+    def test_larger_private_room_is_not_reused(self, client, maya, arjun):
+        crowd = Room.objects.create(name="crowd", type=Room.RoomTypes.PRIVATE)
+        crowd.members.add(maya, arjun, User.objects.create_user("ops", password="pw"))
+        client.force_login(maya)
+        response = client.post(reverse("chat:start_direct"), {"username": "arjun"})
+        assert Room.objects.filter(type=Room.RoomTypes.PRIVATE).count() == 2
+        assert str(crowd.id) not in response.url
+
+    def test_cannot_message_self(self, client, maya):
+        client.force_login(maya)
+        response = client.post(
+            reverse("chat:start_direct"), {"username": "maya"}, follow=True
+        )
+        assert Room.objects.count() == 0
+        assert "with yourself" in response.content.decode()
+
+    def test_unknown_user_is_404(self, client, maya):
+        client.force_login(maya)
+        response = client.post(reverse("chat:start_direct"), {"username": "ghost"})
+        assert response.status_code == 404
+
+    def test_get_not_allowed(self, client, maya):
+        client.force_login(maya)
+        assert client.get(reverse("chat:start_direct")).status_code == 405
+
+
+@pytest.mark.django_db
+class TestStartGroup:
+    def test_creates_group_with_creator(self, client, maya, arjun):
+        User.objects.create_user("ops", password="pw")
+        client.force_login(maya)
+        response = client.post(
+            reverse("chat:start_group"),
+            {"name": " Design team ", "members": ["arjun", "@ops", "maya"]},
+        )
+        room = Room.objects.get(type=Room.RoomTypes.GROUP)
+        assert room.name == "Design team"
+        assert set(room.members.values_list("username", flat=True)) == {
+            "maya",
+            "arjun",
+            "ops",
+        }
+        assert response.url == f"/chat/?room={room.id}"
+
+    @pytest.mark.parametrize(
+        "data, error",
+        [
+            ({"name": "", "members": ["arjun"]}, "Give the group a name."),
+            ({"name": "x" * 51, "members": ["arjun"]}, "at most 50 characters"),
+            ({"name": "Solo", "members": []}, "Add at least one other person."),
+            ({"name": "Solo", "members": ["maya"]}, "Add at least one other person."),
+            ({"name": "Team", "members": ["ghost"]}, "Unknown people: ghost."),
+        ],
+    )
+    def test_rejects_bad_input(self, client, maya, arjun, data, error):
+        client.force_login(maya)
+        response = client.post(reverse("chat:start_group"), data, follow=True)
+        assert Room.objects.count() == 0
+        assert error in response.content.decode()
+
+    def test_new_chat_dialog_on_page(self, client, maya):
+        client.force_login(maya)
+        html = client.get(reverse("chat:chat")).content.decode()
+        assert 'id="new-chat"' in html
+        assert reverse("chat:start_group") in html
