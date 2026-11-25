@@ -3,11 +3,12 @@
       data-palette="{{ ui.palette|default:'graphite' }}"
       data-mode="{{ ui.mode|default:'system' }}"
       data-density="{{ ui.density|default:'compact' }}"
-      {% if ui.from_server %}data-theme-source="server"{% endif %}>
+      {% if ui.from_server %}data-theme-source="server" data-theme-save-url="{{ ui.save_url }}"{% endif %}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="description" content="Relay: real-time chat built with Django Channels">
+    {% if ui.from_server %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
     <title>{% block title %}{{ title|default:"Relay" }}{% endblock %} · Relay</title>
 
     {# Apply the theme saved on this device before first paint. #}

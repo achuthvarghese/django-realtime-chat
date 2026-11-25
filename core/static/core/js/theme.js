@@ -20,9 +20,28 @@
         }
     }
 
+    // Signed-in users: also save to the account so every device follows.
+    async function saveToAccount(axis, value) {
+        const url = root.dataset.themeSaveUrl;
+        if (!url) return;
+        const token = document.querySelector('meta[name="csrf-token"]')?.content || "";
+        try {
+            const response = await fetch(url, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "X-CSRFToken": token, Accept: "application/json" },
+                body: new URLSearchParams({ [axis]: value }),
+            });
+            if (!response.ok) throw new Error(String(response.status));
+        } catch (error) {
+            document.dispatchEvent(new CustomEvent("relay:theme-save-failed", { detail: { axis, value } }));
+        }
+    }
+
     function apply(axis, value) {
         root.dataset[axis] = value;
         save(axis, value);
+        saveToAccount(axis, value);
         document.dispatchEvent(new CustomEvent("relay:theme", { detail: { axis, value } }));
     }
 
