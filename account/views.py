@@ -31,7 +31,12 @@ def user_login(request):
     else:
         form = UserLoginForm(request=request)
 
-    context = {"title": "Login", "form": form, "next": _safe_next(request) or ""}
+    context = {
+        "title": "Sign in",
+        "now_text": "signing in…",
+        "form": form,
+        "next": _safe_next(request) or "",
+    }
     return render(request, "account/login.html", context)
 
 
@@ -61,4 +66,5 @@ def user_signup(request):
     else:
         form = UserSignUpForm()
 
-    return render(request, "account/signup.html", {"title": "Signup", "form": form})
+    context = {"title": "Create account", "now_text": "joining relay…", "form": form}
+    return render(request, "account/signup.html", context)
