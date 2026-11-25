@@ -7,6 +7,7 @@ from channels.generic.websocket import WebsocketConsumer
 from django.utils import timezone
 
 from chat.models import Message, Room
+from chat.presenters import message_data
 
 MAX_MESSAGE_LENGTH = 4000
 
@@ -106,10 +107,7 @@ class ChatConsumer(WebsocketConsumer):
                 "type": WSChatType.CHAT_RESPONSE.value,
                 "data": {
                     "type": WSChatType.SAVE_MESSAGE.value,
-                    "id": str(message.id),
-                    "message": message.content,
-                    "user": self.user.username,
-                    "created_at": message.created_at.isoformat(),
+                    **message_data(message),
                 },
             },
         )
