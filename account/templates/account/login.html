@@ -9,6 +9,7 @@
     <div class="container form-signin w-100 m-auto">
         <form action="{% url 'account:login' %}" method="post">
             {% csrf_token %}
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
 
             {% if form.errors %}
             <div class="container-fluid p-0">
