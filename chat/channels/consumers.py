@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from enum import Enum
 
@@ -6,8 +7,9 @@ from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
 from django.utils import timezone
 
+from chat import presence
 from chat.models import Message, Room
-from chat.presenters import message_data
+from chat.presenters import display_name, message_data
 
 MAX_MESSAGE_LENGTH = 4000
 
@@ -19,6 +21,8 @@ class WSChatType(str, Enum):
     EDIT_MESSAGE = "edit_message"
     DELETE_MESSAGE = "delete_message"
     MESSAGE_UPDATED = "message_updated"
+    READ = "read"
+    TYPING = "typing"
     ERROR = "error"
 
 
@@ -40,6 +44,7 @@ class ChatConsumer(WebsocketConsumer):
 
     room = None
     room_group_name = None
+    last_typing = 0.0
 
     def connect(self):
         self.user = self.scope.get("user")
@@ -82,6 +87,8 @@ class ChatConsumer(WebsocketConsumer):
             WSChatType.CLEAR_ROOM.value: self.handle_clear_room,
             WSChatType.EDIT_MESSAGE.value: self.handle_edit_message,
             WSChatType.DELETE_MESSAGE.value: self.handle_delete_message,
+            WSChatType.READ.value: self.handle_read,
+            WSChatType.TYPING.value: self.handle_typing,
         }
         handler = handlers.get(payload.get("type"))
         if handler is None:
@@ -164,7 +171,9 @@ class ChatConsumer(WebsocketConsumer):
         message = Message.objects.create(
             content=content, room=self.room, user=self.user
         )
-        message.visible_for.add(*self.room.members.all())
+        members = list(self.room.members.all())
+        message.visible_for.add(*members)
+        presence.mark_read(self.user, self.room, message.created_at)
 
         async_to_sync(self.channel_layer.group_send)(
             self.room_group_name,
@@ -173,6 +182,37 @@ class ChatConsumer(WebsocketConsumer):
                 "data": {
                     "type": WSChatType.SAVE_MESSAGE.value,
                     **message_data(message),
+                },
+            },
+        )
+        self.notify_inboxes(message, members)
+
+    def notify_inboxes(self, message, members):
+        """Tell every member's inbox socket about new activity in this room."""
+        data = message_data(message)
+        for member in members:
+            async_to_sync(self.channel_layer.group_send)(
+                inbox_group(member.pk),
+                {"type": "inbox.message", "room": str(self.room.id), "data": data},
+            )
+
+    def handle_read(self, payload):
+        presence.mark_read(self.user, self.room)
+
+    def handle_typing(self, payload):
+        # At most one typing event per second per socket.
+        now = time.monotonic()
+        if now - self.last_typing < 1.0:
+            return
+        self.last_typing = now
+        async_to_sync(self.channel_layer.group_send)(
+            self.room_group_name,
+            {
+                "type": WSChatType.CHAT_RESPONSE.value,
+                "data": {
+                    "type": WSChatType.TYPING.value,
+                    "user": self.user.username,
+                    "name": display_name(self.user),
                 },
             },
         )
@@ -221,3 +261,92 @@ class ChatConsumer(WebsocketConsumer):
             return Room.objects.get(id=uuid.UUID(str(room_id)))
         except (Room.DoesNotExist, ValueError, TypeError):
             return None
+
+
+def inbox_group(user_pk):
+    return f"inbox_user_{user_pk}"
+
+
+class InboxConsumer(WebsocketConsumer):
+    """One socket per signed-in page: presence for the people you share rooms
+    with, and activity (new messages, unread counts) in all your rooms.
+
+    Client frames: {"type": "ping"} every 30 seconds keeps you online and
+    returns a fresh presence snapshot. See docs/websocket-protocol.md.
+    """
+
+    group_name = None
+
+    def connect(self):
+        self.user = self.scope.get("user")
+        if self.user is None or not self.user.is_authenticated:
+            self.close(code=CloseCode.UNAUTHENTICATED)
+            return
+        self.group_name = inbox_group(self.user.pk)
+        async_to_sync(self.channel_layer.group_add)(self.group_name, self.channel_name)
+        self.accept()
+        came_online = presence.open_connection(self.user, self.channel_name)
+        if came_online:
+            self.broadcast_presence(True)
+        self.send_snapshot()
+
+    def disconnect(self, close_code):
+        if not self.group_name:
+            return
+        async_to_sync(self.channel_layer.group_discard)(
+            self.group_name, self.channel_name
+        )
+        if presence.close_connection(self.user, self.channel_name):
+            self.broadcast_presence(False)
+
+    def receive(self, text_data=None, bytes_data=None):
+        try:
+            payload = json.loads(text_data or "")
+        except (TypeError, ValueError):
+            return
+        if isinstance(payload, dict) and payload.get("type") == "ping":
+            presence.touch_connection(self.channel_name)
+            self.send_snapshot()
+
+    def broadcast_presence(self, online):
+        for contact in presence.contacts_of(self.user):
+            async_to_sync(self.channel_layer.group_send)(
+                inbox_group(contact.pk),
+                {
+                    "type": "inbox.presence",
+                    "user": self.user.username,
+                    "online": online,
+                },
+            )
+
+    def send_snapshot(self):
+        online = presence.online_usernames(presence.contacts_of(self.user))
+        self.send(
+            text_data=json.dumps(
+                {"type": "presence_snapshot", "online": sorted(online)}
+            )
+        )
+
+    # Channel layer events
+
+    def inbox_presence(self, event):
+        self.send(
+            text_data=json.dumps(
+                {"type": "presence", "user": event["user"], "online": event["online"]}
+            )
+        )
+
+    def inbox_message(self, event):
+        data = event["data"]
+        room = Room.objects.filter(id=event["room"]).first()
+        unread = presence.unread_count(self.user, room) if room else 0
+        self.send(
+            text_data=json.dumps(
+                {
+                    "type": "room_activity",
+                    "room": event["room"],
+                    "unread": unread,
+                    "message": data,
+                }
+            )
+        )
