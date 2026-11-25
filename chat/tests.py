@@ -756,3 +756,23 @@ class TestLiveFeatures:
         await sender.receive_json_from()
         assert await database_sync_to_async(unread_count)(maya, room) == 0
         await sender.disconnect()
+
+
+@pytest.mark.django_db
+class TestQueryBudget:
+    def test_chat_page_queries_do_not_grow_with_rooms(self, client, maya, arjun):
+        """docs/architecture.md promises a fixed number of queries per page."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        client.force_login(maya)
+        counts = []
+        for total in (2, 10):
+            for i in range(total - Room.objects.count()):
+                r = Room.objects.create(name=f"r{i}", type=Room.RoomTypes.GROUP)
+                r.members.add(maya, arjun)
+                make_messages(r, arjun, 1)
+            with CaptureQueriesContext(connection) as ctx:
+                client.get(reverse("chat:chat"))
+            counts.append(len(ctx.captured_queries))
+        assert counts[0] == counts[1]
