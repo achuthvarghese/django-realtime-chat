@@ -74,6 +74,7 @@
         </header>
 
         <div class="chat-scroll" id="chat-scroll" tabindex="0" aria-label="Messages">
+            <p class="chat-history" id="history-status" hidden></p>
             <div class="transcript" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
             <p class="chat-empty" id="chat-empty" hidden>No messages yet. Say hello.</p>
             <noscript><p class="chat-empty">Turn on JavaScript to read and send messages.</p></noscript>
@@ -85,9 +86,20 @@
             <label class="visually-hidden" for="message">Message {{ room_summary.title }}</label>
             <textarea class="composer__input" id="message" name="message" rows="1" maxlength="4000"
                       placeholder="Message {{ room_summary.title }}" enterkeyhint="send"></textarea>
-            <span class="kbd composer__hint" aria-hidden="true">Shift ↵ new line</span>
+            <span class="kbd composer__hint" aria-hidden="true">↑ edit last · Shift ↵ new line</span>
             <button class="btn btn--primary btn--icon" type="submit" id="send" aria-label="Send">↵</button>
         </form>
+
+        <dialog class="confirm" id="delete-dialog" aria-labelledby="delete-title">
+            <form method="dialog" class="confirm__body">
+                <h2 id="delete-title">Delete message?</h2>
+                <p>It will show as "Message deleted" for everyone in this chat. This can't be undone.</p>
+                <div class="confirm__actions">
+                    <button class="btn btn--ghost" value="cancel">Cancel</button>
+                    <button class="btn btn--danger" value="delete">Delete</button>
+                </div>
+            </form>
+        </dialog>
 
         <dialog class="confirm" id="clear-dialog" aria-labelledby="clear-title">
             <form method="dialog" class="confirm__body">
@@ -101,6 +113,7 @@
         </dialog>
 
         {{ room_messages|json_script:"initial-messages" }}
+        {{ history|json_script:"history-meta" }}
         {{ room_summary.id|json_script:"room-id" }}
         {% else %}
         <div class="chat-welcome">
