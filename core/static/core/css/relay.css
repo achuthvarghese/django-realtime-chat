@@ -329,7 +329,7 @@ img, svg { max-width: 100%; }
 .transcript::before {
     content: "";
     position: absolute;
-    left: 61px;
+    left: 73px;
     top: 0;
     bottom: 0;
     width: 1px;
@@ -338,7 +338,7 @@ img, svg { max-width: 100%; }
 .transcript__day {
     position: relative;
     align-self: flex-start;
-    margin: var(--space-2) 0 var(--space-2) 44px;
+    margin: var(--space-2) 0 var(--space-2) 56px;
     padding: 0 var(--space-2);
     border: 1px solid var(--line);
     border-radius: 99px;
@@ -350,7 +350,7 @@ img, svg { max-width: 100%; }
 
 .msg {
     display: grid;
-    grid-template-columns: 40px 20px minmax(0, 1fr);
+    grid-template-columns: 52px 20px minmax(0, 1fr);
     column-gap: var(--space-2);
     padding: var(--row-pad-y) var(--space-4) var(--row-pad-y) var(--space-1);
     line-height: var(--row-line);
@@ -362,6 +362,7 @@ img, svg { max-width: 100%; }
     font-size: 10px;
     color: var(--muted);
     text-align: right;
+    white-space: nowrap;
     padding-top: 2px;
 }
 .msg__node { position: relative; z-index: 1; margin-top: 1px; }
@@ -406,7 +407,8 @@ img, svg { max-width: 100%; }
     font-size: var(--text-md);
     line-height: 1.45;
 }
-.composer__input:focus { outline: none; }
+.composer__input:focus,
+.composer__input:focus-visible { outline: none; box-shadow: none; }
 .composer__input::placeholder { color: var(--muted); }
 .kbd {
     font-family: var(--font-mono);
