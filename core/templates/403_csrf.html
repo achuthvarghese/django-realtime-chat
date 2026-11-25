@@ -1,0 +1,7 @@
+{% extends "core/error.html" %}
+{% block title %}Form expired{% endblock %}
+{% block request_line %}sent a form{% endblock %}
+{% block reply_line %}could not verify it came from this site{% endblock %}
+{% block code %}403 · CSRF{% endblock %}
+{% block heading %}That form has expired{% endblock %}
+{% block explanation %}Reload the page and submit the form again. This happens when a page has been open a long time or cookies are blocked.{% endblock %}

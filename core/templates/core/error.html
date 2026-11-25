@@ -1,0 +1,31 @@
+{% extends "core/base.html" %}
+{# Error pages: a short transcript that ends with what went wrong. #}
+{% block body_class %}on-chrome{% endblock %}
+{% block body %}
+<main id="main" class="page-center">
+    <div class="error-page">
+        <a class="wordmark" href="/">relay</a>
+        <div class="transcript" aria-hidden="true">
+            <div class="msg">
+                <span class="msg__time">now</span>
+                <span class="msg__node avatar avatar--mine">YO</span>
+                <span class="msg__body"><span class="msg__name">You</span>{% block request_line %}opened a page{% endblock %}</span>
+            </div>
+            <div class="msg">
+                <span class="msg__time">now</span>
+                <span class="msg__node avatar">RL</span>
+                <span class="msg__body"><span class="msg__name">Relay</span>{% block reply_line %}{% endblock %}</span>
+            </div>
+        </div>
+        <div>
+            <p class="error-page__code">{% block code %}{% endblock %}</p>
+            <h1>{% block heading %}{% endblock %}</h1>
+        </div>
+        <p>{% block explanation %}{% endblock %}</p>
+        <div class="error-page__actions">
+            <a class="btn btn--primary" href="/">Back to chats</a>
+            {% block extra_actions %}{% endblock %}
+        </div>
+    </div>
+</main>
+{% endblock %}

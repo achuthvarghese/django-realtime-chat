@@ -1,0 +1,7 @@
+{% extends "core/error.html" %}
+{% block title %}Bad request{% endblock %}
+{% block request_line %}sent a request{% endblock %}
+{% block reply_line %}could not understand it{% endblock %}
+{% block code %}400{% endblock %}
+{% block heading %}Something in that request was off{% endblock %}
+{% block explanation %}Check the address and try again.{% endblock %}

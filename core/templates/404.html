@@ -1,0 +1,7 @@
+{% extends "core/error.html" %}
+{% block title %}Not found{% endblock %}
+{% block request_line %}opened {% if request.path %}<span class="mono">{{ request.path|truncatechars:40 }}</span>{% else %}a page{% endif %}{% endblock %}
+{% block reply_line %}could not find anything there{% endblock %}
+{% block code %}404{% endblock %}
+{% block heading %}This page or room isn't here{% endblock %}
+{% block explanation %}The link may be wrong, or the room may not include you. Ask a member to add you, or go back to your chats.{% endblock %}
