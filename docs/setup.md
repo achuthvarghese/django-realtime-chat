@@ -28,8 +28,9 @@ docker compose up --build
 ```
 
 This starts the app with `DJANGO_DEBUG=true` and a Redis channel layer. The
-SQLite database lives in the `sqlite-data` volume, and migrations run when the
-container starts.
+SQLite database lives in the `sqlite-data` volume. On start the container runs
+migrations, then seeds the [demo data](./demo-data.md) once (debug only).
+`docker compose down -v` deletes the volume for a fresh start.
 
 ## Environment variables
 
@@ -45,6 +46,7 @@ root is loaded automatically; real environment variables take precedence.
 | `DJANGO_DEBUG_TOOLBAR` | `true` | Set to `false` to hide the toolbar while debugging. |
 | `DJANGO_SECURE_COOKIES` | `true` | Secure session and CSRF cookies when not debugging. |
 | `REDIS_URL` | unset | Use the Redis channel layer instead of the in-memory one. |
+| `DJANGO_SEED_DEMO` | `true` | Set to `false` to stop `seed_demo --if-debug` from loading [demo data](./demo-data.md) |
 | `SQLITE_PATH` | `./db.sqlite3` | Location of the SQLite database file. |
 
 ## Production notes

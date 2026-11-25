@@ -14,5 +14,6 @@ COPY . /code/
 EXPOSE 8000
 
 # Migrations are applied at start-up, not at build time, so the database
-# lives in a volume rather than in the image.
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"]
+# lives in a volume rather than in the image. In debug mode the demo dataset
+# is seeded once (see docs/demo-data.md); with debug off seeding is skipped.
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py seed_demo --if-debug && python manage.py runserver 0.0.0.0:8000"]

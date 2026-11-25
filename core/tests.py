@@ -127,3 +127,90 @@ class TestHome:
 
     def test_chat_lives_under_chat_path(self):
         assert reverse("chat:chat") == "/chat/"
+
+
+@pytest.mark.django_db
+class TestSeedDemo:
+    def run(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("seed_demo", *args, stdout=out)
+        return out.getvalue()
+
+    @override_settings(DEBUG=True)
+    def test_seeds_users_rooms_and_messages(self):
+        from account.models import Preference
+        from chat.models import Message, Room
+        from core import demo_data
+
+        output = self.run()
+        User = get_user_model()
+        assert User.objects.count() == len(demo_data.USERS)
+        assert Room.objects.count() == len(demo_data.ROOMS)
+        assert Message.objects.count() == len(demo_data.SCRIPT) + demo_data.FILLER_COUNT
+        assert demo_data.DEMO_PASSWORD in output
+        maya = User.objects.get(username="maya")
+        assert maya.check_password(demo_data.DEMO_PASSWORD)
+        assert not User.objects.get(username="noah").is_active
+        assert Preference.objects.get(user__username="arjun").palette == "slate"
+        assert Message.objects.exclude(edited_at=None).count() == 1
+        assert Message.objects.exclude(deleted_at=None).get().content == ""
+
+    @override_settings(DEBUG=True)
+    def test_scenarios_match_the_docs(self):
+        from chat.models import Message
+        from chat.presence import unread_counts
+
+        self.run()
+        User = get_user_model()
+        maya = User.objects.get(username="maya")
+        by_name = {r.name: r.pk for r in maya.rooms.all()}
+        unread = unread_counts(maya, list(by_name.values()))
+        assert unread[by_name["Design team"]] == 3
+        assert unread[by_name["Ops"]] == 4
+        assert unread[by_name["Book club"]] == 0
+        assert not User.objects.get(username="sam").rooms.exists()
+        priya = User.objects.get(username="priya")
+        books = Message.objects.filter(room__name="Book club")
+        assert books.filter(visible_for=priya).count() < books.count()
+
+    @override_settings(DEBUG=True)
+    def test_second_run_skips(self):
+        from chat.models import Message
+
+        self.run()
+        count = Message.objects.count()
+        assert "already present" in self.run()
+        assert Message.objects.count() == count
+
+    @override_settings(DEBUG=True)
+    def test_reset_rebuilds_without_duplicates_and_keeps_other_users(self):
+        from chat.models import Message, Room
+
+        self.run()
+        real = get_user_model().objects.create_user("real", password="pw")
+        self.run("--reset")
+        assert get_user_model().objects.filter(username="maya").count() == 1
+        assert get_user_model().objects.filter(pk=real.pk).exists()
+        assert Room.objects.count() == 7
+        assert Message.objects.count() > 0
+
+    def test_refuses_without_debug(self):
+        from django.core.management.base import CommandError
+
+        with pytest.raises(CommandError, match="DEBUG is off"):
+            self.run()
+        assert get_user_model().objects.count() == 0
+
+    def test_if_debug_is_quiet_without_debug(self):
+        assert "skipped" in self.run("--if-debug")
+        assert get_user_model().objects.count() == 0
+
+    @override_settings(DEBUG=True)
+    def test_env_flag_can_disable(self, monkeypatch):
+        monkeypatch.setenv("DJANGO_SEED_DEMO", "false")
+        assert "DJANGO_SEED_DEMO is off" in self.run("--if-debug")
+        assert get_user_model().objects.count() == 0
