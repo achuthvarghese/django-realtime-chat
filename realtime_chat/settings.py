@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "channels",
+    "core.apps.CoreConfig",
     "chat.apps.ChatConfig",
     "account.apps.AccountConfig",
 ]
@@ -107,6 +108,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.ui",
             ],
         },
     },
@@ -182,6 +184,8 @@ else:
 LOGIN_URL = "account:login"
 LOGIN_REDIRECT_URL = "chat:chat"
 LOGOUT_REDIRECT_URL = "account:login"
+
+CSRF_FAILURE_VIEW = "core.views.csrf_failure"
 
 
 # Security hardening outside development
