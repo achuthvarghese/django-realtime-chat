@@ -1,0 +1,54 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block styles %}<link rel="stylesheet" href="{% static 'core/css/home.css' %}">{% endblock %}
+{% block body_class %}on-chrome{% endblock %}
+
+{% block body %}
+<header class="home-nav">
+    <a class="wordmark" href="{% url 'core:home' %}">relay</a>
+    <nav class="home-nav__links" aria-label="Account">
+        {% include "core/partials/theme_menu.html" %}
+        <a class="btn btn--ghost home-nav__signin" href="{% url 'account:login' %}">Sign in</a>
+        <a class="btn btn--primary" href="{% url 'account:signup' %}">Create account</a>
+    </nav>
+</header>
+
+<main id="main" class="home">
+    <section class="home-hero">
+        <div class="home-hero__copy">
+            <h1>Every conversation, <em>on one line</em>.</h1>
+            <p>Real-time rooms and direct chats laid out as a transcript, so you can follow a busy thread at a glance.</p>
+            <div class="home-hero__ctas">
+                <a class="btn btn--primary" href="{% url 'account:signup' %}">Create account</a>
+                <a class="btn btn--ghost" href="{% url 'account:login' %}">Sign in</a>
+            </div>
+        </div>
+
+        <figure class="home-demo" aria-label="Example conversation">
+            <div class="home-demo__head"><b>Design team</b><span class="home-demo__typing">Maya is typing…</span></div>
+            <div class="transcript">
+                <span class="transcript__day">Today</span>
+                <div class="msg"><time class="msg__time">09:38</time><span class="msg__node avatar">AK</span><div class="msg__body"><span class="msg__name">Arjun</span><span class="msg__inline-time">09:38</span>Pulled the branch</div></div>
+                <div class="msg msg--cont"><time class="msg__time">09:38</time><span></span><div class="msg__body">Every message is one line on the spine</div></div>
+                <div class="msg"><time class="msg__time">09:41</time><span class="msg__node avatar avatar--mine">YO</span><div class="msg__body"><span class="msg__name">You</span><span class="msg__inline-time">09:41</span>Reads like a transcript</div></div>
+                <div class="msg"><time class="msg__time">09:42</time><span class="msg__node avatar">MR</span><div class="msg__body"><span class="msg__name">Maya</span><span class="msg__inline-time">09:42</span>Pick a theme from the menu up top</div></div>
+            </div>
+        </figure>
+    </section>
+
+    <section class="home-features" aria-label="Features">
+        <ol class="feature-spine">
+            <li><span class="feature-spine__tag">live</span><h2>Real time</h2><p>Messages arrive the moment they are sent, over WebSockets.</p></li>
+            <li><span class="feature-spine__tag">rooms</span><h2>Direct and group</h2><p>Talk one to one or with a whole team in a group room.</p></li>
+            <li><span class="feature-spine__tag">focus</span><h2>Dense by design</h2><p>One line per message, names only when the speaker changes.</p></li>
+            <li><span class="feature-spine__tag">themes</span><h2>Six palettes</h2><p>Light, dark or system, compact or comfortable, in any palette.</p></li>
+        </ol>
+    </section>
+</main>
+
+<footer class="home-footer">
+    <span>Built with Django and Channels.</span>
+    <a href="https://github.com/achuthvarghese/django-realtime-chat">Source on GitHub</a>
+</footer>
+{% endblock %}

@@ -1,11 +1,20 @@
 from django.conf import settings
 from django.http import Http404
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 
 
 def csrf_failure(request, reason=""):
     """Render CSRF failures with the site's error page instead of Django's."""
     return render(request, "403_csrf.html", {"title": "Form expired"}, status=403)
+
+
+def home(request):
+    """Public landing page; signed-in users go straight to their chats."""
+    if request.user.is_authenticated:
+        return redirect("chat:chat")
+    return render(
+        request, "core/home.html", {"title": "Every conversation, on one line"}
+    )
 
 
 def styleguide(request):
