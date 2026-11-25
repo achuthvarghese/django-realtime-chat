@@ -9,6 +9,8 @@ services:
       DJANGO_CSRF_TRUSTED_ORIGINS: "http://localhost:8000"
       REDIS_URL: "redis://redis:6379/0"
       SQLITE_PATH: "/data/db.sqlite3"
+      # Seed demo users and chats on first start (debug only). See docs/demo-data.md.
+      DJANGO_SEED_DEMO: "true"
     volumes:
       - .:/code
       - sqlite-data:/data
