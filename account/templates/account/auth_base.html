@@ -1,0 +1,35 @@
+{% extends "core/base.html" %}
+{% load static %}
+{# Login and signup: a transcript on the left that ends with you, the form on the right. #}
+
+{% block styles %}<link rel="stylesheet" href="{% static 'account/css/auth.css' %}">{% endblock %}
+{% block body_class %}on-chrome{% endblock %}
+
+{% block body %}
+<main id="main" class="auth">
+    <aside class="auth__aside" aria-hidden="true">
+        <a class="wordmark wordmark--lg" href="{% url 'core:home' %}" tabindex="-1">relay</a>
+        <p class="auth__tagline">Every conversation, on one line.</p>
+        <div class="transcript auth__feed">
+            <div class="msg auth__past"><span class="msg__time">18:02</span><span class="msg__node avatar">MR</span><span class="msg__body"><span class="msg__name">Maya</span>See everyone tomorrow</span></div>
+            <div class="msg auth__past"><span class="msg__time">18:04</span><span class="msg__node avatar avatar--mine">YO</span><span class="msg__body"><span class="msg__name">You</span>Night</span></div>
+            <div class="msg auth__past"><span class="msg__time">09:38</span><span class="msg__node avatar">AK</span><span class="msg__body"><span class="msg__name">Arjun</span>Morning, the branch is up</span></div>
+            <div class="msg auth__now"><span class="msg__time">now</span><span class="msg__node auth__pulse"></span><span class="msg__body"><span class="msg__name">You</span>{{ now_text }}</span></div>
+        </div>
+    </aside>
+
+    <section class="auth__panel">
+        <div class="auth__top">
+            <a class="wordmark auth__mobile-mark" href="{% url 'core:home' %}">relay</a>
+            {% include "core/partials/theme_menu.html" %}
+        </div>
+        <div class="auth__card">
+            <p class="auth__now-mobile" aria-hidden="true"><span class="auth__pulse"></span><span class="mono">now</span><b>You</b>{{ now_text }}</p>
+            {% include "core/partials/notices.html" %}
+            {% block panel %}{% endblock %}
+        </div>
+    </section>
+</main>
+{% endblock %}
+
+{% block scripts %}<script src="{% static 'account/js/auth.js' %}" defer></script>{% endblock %}

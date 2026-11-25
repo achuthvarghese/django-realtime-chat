@@ -1,47 +1,15 @@
-{% extends "account/base.html" %}
-{% load static %}
+{% extends "account/auth_base.html" %}
+{% block title %}Sign in{% endblock %}
 
-{% block styles %}
-    <link rel="stylesheet" href="{% static 'account/css/login.css' %}">
-{% endblock %}
-
-{% block body %}
-    <div class="container form-signin w-100 m-auto">
-        <form action="{% url 'account:login' %}" method="post">
-            {% csrf_token %}
-            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-
-            {% if form.errors %}
-            <div class="container-fluid p-0">
-                {% for field in form %}
-                {% for error in field.errors %}
-                <div class="alert alert-danger alert-dismissible fade show mb-2" role="alert">
-                    {{ error|escape }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-                {% endfor %}
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            <h1 class="h3 mb-3 fw-normal">Please Login</h1>
-
-            <div class="form-floating text-start">
-                {{ form.username }}
-                {{ form.username.label_tag }}
-            </div>
-            <div class="form-floating text-start">
-                {{ form.password }}
-                {{ form.password.label_tag }}
-            </div>
-
-            <button class="w-100 btn btn-lg btn-primary" type="submit">Login</button>
-
-            <div class="checkbox mt-3">
-                <label>
-                    <a href="{% url 'account:signup' %}">Do not have an account? Sign up here</a>
-                </label>
-            </div>
-        </form>
-    </div>
+{% block panel %}
+<h1 class="auth__title">Pick up where you left off</h1>
+<form class="auth__form" action="{% url 'account:login' %}" method="post" novalidate>
+    {% csrf_token %}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    {% for error in form.non_field_errors %}<p class="notice notice--error">{{ error }}</p>{% endfor %}
+    {% include "account/partials/field.html" with field=form.username %}
+    {% include "account/partials/field.html" with field=form.password %}
+    <button class="btn btn--primary btn--block" type="submit">Sign in</button>
+</form>
+<p class="auth__alt">New here? <a href="{% url 'account:signup' %}">Create an account</a></p>
 {% endblock %}
