@@ -1,0 +1,62 @@
+/* Settings page. Depends on core tokens.css and relay.css. */
+
+.settings {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+
+.settings__nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-3);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+}
+.settings__nav .section-label { color: color-mix(in srgb, var(--chrome-fg) 75%, transparent); margin-top: var(--space-2); }
+.settings__back { align-self: flex-start; }
+.settings__links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.settings__links a {
+    display: block;
+    padding: 6px var(--space-2);
+    border-radius: var(--radius-sm);
+    color: var(--chrome-fg);
+    text-decoration: none;
+    font-size: var(--text-sm);
+}
+.settings__links a:hover { background: var(--chrome-raised); color: var(--chrome-strong); }
+.settings__signout { margin-top: auto; }
+
+.settings__main {
+    width: min(100%, 760px);
+    padding: var(--space-6) max(var(--space-4), env(safe-area-inset-right, 0px)) var(--space-7) var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.settings__head h1 { font-size: var(--text-xl); }
+.settings__section { display: flex; flex-direction: column; gap: var(--space-3); scroll-margin-top: var(--space-4); }
+.settings__section h2 { font-size: var(--text-lg); }
+.settings__form { display: flex; flex-direction: column; gap: var(--space-3); }
+.settings__row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+
+@media (max-width: 760px) {
+    .settings { grid-template-columns: 1fr; }
+    .settings__nav {
+        position: static;
+        height: auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+    }
+    .settings__nav .section-label { display: none; }
+    .settings__links { flex-direction: row; order: 3; width: 100%; }
+    .settings__signout { margin: 0 0 0 auto; }
+    .settings__main { padding: var(--space-4) max(var(--space-4), env(safe-area-inset-right, 0px)) var(--space-6) max(var(--space-4), env(safe-area-inset-left, 0px)); }
+    .settings__row { grid-template-columns: 1fr; }
+}
