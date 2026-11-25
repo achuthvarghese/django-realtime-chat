@@ -1,123 +1,115 @@
+{% extends "core/base.html" %}
 {% load static %}
-{% load chattags %}
-{% load tz %}
-<!DOCTYPE html>
-<html lang="en">
 
-<head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Realtime Chat application using Django and channels">
-    <meta name="author" content="achuthvarghese">
+{% block styles %}<link rel="stylesheet" href="{% static 'chat/css/chat.css' %}">{% endblock %}
 
-    <title>Real Time Chat | {{ title }}</title>
-
-    <!-- Bootstrap stylesheet and icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.9.1/font/bootstrap-icons.css">
-
-    <!-- Custom styles -->
-    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}">
-</head>
-
-<body>
-    <div class="container mt-3">
-
-        <div class="row">
-            <div class="col-12 col-lg-4 mb-4" id="left">
-                <div class="card mb-4">
-                    <div class="card-body card-primary">
-                        <div class="row">
-                            <div class="col-8 text-start">
-                                <h5 class="card-title">{{ user.get_full_name }}</h5>
-                                <h6 class="card-subtitle text-muted">@{{ user.username }}</h6>
-                            </div>
-                            <div class="col-4 text-end my-auto">
-                                <form action="{% url 'account:logout' %}" method="post" class="d-inline">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-outline-danger"><i
-                                        class="bi bi-box-arrow-right"></i> Signout</button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-header text-uppercase fw-bold">
-                        Chats
-                    </div>
-                    {% if rooms %}
-                    <div class="input-group p-1">
-                        <input type="search" class="form-control" placeholder="Find chat user/group"
-                            aria-label="Find chat user/group" aria-describedby="basic-addon2" id="search-room-input">
-                        <button type="button" class="input-group-text btn btn-primary" id="search-room-btn">
-                            <i class="bi bi-search"></i>
-                        </button>
-                    </div>
-                    {% endif %}
-                    <div class="list-group list-group-flush mb-2" id="list-rooms">
-                        {% for room in rooms %}
-                        <a href="{% url 'chat:chat' %}?room={{ room.id }}"
-                            class="list-group-item list-group-item-action room justify-content-between align-items-center" id="room_{{ room.id }}">
-                            <span class="float-start">{% get_room_title room %}</span>
-                            <!-- <span class="badge bg-primary rounded-pill float-end">14</span> -->
-                        </a>
-                        {% empty %}
-                        <a href="#search"
-                            class="list-group-item text-primary">
-                            Start a new conversation
-                        </a>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-12 col-lg-8 mb-4" id="right">
-                <div class="card" id="chat-room">
-                    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
-                        <a href="{% url 'chat:chat' %}" class="btn btn-primary d-lg-none"><i class="bi bi-arrow-left"></i></a>
-                        {% get_room_title room %}
-                        <span class="btn btn-danger" id="clear-room"><i class="bi bi-trash"></i></span>
-                    </div>
-                    <div class="card-body overflow-auto" id="messages">
-                        {% for message in room_messages %}
-                        <div class="message message-{% if user == message.user %}right{% else %}left{% endif %} border rounded mb-1 p-1">
-                            {{ message.content }} <br>
-                            <span class="text-muted fw-lighter">by {{ message.user.username }} on </span>
-                            <span class="date text-muted fw-lighter" data-date='{{ message.created_at|date:"c" }}'></span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    <div class="card-footer">
-                        <div class="input-group p-1">
-                            <input type="text" name="message" id="message" class="form-control m-0"
-                                required value="">
-                            <button type="button" class="input-group-text btn btn-primary" id="send-message-btn">
-                                <i class="bi bi-send-fill"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="card" id="common-card">
-                    <div class="card-body text-center align-middle d-flex text-secondary">
-                        <div class="w-50 my-auto mx-auto">
-                            <p class="m-0">No messages yet</p>
-                            <p class="m-0">Start a conversation</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+{% block body %}
+<div class="chat{% if room %} chat--room-open{% endif %}">
+    <nav class="chat-side on-chrome" aria-label="Chats">
+        <div class="chat-side__top">
+            <a class="wordmark" href="{% url 'chat:chat' %}">relay</a>
         </div>
 
-    </div>
+        {% if rooms %}
+        <div class="chat-side__search">
+            <label class="visually-hidden" for="room-search">Find a chat</label>
+            <input class="input" type="search" id="room-search" placeholder="Find a chat" autocomplete="off">
+        </div>
+        {% endif %}
 
-    <!-- Bootstrap -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"></script>
+        <p class="section-label chat-side__label">Chats</p>
+        <ul class="room-list" id="room-list">
+            {% for r in rooms %}
+            <li>
+                <a class="room-link" href="{% url 'chat:chat' %}?room={{ r.id }}" data-room-id="{{ r.id }}" data-title="{{ r.title|lower }}"
+                   title="{{ r.title }}" {% if room and r.id == room_summary.id %}aria-current="page"{% endif %}>
+                    <span class="avatar room-link__avatar{% if r.type == 'group' %} room-link__avatar--group{% endif %}">{{ r.initials }}</span>
+                    <span class="room-link__text">
+                        <span class="room-link__title">{{ r.title }}</span>
+                        <span class="room-link__preview">{% if r.last_content %}{% if r.last_is_mine %}You: {% endif %}{{ r.last_content|truncatechars:60 }}{% else %}No messages yet{% endif %}</span>
+                    </span>
+                    {% if r.last_at %}<time class="room-link__time" datetime="{{ r.last_at|date:'c' }}" data-relative>{{ r.last_at|date:"H:i" }}</time>{% endif %}
+                </a>
+            </li>
+            {% empty %}
+            <li class="room-list__empty">No chats yet. An admin can add you to a room for now; starting chats from here is coming next.</li>
+            {% endfor %}
+        </ul>
+        <p class="room-list__nomatch" id="room-nomatch" hidden>No chats match.</p>
 
-    <!-- Custom scripts -->
-    {{ user.username|json_script:"user" }}
-    <script src="{% static 'chat/js/chat.js' %}"></script>
-</body>
+        <div class="chat-side__me">
+            <span class="avatar avatar--mine avatar--lg">{{ me.initials }}</span>
+            <span class="chat-side__me-text">
+                <span class="chat-side__me-name">{{ me.name }}</span>
+                <span class="chat-side__me-handle">@{{ me.username }}</span>
+            </span>
+            {% include "core/partials/theme_menu.html" %}
+            <form action="{% url 'account:logout' %}" method="post">
+                {% csrf_token %}
+                <button class="btn btn--ghost btn--sm" type="submit">Sign out</button>
+            </form>
+        </div>
+    </nav>
 
-</html>
+    <main id="main" class="chat-main">
+        {% if room %}
+        <header class="chat-head">
+            <a class="chat-head__back btn btn--ghost btn--icon" href="{% url 'chat:chat' %}" aria-label="Back to chats">←</a>
+            <span class="avatar avatar--lg{% if room_summary.type == 'group' %} room-link__avatar--group{% endif %}">{{ room_summary.initials }}</span>
+            <div class="chat-head__text">
+                <h1 class="chat-head__title">{{ room_summary.title }}</h1>
+                <p class="chat-head__meta">
+                    <span class="status" id="status" data-state="connecting"><span class="status__dot" aria-hidden="true"></span><span class="status__label">Connecting…</span></span>
+                    <span aria-hidden="true">·</span>
+                    <span>{{ room_summary.member_count }} member{{ room_summary.member_count|pluralize }}</span>
+                </p>
+            </div>
+            <button class="btn btn--danger btn--sm" type="button" id="clear-room">Clear history</button>
+        </header>
+
+        <div class="chat-scroll" id="chat-scroll" tabindex="0" aria-label="Messages">
+            <div class="transcript" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+            <p class="chat-empty" id="chat-empty" hidden>No messages yet. Say hello.</p>
+            <noscript><p class="chat-empty">Turn on JavaScript to read and send messages.</p></noscript>
+        </div>
+
+        <p class="chat-toast" id="chat-toast" role="status" hidden></p>
+
+        <form class="composer" id="composer" autocomplete="off">
+            <label class="visually-hidden" for="message">Message {{ room_summary.title }}</label>
+            <textarea class="composer__input" id="message" name="message" rows="1" maxlength="4000"
+                      placeholder="Message {{ room_summary.title }}" enterkeyhint="send"></textarea>
+            <span class="kbd composer__hint" aria-hidden="true">Shift ↵ new line</span>
+            <button class="btn btn--primary btn--icon" type="submit" id="send" aria-label="Send">↵</button>
+        </form>
+
+        <dialog class="confirm" id="clear-dialog" aria-labelledby="clear-title">
+            <form method="dialog" class="confirm__body">
+                <h2 id="clear-title">Clear history?</h2>
+                <p>Messages in {{ room_summary.title }} will be hidden for you. Other members keep theirs.</p>
+                <div class="confirm__actions">
+                    <button class="btn btn--ghost" value="cancel">Cancel</button>
+                    <button class="btn btn--danger" value="clear" id="clear-confirm">Clear history</button>
+                </div>
+            </form>
+        </dialog>
+
+        {{ room_messages|json_script:"initial-messages" }}
+        {{ room_summary.id|json_script:"room-id" }}
+        {% else %}
+        <div class="chat-welcome">
+            <div class="transcript chat-welcome__spine" aria-hidden="true">
+                <div class="msg"><span class="msg__time">now</span><span class="msg__node avatar avatar--mine">{{ me.initials }}</span><span class="msg__body"><span class="msg__name">You</span>opened Relay</span></div>
+            </div>
+            <h1>{% if rooms %}Pick a chat{% else %}Welcome, {{ me.name }}{% endif %}</h1>
+            <p class="muted">{% if rooms %}Choose a conversation from the list to pick up the thread.{% else %}You're not in any chats yet. Once someone adds you to a room it shows up here.{% endif %}</p>
+        </div>
+        {% endif %}
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ me.username|json_script:"me" }}
+<script src="{% static 'chat/js/chat.js' %}" defer></script>
+{% endblock %}
