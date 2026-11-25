@@ -102,6 +102,7 @@ Screen-specific components live with their screens:
 | `.form-spine`, `.form-spine__step` | `account/css/auth.css` | Form groups as spine nodes; `is-done`, `has-error` |
 | `.palette-chip` | `account/css/auth.css` | Compact palette radio |
 | `.home-hero`, `.home-demo`, `.feature-spine` | `core/css/home.css` | Home page |
+| `.chat`, `.chat-side`, `.room-link`, `.chat-head`, `.status`, `.chat-toast`, `.confirm` | `chat/css/chat.css` | Chat screen; see [screens.md](./screens.md#chat) |
 
 ### Transcript
 
@@ -121,6 +122,7 @@ Screen-specific components live with their screens:
 </div>
 ```
 
+- The time gutter is 52px and never wraps, so 12-hour times fit.
 - The first message of a run shows the avatar node and name on the same line as
   the text. Follow-ups (`msg--cont`) show only text; their time appears on
   hover or focus.

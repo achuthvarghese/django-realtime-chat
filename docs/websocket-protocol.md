@@ -55,11 +55,17 @@ members keep their history.
   "id": "8f5c…",
   "message": "Hello",
   "user": "maya",
+  "name": "Maya Rao",
+  "initials": "MR",
   "created_at": "2026-11-25T09:41:00.123456+00:00"
 }
 ```
 
-`message` and `user` are plain text. Clients must insert them as text
+`user` is the username; `name` is the full name, or the username when no name
+is set; `initials` is derived from `name`. The chat page renders its initial
+history from the same shape (`chat/presenters.py: message_data`).
+
+`message`, `user` and `name` are plain text. Clients must insert them as text
 (`textContent`), never as HTML.
 
 ### `clear_room` (to the requesting socket only)

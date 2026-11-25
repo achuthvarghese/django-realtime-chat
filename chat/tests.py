@@ -38,7 +38,7 @@ class TestChatView:
         client.force_login(maya)
         response = client.get(reverse("chat:chat"))
         assert response.status_code == 200
-        assert room in response.context["rooms"]
+        assert [r["id"] for r in response.context["rooms"]] == [str(room.id)]
 
     def test_shows_room_messages(self, client, maya, room):
         message = Message.objects.create(content="hello", room=room, user=maya)
@@ -46,7 +46,7 @@ class TestChatView:
         client.force_login(maya)
         response = client.get(reverse("chat:chat"), {"room": room.id})
         assert response.status_code == 200
-        assert list(response.context["room_messages"]) == [message]
+        assert [m["id"] for m in response.context["room_messages"]] == [str(message.id)]
 
 
 def make_communicator(room_id, user=None):
@@ -216,3 +216,93 @@ class TestChatConsumerSecurity:
         assert (visible_to_maya, visible_to_arjun) == (0, 1)
         await sender.disconnect()
         await other.disconnect()
+
+
+class TestInitials:
+    @pytest.mark.parametrize(
+        "name, expected",
+        [("Maya Rao", "MR"), ("maya", "MA"), ("@ops", "OP"), ("", "?"), ("a", "A")],
+    )
+    def test_initials(self, name, expected):
+        from chat.presenters import initials
+
+        assert initials(name) == expected
+
+
+@pytest.mark.django_db
+class TestChatScreen:
+    def test_page_uses_design_system(self, client, maya, room):
+        client.force_login(maya)
+        html = client.get(reverse("chat:chat"), {"room": room.id}).content.decode()
+        assert "data-palette=" in html
+        assert "bootstrap" not in html.lower()
+        assert "moment" not in html.lower()
+        assert 'id="initial-messages"' in html
+        assert 'id="clear-dialog"' in html
+
+    def test_rooms_ordered_by_latest_message(self, client, maya, arjun, room):
+        quiet = Room.objects.create(name="quiet", type=Room.RoomTypes.GROUP)
+        quiet.members.add(maya)
+        busy = Room.objects.create(name="busy", type=Room.RoomTypes.GROUP)
+        busy.members.add(maya)
+        message = Message.objects.create(content="latest", room=busy, user=arjun)
+        message.visible_for.add(maya)
+        client.force_login(maya)
+        rooms = client.get(reverse("chat:chat")).context["rooms"]
+        assert rooms[0]["title"] == "busy"
+        assert rooms[0]["last_content"] == "latest"
+        assert rooms[0]["last_is_mine"] is False
+
+    def test_preview_skips_cleared_messages(self, client, maya, arjun, room):
+        hidden = Message.objects.create(content="secret", room=room, user=arjun)
+        hidden.visible_for.add(arjun)  # cleared by maya
+        client.force_login(maya)
+        rooms = client.get(reverse("chat:chat")).context["rooms"]
+        assert rooms[0]["last_content"] == ""
+
+    def test_private_room_title_is_other_member(self, client, maya, arjun, room):
+        arjun.first_name, arjun.last_name = "Arjun", "Kumar"
+        arjun.save()
+        client.force_login(maya)
+        response = client.get(reverse("chat:chat"), {"room": room.id})
+        assert response.context["room_summary"]["title"] == "Arjun Kumar"
+        assert response.context["room_summary"]["initials"] == "AK"
+
+    def test_history_is_limited_and_in_order(self, client, maya, room):
+        from chat.views import HISTORY_LIMIT
+
+        for i in range(HISTORY_LIMIT + 5):
+            m = Message.objects.create(content=f"m{i}", room=room, user=maya)
+            m.visible_for.add(maya)
+        client.force_login(maya)
+        messages = client.get(reverse("chat:chat"), {"room": room.id}).context[
+            "room_messages"
+        ]
+        assert len(messages) == HISTORY_LIMIT
+        assert messages[-1]["message"] == f"m{HISTORY_LIMIT + 4}"
+
+    def test_message_text_cannot_break_out_of_json(self, client, maya, room):
+        m = Message.objects.create(content="</script><b>x</b>", room=room, user=maya)
+        m.visible_for.add(maya)
+        client.force_login(maya)
+        html = client.get(reverse("chat:chat"), {"room": room.id}).content.decode()
+        assert "</script><b>x</b>" not in html
+
+    def test_welcome_without_room(self, client, maya):
+        client.force_login(maya)
+        html = client.get(reverse("chat:chat")).content.decode()
+        assert "You&#x27;re not in any chats yet" in html or "not in any chats" in html
+
+
+@pytest.mark.django_db(transaction=True)
+class TestBroadcastShape:
+    async def test_broadcast_includes_display_name_and_initials(self, maya, room):
+        maya.first_name, maya.last_name = "Maya", "Rao"
+        await database_sync_to_async(maya.save)()
+        communicator = make_communicator(room.id, maya)
+        await communicator.connect()
+        await communicator.send_json_to({"type": "save_message", "message": "hi"})
+        response = await communicator.receive_json_from()
+        assert response["name"] == "Maya Rao"
+        assert response["initials"] == "MR"
+        await communicator.disconnect()

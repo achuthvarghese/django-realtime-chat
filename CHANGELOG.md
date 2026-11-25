@@ -3,6 +3,29 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 4: chat screen
+
+### Added
+- Chat screen on the design system: chrome sidebar with your chats, a
+  transcript pane and a floating composer. Responsive: full list from 1024px,
+  icon rail from 600px, one pane at a time with a back arrow on phones.
+- Room list sorted by latest activity with last-message preview and time, and
+  "Find a chat" filtering.
+- Transcript grouping: one line per message, avatar and name only when the
+  sender changes or after a 5-minute gap, day separators, local times, kept
+  line breaks.
+- Connection status (Connecting…, Live, Reconnecting…), automatic reconnect
+  with backoff and a Reload prompt afterwards.
+- Composer that grows with the text; Enter sends, Shift+Enter adds a line.
+- Clear history now asks for confirmation.
+- `name` and `initials` in `save_message` frames.
+
+### Changed
+- History shows the latest 200 messages.
+- Bootstrap, Bootstrap Icons and the background pattern image are removed
+  from the chat page; no page uses Bootstrap any more.
+- The room-title template tag is replaced by `chat/presenters.py`.
+
 ## Phase 3: home, sign in and create account
 
 ### Added
