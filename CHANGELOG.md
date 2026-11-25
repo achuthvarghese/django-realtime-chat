@@ -3,6 +3,28 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 3: home, sign in and create account
+
+### Added
+- Public home page at `/` with a sample transcript and a feature spine.
+  Signed-in visitors go straight to their chats.
+- New sign-in and create-account screens on the design system: a transcript
+  panel that ends with a pulsing "now" node for you, inline field errors,
+  Show/Hide password, and a Theme menu.
+- Create account groups its fields into Account, Name, Password and Theme
+  steps on a spine; each node fills in as its step is completed. Choosing a
+  palette there applies and saves it on the device.
+- `docs/screens.md`: every screen and URL.
+
+### Changed
+- The chat moved from `/` to `/chat/`.
+- Form inputs carry `autocomplete` values and `aria-invalid` /
+  `aria-describedby` for errors. Password help lists the password rules.
+- Usernames are validated with Django's username rules; field lengths match
+  the user model.
+- Bootstrap is no longer used on the account screens. The old account base
+  template and stylesheets are removed.
+
 ## Phase 2: design system
 
 ### Added

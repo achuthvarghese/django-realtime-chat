@@ -51,7 +51,8 @@ Paper switches its chrome to graphite tones in dark mode.
    server with `data-theme-source="server"`, which the inline script respects.
 
 Any element with `data-theme-control` containing radio inputs named
-`palette`, `mode` or `density` changes the theme instantly; `theme.js` handles
+`palette`, `mode` or `density` (or with `data-axis` set to one of those, so a
+picker inside a form can use its own group name) changes the theme instantly; `theme.js` handles
 it. Include `core/partials/theme_picker.html` for the full picker or
 `core/partials/theme_menu.html` for a compact popover.
 
@@ -91,6 +92,16 @@ Use tokens, never literal colours, in components.
 | `.shell`, `.shell__side`, `.shell__main` | App layout: chrome sidebar plus reading pane |
 | `.on-chrome` | Paints an element with chrome colours and adapts buttons and inputs inside |
 | `.page-center` | Centred single-column page |
+
+Screen-specific components live with their screens:
+
+| Class | File | Notes |
+| --- | --- | --- |
+| `.auth`, `.auth__aside`, `.auth__panel` | `account/css/auth.css` | Two-column sign-in layout |
+| `.password`, `.password__toggle` | `account/css/auth.css` | Show/Hide button inside a password input |
+| `.form-spine`, `.form-spine__step` | `account/css/auth.css` | Form groups as spine nodes; `is-done`, `has-error` |
+| `.palette-chip` | `account/css/auth.css` | Compact palette radio |
+| `.home-hero`, `.home-demo`, `.feature-spine` | `core/css/home.css` | Home page |
 
 ### Transcript
 
