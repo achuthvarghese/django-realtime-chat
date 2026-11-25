@@ -106,3 +106,24 @@ class TestErrorPages:
         )
         assert response.status_code == 403
         assert "That form has expired" in response.content.decode()
+
+
+@pytest.mark.django_db
+class TestHome:
+    def test_anonymous_sees_landing_page(self, client):
+        response = client.get(reverse("core:home"))
+        assert response.status_code == 200
+        html = response.content.decode()
+        assert "on one line" in html
+        assert reverse("account:signup") in html
+        assert reverse("account:login") in html
+
+    def test_signed_in_user_goes_to_chat(self, client):
+        user = get_user_model().objects.create_user("maya", password="pw")
+        client.force_login(user)
+        response = client.get(reverse("core:home"))
+        assert response.status_code == 302
+        assert response.url == reverse("chat:chat")
+
+    def test_chat_lives_under_chat_path(self):
+        assert reverse("chat:chat") == "/chat/"
