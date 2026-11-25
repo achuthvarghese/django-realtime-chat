@@ -10,7 +10,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  lint:
+  # Job id kept as "check_format_and_imports": branch protection on master
+  # requires a check with this name.
+  check_format_and_imports:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
