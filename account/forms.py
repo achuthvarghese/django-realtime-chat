@@ -1,9 +1,12 @@
 from django import forms
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.password_validation import (
     password_validators_help_texts,
     validate_password,
 )
+
+from core import theme
 
 User = get_user_model()
 
@@ -141,3 +144,57 @@ class UserSignUpForm(BaseForm):
         if not self.errors.get("password1") and password1 != password2:
             raise forms.ValidationError("Passwords do not match.", code="mismatch")
         return password2
+
+
+class ProfileForm(BaseForm, forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ("first_name", "last_name", "email")
+        labels = {"first_name": "First name", "last_name": "Last name"}
+        widgets = {
+            "first_name": text_input("given-name"),
+            "last_name": text_input("family-name"),
+            "email": forms.EmailInput(
+                attrs={"class": "input", "autocomplete": "email"}
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["email"].required = True
+
+
+class StyledPasswordChangeForm(PasswordChangeForm):
+    """Django's password change form with the design system's widgets."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        autocomplete = {
+            "old_password": "current-password",
+            "new_password1": "new-password",
+            "new_password2": "new-password",
+        }
+        for name, field in self.fields.items():
+            field.widget = password_input(autocomplete[name])
+            field.widget.attrs.pop("autofocus", None)
+        self.label_suffix = ""
+
+    def full_clean(self):
+        super().full_clean()
+        for name in self.errors:
+            if name in self.fields:
+                self.fields[name].widget.attrs["aria-invalid"] = "true"
+                self.fields[name].widget.attrs["aria-describedby"] = f"{name}-error"
+
+
+class AppearanceForm(forms.Form):
+    """Any subset of palette, mode and density."""
+
+    palette = forms.ChoiceField(
+        required=False, choices=[(p.key, p.name) for p in theme.PALETTES]
+    )
+    mode = forms.ChoiceField(required=False, choices=theme.MODES)
+    density = forms.ChoiceField(required=False, choices=theme.DENSITIES)
+
+    def changes(self):
+        return {k: v for k, v in self.cleaned_data.items() if v}
