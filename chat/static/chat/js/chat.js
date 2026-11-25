@@ -1,167 +1,287 @@
-// Chat script
+// Chat screen: renders the transcript, keeps the room socket alive and
+// handles the composer. Messages are always inserted as text, never HTML.
 
 (() => {
     "use strict";
 
-    const user = JSON.parse(document.getElementById("user").textContent);
-    const roomId = new URL(window.location.href).searchParams.get("room") || "";
-
-    const left = document.getElementById("left");
-    const right = document.getElementById("right");
-    const chatRoom = document.getElementById("chat-room");
-    const commonCard = document.getElementById("common-card");
-    const messagesBox = document.getElementById("messages");
-
-    const dateFormatter = new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-    });
-    const formatDate = (value) => {
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? "" : dateFormatter.format(date);
+    const readJSON = (id) => {
+        const element = document.getElementById(id);
+        return element ? JSON.parse(element.textContent) : null;
     };
 
-    setupRoomSearch();
+    const me = readJSON("me");
+    const GROUP_GAP_MS = 5 * 60 * 1000;
 
-    if (roomId === "") {
-        left.classList.add("d-lg-block");
-        right.classList.add("d-lg-block", "d-none");
-        chatRoom.classList.add("d-none");
-        commonCard.classList.add("d-flex");
-        return;
+    // Dates
+
+    const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+    const fullFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" });
+    const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" });
+    const shortDateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+
+    const dayKey = (date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    function daysAgo(date) {
+        const start = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        return Math.round((start(new Date()) - start(date)) / 86400000);
+    }
+    function dayLabel(date) {
+        const ago = daysAgo(date);
+        if (ago === 0) return "Today";
+        if (ago === 1) return "Yesterday";
+        return dayFormat.format(date);
     }
 
-    left.classList.add("d-none", "d-lg-block");
-    right.classList.add("d-block");
-    commonCard.classList.add("d-none");
+    // Room list: local times and search
 
-    // Mark the current room in the list, if it is there.
-    const activeRoomLink = document.getElementById(`room_${roomId}`);
-    if (activeRoomLink) {
-        activeRoomLink.classList.add("active");
-        activeRoomLink.setAttribute("aria-current", "true");
+    for (const time of document.querySelectorAll("time[data-relative]")) {
+        const date = new Date(time.getAttribute("datetime"));
+        if (Number.isNaN(date.getTime())) continue;
+        const ago = daysAgo(date);
+        time.textContent = ago === 0 ? timeFormat.format(date) : ago === 1 ? "Yesterday" : shortDateFormat.format(date);
+        time.title = fullFormat.format(date);
     }
 
-    // Convert server datetimes to the viewer's locale.
-    for (const element of document.querySelectorAll(".date[data-date]")) {
-        element.textContent = formatDate(element.dataset.date);
-    }
-    scrollToLatest();
-
-    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${scheme}://${window.location.host}/chat/${encodeURIComponent(roomId)}`);
-
-    function sendMessage(data) {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(data));
-        }
-    }
-
-    ws.onclose = (event) => {
-        // 4401 unauthenticated, 4403 not a member, 4404 unknown room
-        if (event.code === 4401) {
-            window.location.assign("/account/login/");
-        } else if (event.code === 4403 || event.code === 4404) {
-            window.location.assign("/chat/");
-        }
-    };
-
-    ws.onmessage = (event) => {
-        let data;
-        try {
-            data = JSON.parse(event.data);
-        } catch (error) {
-            return;
-        }
-
-        switch (data.type) {
-            case "save_message":
-                appendMessage(data);
-                break;
-            case "clear_room":
-                clearMessages(data);
-                break;
-            case "error":
-                console.warn("Chat error:", data.message);
-                break;
-            default:
-                break;
-        }
-        scrollToLatest();
-    };
-
-    // Send message
-    const messageInput = document.getElementById("message");
-    const sendButton = document.getElementById("send-message-btn");
-
-    function submitMessage() {
-        const text = messageInput.value.trim();
-        if (text === "") {
-            messageInput.classList.add("border-danger");
-            return;
-        }
-        messageInput.classList.remove("border-danger");
-        sendMessage({ type: "save_message", message: text, ts: new Date().toISOString() });
-        messageInput.value = "";
-    }
-
-    sendButton.addEventListener("click", submitMessage);
-    messageInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            submitMessage();
-        }
-    });
-
-    // Clear chat history (for this user only)
-    const clearButton = document.getElementById("clear-room");
-    if (clearButton) {
-        clearButton.addEventListener("click", () => {
-            sendMessage({ type: "clear_room", ts: new Date().toISOString() });
+    const search = document.getElementById("room-search");
+    if (search) {
+        const noMatch = document.getElementById("room-nomatch");
+        search.addEventListener("input", () => {
+            const query = search.value.trim().toLowerCase();
+            let shown = 0;
+            for (const link of document.querySelectorAll("#room-list .room-link")) {
+                const match = link.dataset.title.includes(query);
+                link.parentElement.hidden = !match;
+                if (match) shown += 1;
+            }
+            noMatch.hidden = shown > 0;
         });
     }
 
-    function scrollToLatest() {
-        messagesBox.scrollTop = messagesBox.scrollHeight;
-    }
+    const roomId = readJSON("room-id");
+    if (!roomId) return;
 
-    // Build a message node with text only; never inject HTML from the server.
-    function appendMessage(data) {
-        const side = user === data.user ? "right" : "left";
-        const node = document.createElement("div");
-        node.className = `message message-${side} border rounded mb-1 p-1`;
+    // Transcript
 
-        node.append(document.createTextNode(data.message), document.createElement("br"));
-        const meta = document.createElement("span");
-        meta.className = "text-muted fw-lighter";
-        meta.textContent = `by ${data.user} on ${formatDate(data.created_at)}`;
-        node.append(meta);
+    const transcript = document.getElementById("messages");
+    const scroller = document.getElementById("chat-scroll");
+    const emptyNote = document.getElementById("chat-empty");
+    let last = null; // { user, date } of the last rendered message
 
-        messagesBox.appendChild(node);
-    }
+    const nearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120;
+    const scrollToEnd = () => { scroller.scrollTop = scroller.scrollHeight; };
 
-    function clearMessages(data) {
-        if (user === data.for) {
-            messagesBox.replaceChildren();
+    function renderMessage(data) {
+        const date = new Date(data.created_at);
+        const mine = data.user === me;
+
+        if (!last || dayKey(last.date) !== dayKey(date)) {
+            const day = document.createElement("span");
+            day.className = "transcript__day";
+            day.textContent = dayLabel(date);
+            transcript.append(day);
+            last = null;
         }
+        const continues = last && last.user === data.user && date - last.date < GROUP_GAP_MS;
+
+        const row = document.createElement("div");
+        row.className = "msg" + (continues ? " msg--cont" : "") + (mine ? " msg--mine" : "");
+        row.dataset.id = data.id;
+
+        const time = document.createElement("time");
+        time.className = "msg__time";
+        time.dateTime = data.created_at;
+        time.title = fullFormat.format(date);
+        time.textContent = timeFormat.format(date);
+        row.append(time);
+
+        const node = document.createElement("span");
+        if (!continues) {
+            node.className = "msg__node avatar" + (mine ? " avatar--mine" : "");
+            node.textContent = data.initials || "?";
+            node.setAttribute("aria-hidden", "true");
+        }
+        row.append(node);
+
+        const body = document.createElement("div");
+        body.className = "msg__body";
+        if (!continues) {
+            const name = document.createElement("span");
+            name.className = "msg__name";
+            name.textContent = mine ? "You" : data.name || data.user;
+            const inlineTime = document.createElement("span");
+            inlineTime.className = "msg__inline-time";
+            inlineTime.textContent = timeFormat.format(date);
+            body.append(name, inlineTime);
+        } else {
+            // Screen readers still hear who spoke.
+            const who = document.createElement("span");
+            who.className = "visually-hidden";
+            who.textContent = (mine ? "You" : data.name || data.user) + ": ";
+            body.append(who);
+        }
+        body.append(document.createTextNode(data.message));
+        row.append(body);
+
+        transcript.append(row);
+        last = { user: data.user, date };
+        emptyNote.hidden = true;
     }
 
-    // Filter the room list by name (case-insensitive).
-    function setupRoomSearch() {
-        const searchInput = document.getElementById("search-room-input");
-        const searchButton = document.getElementById("search-room-btn");
-        if (!searchInput || !searchButton) {
-            return;
-        }
+    const initial = readJSON("initial-messages") || [];
+    initial.forEach(renderMessage);
+    emptyNote.hidden = initial.length > 0;
+    scrollToEnd();
 
-        const filterRooms = () => {
-            const query = searchInput.value.trim().toLowerCase();
-            for (const element of document.getElementsByClassName("room")) {
-                const name = element.children[0].textContent.trim().toLowerCase();
-                element.style.display = name.includes(query) ? "" : "none";
+    function updatePreview(data) {
+        const link = document.querySelector(`.room-link[data-room-id="${CSS.escape(roomId)}"]`);
+        if (!link) return;
+        const preview = link.querySelector(".room-link__preview");
+        if (preview) preview.textContent = (data.user === me ? "You: " : "") + data.message;
+        const time = link.querySelector(".room-link__time");
+        if (time) time.textContent = timeFormat.format(new Date(data.created_at));
+        const item = link.parentElement;
+        item.parentElement.prepend(item);
+    }
+
+    // Toast for errors and connection notes
+
+    const toast = document.getElementById("chat-toast");
+    let toastTimer = null;
+    function showToast(text, { persist = false, action = null } = {}) {
+        toast.replaceChildren(document.createTextNode(text));
+        if (action) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "btn btn--ghost btn--sm";
+            button.textContent = action.label;
+            button.addEventListener("click", action.run);
+            toast.append(button);
+        }
+        toast.hidden = false;
+        clearTimeout(toastTimer);
+        if (!persist) toastTimer = setTimeout(() => { toast.hidden = true; }, 4000);
+    }
+
+    // Connection
+
+    const status = document.getElementById("status");
+    const statusLabel = status.querySelector(".status__label");
+    const sendButton = document.getElementById("send");
+    const STATUS_TEXT = { connecting: "Connecting…", live: "Live", offline: "Reconnecting…" };
+
+    function setStatus(state) {
+        status.dataset.state = state;
+        statusLabel.textContent = STATUS_TEXT[state];
+        sendButton.disabled = state !== "live";
+    }
+
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const socketUrl = `${scheme}://${window.location.host}/chat/${encodeURIComponent(roomId)}`;
+    let socket = null;
+    let attempts = 0;
+    let everConnected = false;
+
+    function connect() {
+        setStatus(attempts === 0 && !everConnected ? "connecting" : "offline");
+        socket = new WebSocket(socketUrl);
+
+        socket.addEventListener("open", () => {
+            if (everConnected) {
+                showToast("Reconnected. Messages sent while you were away may be missing.", {
+                    persist: true,
+                    action: { label: "Reload", run: () => window.location.reload() },
+                });
             }
-        };
-        searchInput.addEventListener("input", filterRooms);
-        searchButton.addEventListener("click", filterRooms);
+            everConnected = true;
+            attempts = 0;
+            setStatus("live");
+        });
+
+        socket.addEventListener("message", (event) => {
+            let data;
+            try {
+                data = JSON.parse(event.data);
+            } catch (error) {
+                return;
+            }
+            if (data.type === "save_message") {
+                const stick = nearBottom() || data.user === me;
+                renderMessage(data);
+                updatePreview(data);
+                if (stick) scrollToEnd();
+            } else if (data.type === "clear_room" && data.for === me) {
+                transcript.replaceChildren();
+                last = null;
+                emptyNote.hidden = false;
+                showToast("History cleared for you.");
+            } else if (data.type === "error") {
+                showToast(data.message);
+            }
+        });
+
+        socket.addEventListener("close", (event) => {
+            // 4401 signed out, 4403 not a member, 4404 unknown room
+            if (event.code === 4401) return window.location.assign("/account/login/");
+            if (event.code === 4403 || event.code === 4404) return window.location.assign("/chat/");
+            setStatus("offline");
+            attempts += 1;
+            const delay = Math.min(15000, 1000 * 2 ** Math.min(attempts - 1, 4));
+            setTimeout(connect, delay);
+        });
     }
+    connect();
+
+    function send(payload) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(payload));
+            return true;
+        }
+        showToast("Not connected yet. Your message is still in the box.");
+        return false;
+    }
+
+    // Composer
+
+    const composer = document.getElementById("composer");
+    const input = document.getElementById("message");
+
+    function autosize() {
+        input.style.height = "auto";
+        input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+    }
+    input.addEventListener("input", autosize);
+
+    composer.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
+        if (send({ type: "save_message", message: text })) {
+            input.value = "";
+            autosize();
+        }
+        input.focus();
+    });
+
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+            event.preventDefault();
+            composer.requestSubmit();
+        }
+    });
+
+    // Clear history, after confirmation
+
+    const clearButton = document.getElementById("clear-room");
+    const dialog = document.getElementById("clear-dialog");
+    clearButton.addEventListener("click", () => {
+        if (typeof dialog.showModal === "function") {
+            dialog.returnValue = "";
+            dialog.showModal();
+        }
+    });
+    dialog.addEventListener("close", () => {
+        if (dialog.returnValue === "clear") send({ type: "clear_room" });
+        clearButton.focus();
+    });
+
+    if (window.matchMedia("(min-width: 600px)").matches) input.focus();
 })();
