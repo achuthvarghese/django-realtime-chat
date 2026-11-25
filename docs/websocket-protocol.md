@@ -1,0 +1,78 @@
+# WebSocket protocol
+
+Each open room uses one WebSocket at:
+
+```
+ws[s]://<host>/chat/<room_id>
+```
+
+`room_id` is the room's UUID. The page picks `wss` when it was loaded over
+HTTPS. Connections pass through `AllowedHostsOriginValidator`, so the page's
+host must be in `DJANGO_ALLOWED_HOSTS`, and through `AuthMiddlewareStack`, so
+the Django session cookie identifies the user.
+
+## Connecting
+
+| Situation | Result |
+| --- | --- |
+| Not signed in | Closed before accepting, code `4401` |
+| Malformed or unknown room id | Accepted, sends an `error` with `code: 404`, closes with `4404` |
+| Signed in but not a member | Accepted, sends an `error` with `code: 403`, closes with `4403` |
+| Member | Accepted and joined to the room's group |
+
+The client redirects to the login page on `4401` and to the room list on
+`4403` or `4404`.
+
+## Client to server
+
+Every frame is a JSON object with a `type`.
+
+### `save_message`
+
+```json
+{"type": "save_message", "message": "Hello"}
+```
+
+`message` is trimmed and must be 1 to 4000 characters. The message is saved
+and made visible to every current member of the room.
+
+### `clear_room`
+
+```json
+{"type": "clear_room"}
+```
+
+Hides every message currently in the room for the requesting user only. Other
+members keep their history.
+
+## Server to client
+
+### `save_message` (to every member connected to the room)
+
+```json
+{
+  "type": "save_message",
+  "id": "8f5c…",
+  "message": "Hello",
+  "user": "maya",
+  "created_at": "2026-11-25T09:41:00.123456+00:00"
+}
+```
+
+`message` and `user` are plain text. Clients must insert them as text
+(`textContent`), never as HTML.
+
+### `clear_room` (to the requesting socket only)
+
+```json
+{"type": "clear_room", "cleared": true, "for": "maya"}
+```
+
+### `error` (to the requesting socket only)
+
+```json
+{"type": "error", "code": 400, "message": "Message cannot be empty", "ts": "…"}
+```
+
+Sent for invalid JSON, a non-object payload, an unknown `type`, an empty or
+over-long message, and when a connection is refused (`403`, `404`).
