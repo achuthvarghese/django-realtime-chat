@@ -29,7 +29,9 @@ Rooms are created by `chat/services.py`: `get_or_create_direct_room` and
 | `id` | UUID primary key |
 | `content` | Text, 1 to 4000 characters after trimming (enforced by the consumer) |
 | `room`, `user` | Where and by whom |
-| `created_at` | Set on creation; messages are ordered by it |
+| `created_at` | Set on creation; messages are ordered by it (indexed with `room`) |
+| `edited_at` | Set when the author edits the text |
+| `deleted_at` | Set when the author deletes it; `content` is emptied at the same time |
 | `visible_for` | Members who can still see the message. Set to all room members on send; **Clear history** removes the requesting user |
 
 `chat/presenters.py: message_data` turns a message into the JSON shape used by
