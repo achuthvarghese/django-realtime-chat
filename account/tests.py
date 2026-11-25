@@ -148,3 +148,55 @@ class TestAuthFixes:
             },
         )
         assert not User.objects.filter(username="MAYA").exists()
+
+
+@pytest.mark.django_db
+class TestAuthScreens:
+    def test_login_uses_design_system(self, client):
+        html = client.get(reverse("account:login")).content.decode()
+        assert "data-palette=" in html
+        assert "bootstrap" not in html.lower()
+        assert 'autocomplete="current-password"' in html
+        assert "signing in" in html
+
+    def test_signup_shows_field_groups_and_palettes(self, client):
+        html = client.get(reverse("account:signup")).content.decode()
+        for label in ("Account", "Name", "Password", "Theme"):
+            assert f'class="form-spine__label"' in html and label in html
+        assert 'autocomplete="new-password"' in html
+        assert 'data-axis="palette"' in html
+        assert "joining relay" in html
+
+    def test_signup_palette_is_not_submitted_as_palette(self, client):
+        # The signup palette radios use their own group name so they do not
+        # clash with the theme menu on the same page.
+        html = client.get(reverse("account:signup")).content.decode()
+        assert 'name="signup_palette"' in html
+
+    def test_invalid_fields_are_marked(self, client):
+        response = client.post(reverse("account:signup"), {"username": "x"})
+        html = response.content.decode()
+        assert 'aria-invalid="true"' in html
+        assert 'id="email-error"' in html
+        assert "Email is required." in html
+
+    def test_login_error_is_attached_to_password(self, client, user):
+        html = client.post(
+            reverse("account:login"), {"username": "maya", "password": "no"}
+        ).content.decode()
+        assert 'id="password-error"' in html
+        assert "Please check your credentials." in html
+
+    def test_invalid_username_characters_are_rejected(self, client):
+        client.post(
+            reverse("account:signup"),
+            {
+                "first_name": "A",
+                "last_name": "B",
+                "username": "bad name!",
+                "email": "a@example.com",
+                "password1": PASSWORD,
+                "password2": PASSWORD,
+            },
+        )
+        assert not User.objects.filter(username="bad name!").exists()

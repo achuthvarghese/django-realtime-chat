@@ -62,7 +62,7 @@
         if (event.code === 4401) {
             window.location.assign("/account/login/");
         } else if (event.code === 4403 || event.code === 4404) {
-            window.location.assign("/");
+            window.location.assign("/chat/");
         }
     };
 

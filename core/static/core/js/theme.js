@@ -26,11 +26,14 @@
         document.dispatchEvent(new CustomEvent("relay:theme", { detail: { axis, value } }));
     }
 
+    // A control's axis comes from data-axis, else its name. data-axis lets a
+    // picker inside a form use its own radio group name.
+    const axisOf = (input) => input.dataset.axis || input.name;
+
     function syncControls(scope = document) {
-        for (const axis of AXES) {
-            for (const input of scope.querySelectorAll(`[data-theme-control] input[name="${axis}"]`)) {
-                input.checked = input.value === root.dataset[axis];
-            }
+        for (const input of scope.querySelectorAll("[data-theme-control] input[type=radio]")) {
+            const axis = axisOf(input);
+            if (AXES.includes(axis)) input.checked = input.value === root.dataset[axis];
         }
     }
 
@@ -38,8 +41,9 @@
         const input = event.target;
         if (!(input instanceof HTMLInputElement)) return;
         if (!input.closest("[data-theme-control]")) return;
-        if (!AXES.includes(input.name)) return;
-        apply(input.name, input.value);
+        const axis = axisOf(input);
+        if (!AXES.includes(axis)) return;
+        apply(axis, input.value);
         syncControls();
     });
 
