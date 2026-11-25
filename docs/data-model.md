@@ -7,6 +7,9 @@ erDiagram
     Room ||--o{ Message : "contains"
     User ||--o{ Message : "sends"
     User }o--o{ Message : "can see (visible_for)"
+    User ||--o{ ReadState : "has"
+    Room ||--o{ ReadState : "tracked by"
+    User ||--o{ Connection : "has open"
 ```
 
 ## `chat.Room`
@@ -36,6 +39,28 @@ Rooms are created by `chat/services.py`: `get_or_create_direct_room` and
 
 `chat/presenters.py: message_data` turns a message into the JSON shape used by
 the page and the socket.
+
+## `chat.ReadState`
+
+| Field | Notes |
+| --- | --- |
+| `user`, `room` | Unique together |
+| `last_read_at` | Messages from others after this are unread. No row means everything from others is unread |
+
+Updated when the user opens the room, sends a `read` frame, or sends a
+message. `chat/presence.py: unread_counts` counts unread messages for many rooms
+in one query (visible, not deleted, not your own).
+
+## `chat.Connection`
+
+| Field | Notes |
+| --- | --- |
+| `channel_name` | The inbox socket's channel; unique |
+| `user` | Whose socket it is |
+| `created_at`, `last_seen` | `last_seen` is refreshed by the 30-second ping |
+
+A user is online while any connection has `last_seen` within 90 seconds.
+Rows older than an hour are removed when anyone connects.
 
 ## `account.Preference`
 

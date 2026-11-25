@@ -54,4 +54,7 @@ root is loaded automatically; real environment variables take precedence.
   with your web server or a CDN.
 - Run the app with Daphne: `daphne -b 0.0.0.0 -p 8000 realtime_chat.asgi:application`.
 - Use `REDIS_URL` whenever more than one process serves WebSockets; the
-  in-memory layer cannot pass messages between processes.
+  in-memory layer cannot pass messages between processes. Presence, typing
+  and unread updates depend on it in the same way.
+- Presence is stored in the database (`chat.Connection`), so all processes
+  must share one database.

@@ -312,6 +312,7 @@
             everConnected = true;
             attempts = 0;
             setStatus("live");
+            markRead();
         });
 
         socket.addEventListener("message", (event) => {
@@ -326,6 +327,12 @@
                 appendMessage(data);
                 updatePreview(data);
                 if (stick) scrollToEnd();
+                if (data.user !== me) {
+                    hideTyping(data.user);
+                    markRead();
+                }
+            } else if (data.type === "typing") {
+                if (data.user !== me) showTyping(data);
             } else if (data.type === "message_updated") {
                 updateMessage(data);
                 if (messages.length && messages[messages.length - 1].id === data.id) {
@@ -353,6 +360,41 @@
     }
     connect();
 
+    // Read receipts: tell the server while this tab is visible.
+    function markRead() {
+        if (document.visibilityState !== "visible") return;
+        if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "read" }));
+    }
+    document.addEventListener("visibilitychange", markRead);
+
+    // Typing indicator
+
+    const typingEl = document.getElementById("typing");
+    const typers = new Map(); // username -> { name, timer }
+    function renderTyping() {
+        const names = [...typers.values()].map((t) => t.name);
+        typingEl.hidden = names.length === 0;
+        if (names.length === 1) typingEl.textContent = `${names[0]} is typing…`;
+        else if (names.length === 2) typingEl.textContent = `${names[0]} and ${names[1]} are typing…`;
+        else if (names.length > 2) typingEl.textContent = "Several people are typing…";
+    }
+    function showTyping(data) {
+        const existing = typers.get(data.user);
+        if (existing) clearTimeout(existing.timer);
+        typers.set(data.user, {
+            name: data.name || data.user,
+            timer: setTimeout(() => hideTyping(data.user), 4000),
+        });
+        renderTyping();
+    }
+    function hideTyping(user) {
+        const existing = typers.get(user);
+        if (!existing) return;
+        clearTimeout(existing.timer);
+        typers.delete(user);
+        renderTyping();
+    }
+
     function send(payload) {
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify(payload));
@@ -372,6 +414,15 @@
         input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
     }
     input.addEventListener("input", autosize);
+
+    let lastTypingSent = 0;
+    input.addEventListener("input", () => {
+        const now = Date.now();
+        if (input.value.trim() && now - lastTypingSent > 2500 && socket && socket.readyState === WebSocket.OPEN) {
+            lastTypingSent = now;
+            socket.send(JSON.stringify({ type: "typing" }));
+        }
+    });
 
     composer.addEventListener("submit", (event) => {
         event.preventDefault();

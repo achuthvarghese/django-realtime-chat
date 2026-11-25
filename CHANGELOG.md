@@ -3,6 +3,22 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 5d: presence, typing and unread
+
+### Added
+- **Presence**: an inbox socket per page records your connection; people who
+  share a room with you see a green dot on your avatar and "Online" in the
+  header, and groups show how many members are online. Survives multiple
+  processes and crashed processes (90-second window, 30-second ping).
+- **Typing indicator**: "Maya Rao is typing…" in the room header, throttled
+  on both client and server.
+- **Unread counts**: per-room badges, bold unread rooms and the total in the
+  browser tab title. Opening a room, reading new messages while the tab is
+  visible, or sending a message marks it read.
+- Live updates for other rooms: preview, time, order and unread badge.
+- `ReadState` and `Connection` models; `read` and `typing` room frames;
+  `/inbox/` socket with `presence_snapshot`, `presence` and `room_activity`.
+
 ## Phase 5c: message actions and history
 
 ### Added
