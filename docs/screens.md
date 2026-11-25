@@ -104,8 +104,9 @@ Styles `account/static/account/css/auth.css`, script
   date. Times are shown in your local time zone; follow-up times appear on
   hover. Line breaks are kept. New messages keep the view pinned to the bottom
   unless you have scrolled up to read.
-- **Your messages** show Edit and Delete on hover or keyboard focus (always
-  visible on touch screens). Edit opens an inline box: Enter saves, Esc
+- **Your messages** show Edit and Delete on hover or keyboard focus. On touch
+  screens, tap one of your messages to show them; tap it again or another
+  message to hide them. Edit opens an inline box: Enter saves, Esc
   cancels. Delete asks for confirmation and leaves "Message deleted" for
   everyone. Edited messages show "(edited)". Changes reach everyone live, and
   the sidebar preview follows edits and deletes of the latest message.

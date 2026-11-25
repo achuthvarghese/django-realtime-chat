@@ -498,10 +498,25 @@
 
     const deleteDialog = document.getElementById("delete-dialog");
     let pendingDelete = null;
+    const touchOnly = window.matchMedia("(hover: none)");
+    function selectRow(row) {
+        for (const other of transcript.querySelectorAll(".msg.is-selected")) {
+            if (other !== row) other.classList.remove("is-selected");
+        }
+        if (row) row.classList.toggle("is-selected");
+    }
+
     transcript.addEventListener("click", (event) => {
         const button = event.target.closest(".msg__action");
-        if (!button) return;
+        if (!button) {
+            // Touch screens: tap your own message to show Edit and Delete.
+            if (!touchOnly.matches || event.target.closest(".msg__edit")) return;
+            const row = event.target.closest(".msg--mine");
+            selectRow(row && !row.querySelector(".msg__text--deleted") ? row : null);
+            return;
+        }
         const row = button.closest(".msg");
+        row.classList.remove("is-selected");
         if (button.dataset.action === "edit") startEdit(row);
         if (button.dataset.action === "delete") {
             pendingDelete = row.dataset.id;

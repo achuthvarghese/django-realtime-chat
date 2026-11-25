@@ -329,8 +329,11 @@
 .msg__action:hover { background: var(--hover); }
 .msg__action[data-action="delete"] { color: var(--danger); }
 @media (hover: none) {
-    /* Touch screens: keep actions visible on your own messages. */
-    .msg--mine .msg__actions { display: inline-flex; position: static; margin-left: var(--space-2); box-shadow: none; vertical-align: middle; }
+    /* Touch screens: no hover, so tapping one of your messages selects it and
+       shows its actions; tapping it again or another message deselects it. */
+    .msg:hover .msg__actions { display: none; }
+    .msg--mine.is-selected { background: color-mix(in srgb, var(--hover) 80%, transparent); }
+    .msg--mine.is-selected .msg__actions { display: inline-flex; position: static; margin-left: var(--space-2); box-shadow: none; vertical-align: middle; }
 }
 
 .msg__text--deleted { color: var(--muted); font-style: italic; }
