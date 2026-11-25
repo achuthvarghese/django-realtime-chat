@@ -1,0 +1,17 @@
+# Relay documentation
+
+| Guide | What's in it |
+| --- | --- |
+| [Setup](./setup.md) | Local and Docker setup, environment variables, production notes |
+| [Architecture](./architecture.md) | How the apps, views, sockets, database and channel layer fit together; security model |
+| [Screens and URLs](./screens.md) | Every page and endpoint and how it behaves |
+| [WebSocket protocol](./websocket-protocol.md) | Room and inbox sockets: connection rules, frames, close codes |
+| [Data model](./data-model.md) | Rooms, messages, read state, connections, preferences |
+| [Design system](./design-system.md) | Signal tokens, palettes, modes, density, components |
+| [Testing](./testing.md) | Running the suite, what each test file covers, CI |
+
+Also see [CONTRIBUTING.md](../CONTRIBUTING.md) and the
+[changelog](../CHANGELOG.md). Screenshots live in [images/](./images/).
+
+Older background notes on Channels and static files are in
+[`readme/`](../readme/).
