@@ -80,26 +80,10 @@
     border-color: color-mix(in srgb, var(--chrome-fg) 18%, transparent);
 }
 
-/* Show/hide password */
+/* Show/hide password on chrome */
 
-.password { position: relative; }
-.password .input { padding-right: 64px; }
-.password__toggle {
-    position: absolute;
-    right: 6px;
-    top: 50%;
-    transform: translateY(-50%);
-    padding: 4px 8px;
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--chrome-fg);
-    font: inherit;
-    font-size: var(--text-xs);
-    font-weight: 700;
-    cursor: pointer;
-}
-.password__toggle:hover { color: var(--chrome-strong); }
+.auth .password__toggle { color: var(--chrome-fg); }
+.auth .password__toggle:hover { color: var(--chrome-strong); }
 
 /* Signup: field groups as nodes on a spine */
 

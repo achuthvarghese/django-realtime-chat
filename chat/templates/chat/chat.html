@@ -41,11 +41,13 @@
         <p class="room-list__nomatch" id="room-nomatch" hidden>No chats match.</p>
 
         <div class="chat-side__me">
-            <span class="avatar avatar--mine avatar--lg">{{ me.initials }}</span>
-            <span class="chat-side__me-text">
-                <span class="chat-side__me-name">{{ me.name }}</span>
-                <span class="chat-side__me-handle">@{{ me.username }}</span>
-            </span>
+            <a class="chat-side__me-link" href="{% url 'account:settings' %}" title="Settings">
+                <span class="avatar avatar--mine avatar--lg">{{ me.initials }}</span>
+                <span class="chat-side__me-text">
+                    <span class="chat-side__me-name">{{ me.name }}</span>
+                    <span class="chat-side__me-handle">@{{ me.username }} · Settings</span>
+                </span>
+            </a>
             {% include "core/partials/theme_menu.html" %}
             <form action="{% url 'account:logout' %}" method="post">
                 {% csrf_token %}
