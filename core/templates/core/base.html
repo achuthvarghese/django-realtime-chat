@@ -1,0 +1,46 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en"
+      data-palette="{{ ui.palette|default:'graphite' }}"
+      data-mode="{{ ui.mode|default:'system' }}"
+      data-density="{{ ui.density|default:'compact' }}"
+      {% if ui.from_server %}data-theme-source="server"{% endif %}>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Relay: real-time chat built with Django Channels">
+    <title>{% block title %}{{ title|default:"Relay" }}{% endblock %} · Relay</title>
+
+    {# Apply the theme saved on this device before first paint. #}
+    <script>
+        (function () {
+            var root = document.documentElement;
+            if (root.dataset.themeSource === "server") return;
+            var allowed = {
+                palette: ["graphite", "midnight", "slate", "plum", "moss", "paper"],
+                mode: ["light", "dark", "system"],
+                density: ["compact", "comfortable"]
+            };
+            try {
+                Object.keys(allowed).forEach(function (axis) {
+                    var value = localStorage.getItem("relay." + axis);
+                    if (value && allowed[axis].indexOf(value) !== -1) root.dataset[axis] = value;
+                });
+            } catch (e) {}
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap">
+    <link rel="stylesheet" href="{% static 'core/css/tokens.css' %}">
+    <link rel="stylesheet" href="{% static 'core/css/relay.css' %}">
+    {% block styles %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <a class="skip-link" href="#main">Skip to content</a>
+    {% block body %}{% endblock %}
+
+    <script src="{% static 'core/js/theme.js' %}" defer></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

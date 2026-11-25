@@ -16,6 +16,7 @@ hasher. No `.env` or Redis is needed.
 | File | Covers |
 | --- | --- |
 | `account/tests.py` | Login, signup, logout, `next` redirects and validation |
+| `core/tests.py` | Theme options, palette keys in sync across Python/CSS/JS, base template, error pages |
 | `chat/tests.py` | Chat view access, room titles, WebSocket auth, membership and message handling |
 
 WebSocket tests use `channels.testing.WebsocketCommunicator` against the full

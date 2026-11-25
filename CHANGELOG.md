@@ -3,6 +3,24 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 2: design system
+
+### Added
+- `core` app with the Signal design system: design tokens, base styles and
+  components (buttons, fields, notices, avatars, badges, segmented controls,
+  transcript spine, composer, app shell).
+- Six palettes (Graphite + Coral by default, Midnight + Saffron, Slate +
+  Electric, Plum + Rose, Moss + Tangerine, Paper + Red), light, dark or system
+  mode, and compact or comfortable density. Choices apply instantly and are
+  saved on the device.
+- Shared `core/base.html` with a skip link and no theme flash on load.
+- Site error pages for 400, 403, CSRF failures, 404 and 500.
+- `/styleguide/` component gallery when debugging.
+- `docs/design-system.md`.
+
+Existing login, signup and chat screens keep their current look until the
+next phases move them onto this base.
+
 ## Phase 1: security and bug fixes
 
 ### Security

@@ -1,0 +1,7 @@
+{% extends "core/error.html" %}
+{% block title %}Not allowed{% endblock %}
+{% block reply_line %}stopped the request{% endblock %}
+{% block code %}403{% endblock %}
+{% block heading %}You don't have access to this{% endblock %}
+{% block explanation %}Your account isn't allowed to open this page. If you were signed out, sign in and try again.{% endblock %}
+{% block extra_actions %}<a class="btn btn--ghost" href="/account/login/">Sign in</a>{% endblock %}

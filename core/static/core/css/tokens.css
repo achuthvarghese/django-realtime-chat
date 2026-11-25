@@ -1,0 +1,132 @@
+/*
+ * Relay design tokens: the "Signal" style.
+ *
+ * Three independent axes, set as attributes on <html>:
+ *   data-palette  graphite | midnight | slate | plum | moss | paper
+ *   data-mode     light | dark | system
+ *   data-density  compact | comfortable
+ *
+ * Palette tokens colour the chrome (sidebar, auth screens, accents).
+ * Mode tokens colour the reading surface (conversation pane, cards, forms).
+ * Keep the keys in sync with core/theme.py.
+ */
+
+:root {
+    /* Type */
+    --font-display: "Sora", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Manrope", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+    --text-xs: 0.6875rem;   /* 11px: meta, gutters */
+    --text-sm: 0.8125rem;   /* 13px: secondary */
+    --text-md: 0.9375rem;   /* 15px: body, messages */
+    --text-lg: 1.125rem;    /* 18px: section titles */
+    --text-xl: 1.5rem;      /* 24px: page titles */
+    --text-2xl: 2.25rem;    /* 36px: hero */
+
+    /* Shape and spacing */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+
+    --focus-ring: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+    --shadow-float: 0 12px 28px -16px rgb(0 0 0 / 0.45);
+    --transition: 140ms ease;
+
+    /* Palette: graphite (default) */
+    --chrome: #16181d;
+    --chrome-fg: #c3c5cc;
+    --chrome-strong: #ffffff;
+    --chrome-raised: #2b2f38;
+    --accent: #ff5a36;
+    --on-accent: #16181d;
+    --mine: #2ec4a6;
+    --on-mine: #0f1412;
+
+    /* Mode: light (default) */
+    --bg: #f7f7f9;
+    --surface: #ffffff;
+    --fg: #16181d;
+    --muted: #6b6f7d;
+    --line: #e4e5ea;
+    --hover: #eef0f3;
+
+    /* Semantic */
+    --danger: #d92d20;
+    --success: #12805c;
+    --warning: #b54708;
+
+    /* Density: compact (default) */
+    --row-pad-y: 1px;
+    --row-line: 1.45;
+    --group-gap: 6px;
+    --control-h: 36px;
+
+    color-scheme: light;
+}
+
+/* Palettes */
+
+:root[data-palette="midnight"] {
+    --chrome: #121a2b; --chrome-fg: #b9c2d6; --chrome-raised: #22304d;
+    --accent: #f5a524; --on-accent: #121a2b; --mine: #7c9cff; --on-mine: #0e1426;
+}
+:root[data-palette="slate"] {
+    --chrome: #1c2430; --chrome-fg: #c0c8d4; --chrome-raised: #2c3747;
+    --accent: #3d7bff; --on-accent: #ffffff; --mine: #22c3a6; --on-mine: #0b1b17;
+}
+:root[data-palette="plum"] {
+    --chrome: #2a1630; --chrome-fg: #d9c5dd; --chrome-raised: #432549;
+    --accent: #ff4f8b; --on-accent: #2a1630; --mine: #ffb547; --on-mine: #2a1630;
+}
+:root[data-palette="moss"] {
+    --chrome: #17241e; --chrome-fg: #bfd0c6; --chrome-raised: #26392f;
+    --accent: #ff7a2f; --on-accent: #17241e; --mine: #7bd88f; --on-mine: #0f1a13;
+}
+:root[data-palette="paper"] {
+    --chrome: #eceef2; --chrome-fg: #444955; --chrome-strong: #16181d; --chrome-raised: #dde0e7;
+    --accent: #e5484d; --on-accent: #ffffff; --mine: #2f6fde; --on-mine: #ffffff;
+}
+
+/* Dark mode: explicit, or system preference when mode is "system" */
+
+:root[data-mode="dark"] {
+    --bg: #1b1e24; --surface: #23262d; --fg: #e9eaee; --muted: #9a9eab;
+    --line: #2f333c; --hover: #2a2e36;
+    --danger: #f97066; --success: #3ccb7f; --warning: #fdb022;
+    color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+    :root[data-mode="system"] {
+        --bg: #1b1e24; --surface: #23262d; --fg: #e9eaee; --muted: #9a9eab;
+        --line: #2f333c; --hover: #2a2e36;
+        --danger: #f97066; --success: #3ccb7f; --warning: #fdb022;
+        color-scheme: dark;
+    }
+}
+
+/* The light Paper palette switches its chrome to graphite tones in dark mode. */
+:root[data-palette="paper"][data-mode="dark"] {
+    --chrome: #16181d; --chrome-fg: #c3c5cc; --chrome-strong: #ffffff; --chrome-raised: #2b2f38;
+}
+@media (prefers-color-scheme: dark) {
+    :root[data-palette="paper"][data-mode="system"] {
+        --chrome: #16181d; --chrome-fg: #c3c5cc; --chrome-strong: #ffffff; --chrome-raised: #2b2f38;
+    }
+}
+
+/* Density */
+
+:root[data-density="comfortable"] {
+    --row-pad-y: 4px;
+    --row-line: 1.6;
+    --group-gap: 12px;
+    --control-h: 42px;
+}
