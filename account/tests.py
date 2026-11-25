@@ -87,3 +87,64 @@ class TestSignup:
             },
         )
         assert not User.objects.filter(username="arjun").exists()
+
+
+@pytest.mark.django_db
+class TestAuthFixes:
+    def test_login_follows_safe_next(self, client, user):
+        response = client.post(
+            reverse("account:login"),
+            {"username": "maya", "password": PASSWORD, "next": "/?room=abc"},
+        )
+        assert response.url == "/?room=abc"
+
+    def test_login_ignores_external_next(self, client, user):
+        response = client.post(
+            reverse("account:login"),
+            {"username": "maya", "password": PASSWORD, "next": "https://evil.example/"},
+        )
+        assert response.url == reverse("chat:chat")
+
+    def test_unknown_user_gets_generic_error(self, client):
+        response = client.post(
+            reverse("account:login"), {"username": "ghost", "password": "x"}
+        )
+        assert "Please check your credentials." in response.content.decode()
+
+    def test_logout_requires_post(self, client, user):
+        client.force_login(user)
+        assert client.get(reverse("account:logout")).status_code == 405
+        response = client.post(reverse("account:logout"))
+        assert response.status_code == 302
+        assert "_auth_user_id" not in client.session
+
+    def test_signup_logs_in_and_saves_names(self, client):
+        response = client.post(
+            reverse("account:signup"),
+            {
+                "first_name": "Arjun",
+                "last_name": "Kumar",
+                "username": "arjun",
+                "email": "arjun@example.com",
+                "password1": PASSWORD,
+                "password2": PASSWORD,
+            },
+        )
+        assert response.url == reverse("chat:chat")
+        assert "_auth_user_id" in client.session
+        created = User.objects.get(username="arjun")
+        assert (created.first_name, created.last_name) == ("Arjun", "Kumar")
+
+    def test_username_uniqueness_ignores_case(self, client, user):
+        client.post(
+            reverse("account:signup"),
+            {
+                "first_name": "M",
+                "last_name": "R",
+                "username": "MAYA",
+                "email": "m@example.com",
+                "password1": PASSWORD,
+                "password2": PASSWORD,
+            },
+        )
+        assert not User.objects.filter(username="MAYA").exists()

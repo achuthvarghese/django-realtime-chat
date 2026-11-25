@@ -15,8 +15,8 @@ hasher. No `.env` or Redis is needed.
 
 | File | Covers |
 | --- | --- |
-| `account/tests.py` | Login, signup and their validation |
-| `chat/tests.py` | Chat view access and the WebSocket consumer |
+| `account/tests.py` | Login, signup, logout, `next` redirects and validation |
+| `chat/tests.py` | Chat view access, room titles, WebSocket auth, membership and message handling |
 
 WebSocket tests use `channels.testing.WebsocketCommunicator` against the full
 ASGI application, so routing and origin validation are exercised too. Mark

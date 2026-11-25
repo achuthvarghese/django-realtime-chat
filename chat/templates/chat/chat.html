@@ -34,8 +34,11 @@
                                 <h6 class="card-subtitle text-muted">@{{ user.username }}</h6>
                             </div>
                             <div class="col-4 text-end my-auto">
-                                <a href="{% url 'account:logout' %}" class="btn btn-outline-danger"><i
-                                        class="bi bi-box-arrow-right"></i> Signout</a>
+                                <form action="{% url 'account:logout' %}" method="post" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-outline-danger"><i
+                                        class="bi bi-box-arrow-right"></i> Signout</button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -82,7 +85,7 @@
                         <div class="message message-{% if user == message.user %}right{% else %}left{% endif %} border rounded mb-1 p-1">
                             {{ message.content }} <br>
                             <span class="text-muted fw-lighter">by {{ message.user.username }} on </span>
-                            <span class="date text-muted fw-lighter" data-date='{{ message.created_at|date:"r" }}'></span>
+                            <span class="date text-muted fw-lighter" data-date='{{ message.created_at|date:"c" }}'></span>
                         </div>
                         {% endfor %}
                     </div>
@@ -111,8 +114,6 @@
 
     <!-- Bootstrap -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Moment.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
 
     <!-- Custom scripts -->
     {{ user.username|json_script:"user" }}

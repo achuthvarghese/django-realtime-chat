@@ -32,6 +32,8 @@ Or with Docker: `docker compose up --build`.
 
 - [Setup and configuration](./docs/setup.md): local, Docker, environment variables, production notes
 - [Testing](./docs/testing.md): running the suite, layout, CI
+- [WebSocket protocol](./docs/websocket-protocol.md): connection rules and message frames
+- [Changelog](./CHANGELOG.md)
 
 ### Background notes
 

@@ -7,7 +7,7 @@ User = get_user_model()
 
 class BaseForm(forms.Form):
     def __init__(self, *args, **kwargs):
-        super(BaseForm, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         self.label_suffix = ""
 
@@ -16,12 +16,16 @@ class BaseForm(forms.Form):
                 field.error_messages["required"] = f"{field.label} is required."
 
     def clean(self):
-        super(BaseForm, self).clean()
+        super().clean()
 
         for field_name in self.errors:
             field = self.fields.get(field_name)
-            field_css_class = field.widget.attrs.get("class")
-            field.widget.attrs.update({"class": f"{field_css_class} border-danger"})
+            if field is None:
+                continue
+            field_css_class = field.widget.attrs.get("class", "")
+            field.widget.attrs.update(
+                {"class": f"{field_css_class} border-danger".strip()}
+            )
         return self.cleaned_data
 
 
@@ -48,26 +52,23 @@ class UserLoginForm(BaseForm):
         ),
     )
 
-    def clean_username(self):
-        username = self.cleaned_data["username"]
-
-        user = User.objects.filter(username=username).exists()
-
-        if not user:
-            raise forms.ValidationError("Please check your credentials.")
-        return username
+    def __init__(self, *args, request=None, **kwargs):
+        self.request = request
+        self.user = None
+        super().__init__(*args, **kwargs)
 
     def clean(self):
         username = self.cleaned_data.get("username")
         password = self.cleaned_data.get("password")
 
         if username and password:
-            user = authenticate(username=username, password=password)
-            if user is None:
+            self.user = authenticate(self.request, username=username, password=password)
+            if self.user is None:
+                # Same message whether the username or the password is wrong.
                 self.add_error(
                     "password", forms.ValidationError("Please check your credentials.")
                 )
-        return super(UserLoginForm, self).clean()
+        return super().clean()
 
 
 class UserSignUpForm(BaseForm):
@@ -137,9 +138,7 @@ class UserSignUpForm(BaseForm):
     def clean_username(self):
         username = self.cleaned_data.get("username")
 
-        user = User.objects.filter(username=username).exists()
-
-        if user:
+        if User.objects.filter(username__iexact=username).exists():
             raise forms.ValidationError("Username already exists.", code="exists")
         return username
 
@@ -157,10 +156,7 @@ class UserSignUpForm(BaseForm):
             email=email,
         )
 
-        try:
-            validate_password(password1, user=user)
-        except forms.ValidationError as validation_errors:
-            raise validation_errors
+        validate_password(password1, user=user)
         return password1
 
     def clean_password2(self):
@@ -169,7 +165,5 @@ class UserSignUpForm(BaseForm):
 
         if not self.errors.get("password1"):
             if password1 != password2:
-                raise forms.ValidationError(
-                    "Passwords does not match.", code="mismatch"
-                )
+                raise forms.ValidationError("Passwords do not match.", code="mismatch")
         return password2

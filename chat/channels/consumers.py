@@ -1,4 +1,5 @@
 import json
+import uuid
 from enum import Enum
 
 from asgiref.sync import async_to_sync
@@ -7,131 +8,153 @@ from django.utils import timezone
 
 from chat.models import Message, Room
 
+MAX_MESSAGE_LENGTH = 4000
 
-class WSChatType(Enum):
+
+class WSChatType(str, Enum):
     CLEAR_ROOM = "clear_room"
     CHAT_RESPONSE = "chat_response"
     SAVE_MESSAGE = "save_message"
+    ERROR = "error"
 
-    @classmethod
-    def has_value(cls, value):
-        return value in [member.value for member in cls]
+
+class CloseCode:
+    """Application close codes (4000-4999 are reserved for applications)."""
+
+    UNAUTHENTICATED = 4401
+    FORBIDDEN = 4403
+    NOT_FOUND = 4404
 
 
 class ChatConsumer(WebsocketConsumer):
+    """One WebSocket per open room.
+
+    Only authenticated members of the room may connect. Clients send JSON
+    objects with a ``type`` of ``save_message`` or ``clear_room``; see
+    docs/websocket-protocol.md.
+    """
+
+    room = None
+    room_group_name = None
+
     def connect(self):
-        print("WS Connection: Accept")
-        self.room_id = str(self.scope["url_route"]["kwargs"]["room_id"])
-        self.room = None
+        self.user = self.scope.get("user")
+        if self.user is None or not self.user.is_authenticated:
+            self.close(code=CloseCode.UNAUTHENTICATED)
+            return
 
-        if self.room_id:
-            self.room = self.get_room()
-            if self.room:
-                self.room_name = f"room_{self.room.id}"
-                self.room_group_name = f"chat_{self.room_name}"
+        self.room = self.get_room(self.scope["url_route"]["kwargs"].get("room_id"))
+        if self.room is None:
+            self.reject(404, "Room not found", CloseCode.NOT_FOUND)
+            return
+        if not self.room.members.filter(pk=self.user.pk).exists():
+            self.reject(403, "You are not a member of this room", CloseCode.FORBIDDEN)
+            return
 
-                async_to_sync(self.channel_layer.group_add)(
-                    self.room_group_name, self.channel_name
-                )
-                self.groups.append(self.room_group_name)
-                self.accept()
-            else:
-                now = str(timezone.now())
-                self.accept()
-                self.send(
-                    text_data=json.dumps(
-                        {"code": 404, "message": "Room not found", "ts": now}
-                    )
-                )
-                self.close()
-        # else:
-        #     now = str(timezone.now())
-        #     self.accept()
-        #     self.send(text_data=json.dumps({"code":"RIDNF", "message": "Provide Room ID", "ts": now}))
-        #     self.close()
+        self.room_group_name = f"chat_room_{self.room.id.hex}"
+        async_to_sync(self.channel_layer.group_add)(
+            self.room_group_name, self.channel_name
+        )
+        self.accept()
 
     def disconnect(self, close_code):
-        print("WS Connection: Disconnect")
-        if self.room and self.channel_layer:
+        if self.room_group_name:
             async_to_sync(self.channel_layer.group_discard)(
                 self.room_group_name, self.channel_name
             )
 
-    def __call_method(self, method="", *args, **kwargs):
-        if not method:
-            return False
-
+    def receive(self, text_data=None, bytes_data=None):
         try:
-            method_to_call = self.__getattribute__(method)
-            result = method_to_call(*args, **kwargs)
-            return result
-        except AttributeError as ex:
-            return False
+            payload = json.loads(text_data or "")
+        except (TypeError, ValueError):
+            self.send_error("Invalid JSON")
+            return
+        if not isinstance(payload, dict):
+            self.send_error("Expected a JSON object")
+            return
 
-    def receive(self, text_data):
-        print("WS Connection: Receive")
+        handlers = {
+            WSChatType.SAVE_MESSAGE.value: self.handle_save_message,
+            WSChatType.CLEAR_ROOM.value: self.handle_clear_room,
+        }
+        handler = handlers.get(payload.get("type"))
+        if handler is None:
+            self.send_error("Invalid type")
+            return
+        handler(payload)
 
-        text_data_json = json.loads(text_data)
-        type = text_data_json.get("type")
+    # Handlers
 
-        self.user = self.scope["user"]
+    def handle_save_message(self, payload):
+        content = payload.get("message")
+        if not isinstance(content, str) or not content.strip():
+            self.send_error("Message cannot be empty")
+            return
+        content = content.strip()
+        if len(content) > MAX_MESSAGE_LENGTH:
+            self.send_error(f"Message is longer than {MAX_MESSAGE_LENGTH} characters")
+            return
 
-        response_data = {"type": type}
+        message = Message.objects.create(
+            content=content, room=self.room, user=self.user
+        )
+        message.visible_for.add(*self.room.members.all())
 
-        # Check if type is valid else respond
-        if WSChatType.has_value(type):
-
-            data = self.__call_method(type, **text_data_json)
-
-            if type == WSChatType.SAVE_MESSAGE.value:
-                response_data["message"] = data.content
-                response_data["user"] = data.user.username
-                response_data["created_at"] = data.created_at
-            elif type == WSChatType.CLEAR_ROOM.value:
-                response_data["cleared"] = data
-                response_data["for"] = self.user.username
-            else:
-                pass
-
-        else:
-            response_data["message"] = "Invalid type"
-
-        # Send message to room group
         async_to_sync(self.channel_layer.group_send)(
             self.room_group_name,
-            {"type": WSChatType.CHAT_RESPONSE.value, "data": response_data},
+            {
+                "type": WSChatType.CHAT_RESPONSE.value,
+                "data": {
+                    "type": WSChatType.SAVE_MESSAGE.value,
+                    "id": str(message.id),
+                    "message": message.content,
+                    "user": self.user.username,
+                    "created_at": message.created_at.isoformat(),
+                },
+            },
         )
+
+    def handle_clear_room(self, payload):
+        # Clearing only hides messages for the requesting user, so only that
+        # user's socket is told about it.
+        self.user.visible_for.remove(*self.room.messages.all())
+        self.send_json(
+            {
+                "type": WSChatType.CLEAR_ROOM.value,
+                "cleared": True,
+                "for": self.user.username,
+            }
+        )
+
+    # Channel layer events
 
     def chat_response(self, event):
-        response_data = event["data"]
+        self.send_json(event["data"])
 
-        # Send message to WebSocket
-        self.send(
-            text_data=json.dumps(
-                response_data,
-                default=str,
-            )
+    # Helpers
+
+    def send_json(self, data):
+        self.send(text_data=json.dumps(data, default=str))
+
+    def send_error(self, message, code=400):
+        self.send_json(
+            {
+                "type": WSChatType.ERROR.value,
+                "code": code,
+                "message": message,
+                "ts": timezone.now().isoformat(),
+            }
         )
 
-    def save_message(self, *args, message, **kwargs):
-        room_members = self.room.members.all()
-        message_obj = Message.objects.create(
-            content=message, room=self.room, user=self.user
-        )
-        message_obj.visible_for.add(*[member.id for member in room_members])
-        message_obj.save()
-        return message_obj
+    def reject(self, code, message, close_code):
+        """Accept briefly so the client receives the reason, then close."""
+        self.accept()
+        self.send_error(message, code=code)
+        self.close(code=close_code)
 
-    def clear_room(self, *args, **kwargs):
-        room = self.get_room()
-        messages = room.messages.all()
-        for message in messages:
-            message.visible_for.remove(self.user)
-        return True
-
-    def get_room(self):
+    @staticmethod
+    def get_room(room_id):
         try:
-            room_obj = Room.objects.get(id=self.room_id)
-            return room_obj
-        except Room.DoesNotExist as ex:
-            return False
+            return Room.objects.get(id=uuid.UUID(str(room_id)))
+        except (Room.DoesNotExist, ValueError, TypeError):
+            return None
