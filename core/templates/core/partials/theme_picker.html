@@ -1,0 +1,37 @@
+{# Palette, mode and density controls. Changes apply instantly via theme.js. #}
+<div class="theme-picker" data-theme-control>
+    <fieldset class="theme-picker__group">
+        <legend class="section-label">Palette</legend>
+        <div class="swatches">
+            {% for palette in ui.palettes %}
+            <label class="swatch">
+                <input type="radio" name="palette" value="{{ palette.key }}" {% if palette.key == ui.palette %}checked{% endif %}>
+                <span class="swatch__card">
+                    <span class="swatch__preview" aria-hidden="true">
+                        <i style="background:{{ palette.sidebar }}"></i><i style="background:{{ palette.accent }}"></i><i style="background:{{ palette.mine }}"></i>
+                    </span>
+                    <span class="swatch__name">{{ palette.name }}</span>
+                </span>
+            </label>
+            {% endfor %}
+        </div>
+    </fieldset>
+    <div class="theme-picker__row">
+        <fieldset class="theme-picker__group">
+            <legend class="section-label">Mode</legend>
+            <div class="segmented">
+                {% for key, label in ui.modes %}
+                <label><input type="radio" name="mode" value="{{ key }}" {% if key == ui.mode %}checked{% endif %}><span>{{ label }}</span></label>
+                {% endfor %}
+            </div>
+        </fieldset>
+        <fieldset class="theme-picker__group">
+            <legend class="section-label">Density</legend>
+            <div class="segmented">
+                {% for key, label in ui.densities %}
+                <label><input type="radio" name="density" value="{{ key }}" {% if key == ui.density %}checked{% endif %}><span>{{ label }}</span></label>
+                {% endfor %}
+            </div>
+        </fieldset>
+    </div>
+</div>
