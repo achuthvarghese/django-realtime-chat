@@ -1,188 +1,167 @@
 // Chat script
 
-((e) => {
+(() => {
+    "use strict";
+
     const user = JSON.parse(document.getElementById("user").textContent);
-
-    const win_loc = window.location;
-    const host = win_loc.host;
-    const href = win_loc.href;
-
-    const url = new URL(href);
-    const room_id = url.searchParams.get("room") || "";
+    const roomId = new URL(window.location.href).searchParams.get("room") || "";
 
     const left = document.getElementById("left");
     const right = document.getElementById("right");
     const chatRoom = document.getElementById("chat-room");
     const commonCard = document.getElementById("common-card");
+    const messagesBox = document.getElementById("messages");
 
-    searchUserGroup();
+    const dateFormatter = new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+    });
+    const formatDate = (value) => {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? "" : dateFormatter.format(date);
+    };
 
-    if (room_id == "") {
-        
-        left.classList.add("d-lg-block")
-        right.classList.add("d-lg-block")
-        right.classList.add("d-none")
-        chatRoom.classList.add("d-none")
-        commonCard.classList.add("d-flex")
+    setupRoomSearch();
+
+    if (roomId === "") {
+        left.classList.add("d-lg-block");
+        right.classList.add("d-lg-block", "d-none");
+        chatRoom.classList.add("d-none");
+        commonCard.classList.add("d-flex");
         return;
-        // throw new Error(`http://${host}?room=<room_id>`)
-    } else {
-        left.classList.add("d-none")
-        left.classList.add("d-lg-block")
-        right.classList.add("d-block")
-        commonCard.classList.add("d-none")
     }
 
-    const ws_url = `ws://${host}/chat/${room_id}`;
+    left.classList.add("d-none", "d-lg-block");
+    right.classList.add("d-block");
+    commonCard.classList.add("d-none");
 
-    const ws = new WebSocket(ws_url);
-
-    // Handle WebSocket on opening a connection
-    ws.onopen = (e) => {
-        console.log("WS Open");
-    };
-
-    // Function to send messages on WebSocket
-    function send_message(data = {}) {
-        ws.send(JSON.stringify(data));
+    // Mark the current room in the list, if it is there.
+    const activeRoomLink = document.getElementById(`room_${roomId}`);
+    if (activeRoomLink) {
+        activeRoomLink.classList.add("active");
+        activeRoomLink.setAttribute("aria-current", "true");
     }
 
-    // Handle WebSocket on occurance of error
-    ws.onerror = (e) => {
-        console.log("WS Error");
-    };
+    // Convert server datetimes to the viewer's locale.
+    for (const element of document.querySelectorAll(".date[data-date]")) {
+        element.textContent = formatDate(element.dataset.date);
+    }
+    scrollToLatest();
 
-    // Handle WebSocket connection while closeing
-    ws.onclose = (e) => {
-        console.log("WS Close");
-    };
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${scheme}://${window.location.host}/chat/${encodeURIComponent(roomId)}`);
 
-    // Handle when message is received on WebSocket
-    ws.onmessage = (e) => {
-        if (JSON.parse(e.data).code == 404) {
-            alert(JSON.parse(e.data).message);
-            window.location = `http://${host}`;
+    function sendMessage(data) {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(data));
         }
+    }
 
-        data = JSON.parse(e.data);
+    ws.onclose = (event) => {
+        // 4401 unauthenticated, 4403 not a member, 4404 unknown room
+        if (event.code === 4401) {
+            window.location.assign("/account/login/");
+        } else if (event.code === 4403 || event.code === 4404) {
+            window.location.assign("/");
+        }
+    };
+
+    ws.onmessage = (event) => {
+        let data;
+        try {
+            data = JSON.parse(event.data);
+        } catch (error) {
+            return;
+        }
 
         switch (data.type) {
             case "save_message":
                 appendMessage(data);
                 break;
-
             case "clear_room":
                 clearMessages(data);
                 break;
-
+            case "error":
+                console.warn("Chat error:", data.message);
+                break;
             default:
                 break;
         }
-
         scrollToLatest();
     };
 
     // Send message
-    btn = document.getElementById("send-message-btn");
-    btn.onclick = () => {
-        messageInput = document.getElementById("message");
-        textContent = messageInput.value;
+    const messageInput = document.getElementById("message");
+    const sendButton = document.getElementById("send-message-btn");
 
-        if (textContent != "") {
-            messageInput.classList.remove("border-danger");
-            data = {
-                message: textContent,
-                ts: new Date().toISOString(),
-                type: "save_message",
-            };
-            send_message((data = data));
-            messageInput.value = "";
-        } else {
+    function submitMessage() {
+        const text = messageInput.value.trim();
+        if (text === "") {
             messageInput.classList.add("border-danger");
+            return;
         }
-    };
-
-    // Clear chat history
-    clearSpan = document.getElementById("clear-room");
-    clearSpan.onclick = () => {
-        data = {
-            ts: new Date().toISOString(),
-            type: "clear_room",
-        };
-        send_message((data = data));
-    };
-
-    // Set active class to current chat head
-    activeRoomATag = document.getElementById(`room_${room_id}`);
-    activeRoomATag.classList.add("active");
-    activeRoomATag.ariaCurrent = true;
-
-    // Convert datetime to locale datetime
-    spanDates = document.getElementsByClassName("date");
-    for (let span_date = 0; span_date < spanDates.length; span_date++) {
-        element = spanDates[span_date];
-        parseDate = moment(element.dataset.date);
-        dateCreated = parseDate.format("MMM D, YYYY, h:mm A");
-        element.textContent = dateCreated;
+        messageInput.classList.remove("border-danger");
+        sendMessage({ type: "save_message", message: text, ts: new Date().toISOString() });
+        messageInput.value = "";
     }
 
-    // Scroll to the latest message
+    sendButton.addEventListener("click", submitMessage);
+    messageInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            submitMessage();
+        }
+    });
+
+    // Clear chat history (for this user only)
+    const clearButton = document.getElementById("clear-room");
+    if (clearButton) {
+        clearButton.addEventListener("click", () => {
+            sendMessage({ type: "clear_room", ts: new Date().toISOString() });
+        });
+    }
+
     function scrollToLatest() {
-        mb = document.getElementById("messages");
-        mb.scrollTop = mb.scrollHeight;
+        messagesBox.scrollTop = messagesBox.scrollHeight;
     }
 
-    scrollToLatest();
-
-    // Add new message to DOM
+    // Build a message node with text only; never inject HTML from the server.
     function appendMessage(data) {
-        msgNode = document.createElement("div");
-        if (user == data.user) {
-            messageSide = "right";
-        } else {
-            messageSide = "left";
-        }
-        parseDate = moment(data.created_at);
-        dateCreated = parseDate.format("MMM D, YYYY, h:mm A");
-        msgNode.className = `message message-${messageSide} border rounded mb-1 p-1`;
-        msgNode.innerHTML = `${data.message} <br><span class="text-muted fw-lighter">by ${data.user} on ${dateCreated}</span>`;
+        const side = user === data.user ? "right" : "left";
+        const node = document.createElement("div");
+        node.className = `message message-${side} border rounded mb-1 p-1`;
 
-        mb = document.getElementById("messages");
-        mb.appendChild(msgNode);
+        node.append(document.createTextNode(data.message), document.createElement("br"));
+        const meta = document.createElement("span");
+        meta.className = "text-muted fw-lighter";
+        meta.textContent = `by ${data.user} on ${formatDate(data.created_at)}`;
+        node.append(meta);
+
+        messagesBox.appendChild(node);
     }
 
-    // Search and list for chat user/group name
-    function searchUserGroup() {
-        searchInput = document.getElementById("search-room-input");
-        searchButton = document.getElementById("search-room-btn");
-
-        if (searchInput && searchButton) {
-            searchInput.onsearch = searchButton.onclick = () => {
-                search_string = searchInput.value.trim();
-                rooms = document.getElementsByClassName("room");
-    
-                for (let room = 0; room < rooms.length; room++) {
-                    element = rooms[room];
-                    span = element.children[0];
-                    stringCheck = span.textContent
-                        .trim()
-                        .toLowerCase()
-                        .includes(search_string);
-                    if (stringCheck) {
-                        element.style.display = "block";
-                    } else {
-                        element.style.display = "none";
-                    }
-                }
-            };
-        }
-    }
-
-    // Clear messages
     function clearMessages(data) {
-        if (user == data.for) {
-            messagesContainer = document.getElementById("messages");
-            messagesContainer.textContent = "";
+        if (user === data.for) {
+            messagesBox.replaceChildren();
         }
+    }
+
+    // Filter the room list by name (case-insensitive).
+    function setupRoomSearch() {
+        const searchInput = document.getElementById("search-room-input");
+        const searchButton = document.getElementById("search-room-btn");
+        if (!searchInput || !searchButton) {
+            return;
+        }
+
+        const filterRooms = () => {
+            const query = searchInput.value.trim().toLowerCase();
+            for (const element of document.getElementsByClassName("room")) {
+                const name = element.children[0].textContent.trim().toLowerCase();
+                element.style.display = name.includes(query) ? "" : "none";
+            }
+        };
+        searchInput.addEventListener("input", filterRooms);
+        searchButton.addEventListener("click", filterRooms);
     }
 })();
