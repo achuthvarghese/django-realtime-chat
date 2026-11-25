@@ -1,12 +1,22 @@
-version: "3.9"
-
 services:
   web:
-    build:
-      context: .
-      dockerfile: dockerfile
-    command: python manage.py runserver 0.0.0.0:8000
-    volumes:
-      - .:/code
+    build: .
     ports:
       - "8000:8000"
+    environment:
+      DJANGO_DEBUG: "true"
+      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0"
+      DJANGO_CSRF_TRUSTED_ORIGINS: "http://localhost:8000"
+      REDIS_URL: "redis://redis:6379/0"
+      SQLITE_PATH: "/data/db.sqlite3"
+    volumes:
+      - .:/code
+      - sqlite-data:/data
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+
+volumes:
+  sqlite-data:

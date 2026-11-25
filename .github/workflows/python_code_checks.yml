@@ -1,54 +1,49 @@
-# This is a workflow to analyse the code for formatting issues
-# and sorting issues in the imports.
+# Lint (black, isort) and test (pytest) on every push and pull request.
 
-name: Check Python Code Format and Imports
+name: Checks
 
-# Controls when the workflow will run
 on:
-  # Trigger the workflow pull_request to master branch
   pull_request:
-    branches: ["master"]
-  # Trigger the workflow push to master branch
+    branches: ["master", "dev"]
   push:
-    branches: ["master"]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: ["master", "dev"]
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job
+  # Job id kept as "check_format_and_imports": branch protection on master
+  # requires a check with this name.
   check_format_and_imports:
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
-
-    # Not using for now
-    # strategy:
-    #   matrix:
-    #     python-version: ["3.8", "3.9", "3.10"]
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE
-      - uses: actions/checkout@v3
-
-      # Setup python environments
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.10" # ${{ matrix.python-version }}
-
-      # Install required packages for formatting and sorting
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install black isort
-
-      # Runs black command to check for code format issues
-      - name: Analyse the code with black for format issues
+          python-version: "3.12"
+      - name: Install linters
+        run: pip install "black>=24,<26" "isort>=5.13,<7"
+      - name: Check formatting with black
         run: black --check --diff .
-
-      # Runs isort command to check for imports sort issues
-      - name: Analyse the code with isort for imports ordering
+      - name: Check import order with isort
         if: ${{ always() }}
         run: isort --check --diff .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Check for missing migrations
+        run: python manage.py makemigrations --check --dry-run --settings=realtime_chat.settings_test
+      - name: Run Django system checks
+        run: python manage.py check --settings=realtime_chat.settings_test
+      - name: Run tests
+        run: pytest

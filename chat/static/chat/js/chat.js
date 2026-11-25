@@ -12,19 +12,25 @@
 
     const left = document.getElementById("left");
     const right = document.getElementById("right");
+    const chatRoom = document.getElementById("chat-room");
+    const commonCard = document.getElementById("common-card");
 
     searchUserGroup();
 
     if (room_id == "") {
+        
         left.classList.add("d-lg-block")
         right.classList.add("d-lg-block")
         right.classList.add("d-none")
+        chatRoom.classList.add("d-none")
+        commonCard.classList.add("d-flex")
         return;
         // throw new Error(`http://${host}?room=<room_id>`)
     } else {
         left.classList.add("d-none")
         left.classList.add("d-lg-block")
         right.classList.add("d-block")
+        commonCard.classList.add("d-none")
     }
 
     const ws_url = `ws://${host}/chat/${room_id}`;
@@ -150,24 +156,26 @@
         searchInput = document.getElementById("search-room-input");
         searchButton = document.getElementById("search-room-btn");
 
-        searchInput.onsearch = searchButton.onclick = () => {
-            search_string = searchInput.value.trim();
-            rooms = document.getElementsByClassName("room");
-
-            for (let room = 0; room < rooms.length; room++) {
-                element = rooms[room];
-                span = element.children[0];
-                stringCheck = span.textContent
-                    .trim()
-                    .toLowerCase()
-                    .includes(search_string);
-                if (stringCheck) {
-                    element.style.display = "block";
-                } else {
-                    element.style.display = "none";
+        if (searchInput && searchButton) {
+            searchInput.onsearch = searchButton.onclick = () => {
+                search_string = searchInput.value.trim();
+                rooms = document.getElementsByClassName("room");
+    
+                for (let room = 0; room < rooms.length; room++) {
+                    element = rooms[room];
+                    span = element.children[0];
+                    stringCheck = span.textContent
+                        .trim()
+                        .toLowerCase()
+                        .includes(search_string);
+                    if (stringCheck) {
+                        element.style.display = "block";
+                    } else {
+                        element.style.display = "none";
+                    }
                 }
-            }
-        };
+            };
+        }
     }
 
     // Clear messages

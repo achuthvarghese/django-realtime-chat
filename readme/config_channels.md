@@ -3,13 +3,16 @@
 Install [channels]
 
 ```sh
-pip install -U channels
+pip install -U "channels>=4.2" "daphne>=4.1"
 ```
 
-Add channels to `INSTALLED_APPS` in [settings.py]
+Channels 4 no longer ships an ASGI server. Add `daphne` as the **first** entry
+in `INSTALLED_APPS` so `runserver` starts the Daphne ASGI server, then add
+`channels`:
 
 ```python
 INSTALLED_APPS = [
+    "daphne",
     ...
     "channels",
 ]
@@ -38,6 +41,10 @@ Add the asgi application using `ASGI_APPLICATION` in [settings.py].
 ```python
 ASGI_APPLICATION = "realtime_chat.asgi.application"
 ```
+
+The project's [asgi.py] also routes `websocket` connections through
+`AllowedHostsOriginValidator` and `AuthMiddlewareStack`; see the file for the
+full version.
 
 Once development server is run using the `runserver` command, the server would use the ASGI application object specified in `ASGI_APPLICATION` instead of the default WSGI application.
 ![image01]

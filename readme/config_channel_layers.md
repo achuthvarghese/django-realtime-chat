@@ -12,15 +12,15 @@ pip install channels-redis
 ```
 
 **Redis server should be running** while using this configuration else Websocket will be disconnected after handshake.  
-Use [docker-compose.yml] to run Redis server (Requires [Docker]).  
+[docker-compose.yml] starts Redis alongside the app (requires [Docker]):
 
 ```sh
-docker-compose -f "docker-compose.yml" up
+docker compose up --build
 ```
 
-This will run the Redis server on localhost (127.0.0.1) port 6379.
-
-Configure Redis Channel Layers using `CHANNEL_LAYERS` in [settings.py].
+In this project the Redis layer is switched on by setting `REDIS_URL`
+(for example `redis://localhost:6379/0`); [settings.py] then builds the
+configuration below. Without `REDIS_URL` the in-memory layer is used.
 
 ```python
 CHANNEL_LAYERS = {
