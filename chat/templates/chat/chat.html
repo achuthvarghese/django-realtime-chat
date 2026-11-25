@@ -24,14 +24,21 @@
         <ul class="room-list" id="room-list">
             {% for r in rooms %}
             <li>
-                <a class="room-link" href="{% url 'chat:chat' %}?room={{ r.id }}" data-room-id="{{ r.id }}" data-title="{{ r.title|lower }}"
+                <a class="room-link{% if r.unread %} room-link--unread{% endif %}" href="{% url 'chat:chat' %}?room={{ r.id }}" data-room-id="{{ r.id }}" data-title="{{ r.title|lower }}"
+                   {% if r.other_username %}data-username="{{ r.other_username }}"{% endif %} data-unread="{{ r.unread }}"
                    title="{{ r.title }}" {% if room and r.id == room_summary.id %}aria-current="page"{% endif %}>
-                    <span class="avatar room-link__avatar{% if r.type == 'group' %} room-link__avatar--group{% endif %}">{{ r.initials }}</span>
+                    <span class="room-link__avatar-wrap">
+                        <span class="avatar room-link__avatar{% if r.type == 'group' %} room-link__avatar--group{% endif %}">{{ r.initials }}</span>
+                        {% if r.other_username %}<span class="presence-dot" aria-hidden="true"></span>{% endif %}
+                    </span>
                     <span class="room-link__text">
                         <span class="room-link__title">{{ r.title }}</span>
                         <span class="room-link__preview">{% if r.last_content %}{% if r.last_is_mine %}You: {% endif %}{{ r.last_content|truncatechars:60 }}{% else %}No messages yet{% endif %}</span>
                     </span>
-                    {% if r.last_at %}<time class="room-link__time" datetime="{{ r.last_at|date:'c' }}" data-relative>{{ r.last_at|date:"H:i" }}</time>{% endif %}
+                    <span class="room-link__meta">
+                        <time class="room-link__time" {% if r.last_at %}datetime="{{ r.last_at|date:'c' }}" data-relative{% endif %}>{% if r.last_at %}{{ r.last_at|date:"H:i" }}{% endif %}</time>
+                        <span class="badge room-link__unread" {% if not r.unread %}hidden{% endif %}><span class="visually-hidden">Unread: </span><span data-unread-count>{{ r.unread }}</span></span>
+                    </span>
                 </a>
             </li>
             {% empty %}
@@ -67,7 +74,12 @@
                 <p class="chat-head__meta">
                     <span class="status" id="status" data-state="connecting"><span class="status__dot" aria-hidden="true"></span><span class="status__label">Connecting…</span></span>
                     <span aria-hidden="true">·</span>
-                    <span>{{ room_summary.member_count }} member{{ room_summary.member_count|pluralize }}</span>
+                    {% if room_summary.other_username %}
+                    <span class="presence-label" data-presence-for="{{ room_summary.other_username }}">Offline</span>
+                    {% else %}
+                    <span>{{ room_summary.member_count }} member{{ room_summary.member_count|pluralize }}<span class="presence-count" data-presence-count hidden></span></span>
+                    {% endif %}
+                    <span class="typing" id="typing" aria-live="polite" hidden></span>
                 </p>
             </div>
             <button class="btn btn--danger btn--sm" type="button" id="clear-room">Clear history</button>
@@ -114,6 +126,7 @@
 
         {{ room_messages|json_script:"initial-messages" }}
         {{ history|json_script:"history-meta" }}
+        {{ room_summary.member_usernames|json_script:"room-members" }}
         {{ room_summary.id|json_script:"room-id" }}
         {% else %}
         <div class="chat-welcome">
@@ -171,6 +184,7 @@
 
 {% block scripts %}
 {{ me.username|json_script:"me" }}
+<script src="{% static 'chat/js/inbox.js' %}" defer></script>
 <script src="{% static 'chat/js/new-chat.js' %}" defer></script>
 <script src="{% static 'chat/js/chat.js' %}" defer></script>
 {% endblock %}
