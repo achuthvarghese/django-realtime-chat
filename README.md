@@ -44,7 +44,9 @@ Open http://localhost:8000, create an account, then use **New chat** to
 message someone or start a group. Open a second browser (or a private window)
 with another account to see messages, typing and presence live.
 
-With Docker: `docker compose up --build` (includes Redis).
+With Docker: `docker compose up --build` (includes Redis). In debug mode it
+also loads [demo data](./docs/demo-data.md): sign in as `maya` with password
+`relay-demo-123`. Without Docker, run `python manage.py seed_demo`.
 
 ## Stack
 
@@ -67,6 +69,7 @@ Start with the [documentation index](./docs/README.md).
 - [WebSocket protocol](./docs/websocket-protocol.md): room and inbox sockets
 - [Data model](./docs/data-model.md): rooms, messages, read state, presence, preferences
 - [Design system](./docs/design-system.md): Signal tokens, palettes, components
+- [Demo data](./docs/demo-data.md): sample users, chats and sign-in details
 - [Testing](./docs/testing.md): running the suite, CI
 - [Contributing](./CONTRIBUTING.md): branches, commits, checks, what to update
 - [Changelog](./CHANGELOG.md)

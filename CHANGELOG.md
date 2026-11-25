@@ -3,6 +3,19 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Demo data
+
+### Added
+- `manage.py seed_demo`: nine demo users (one inactive, one with no chats),
+  three groups and four direct chats with 153 messages over ten days, unread
+  messages, an edited and a deleted message, cleared history and varied saved
+  themes. Seeds once, `--reset` rebuilds, and it refuses to run when debug is
+  off.
+- Docker seeds the demo data on start in debug mode (`DJANGO_SEED_DEMO`
+  turns it off).
+- `docs/demo-data.md`: sign-in details, what each account and room is for,
+  and things to try.
+
 ## Phase 6: documentation
 
 ### Added
