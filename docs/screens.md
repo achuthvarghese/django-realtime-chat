@@ -56,5 +56,46 @@ Styles `account/static/account/css/auth.css`, script
 
 ## Chat
 
-Unchanged in this phase; it moves to the design system in the chat-screen
-phase.
+`/chat/` lists your chats; `/chat/?room=<uuid>` opens one. Template
+`chat/templates/chat/chat.html`, styles `chat/static/chat/css/chat.css`, script
+`chat/static/chat/js/chat.js`.
+
+### Layout by width
+
+| Width | Room list | Open room |
+| --- | --- | --- |
+| 1024px and up | Names, last-message preview and time | Beside the list |
+| 600 to 1023px | Icon rail of initials; name on hover | Beside the rail |
+| Under 600px | Full screen when no room is open | Full screen with a back arrow |
+
+### Room list
+
+- Most recently active first. Each row shows the other person's name (private
+  rooms) or the room name (groups), the last message you can still see
+  (prefixed "You:" when it was yours) and its time: clock time today,
+  "Yesterday", or a short date.
+- Group rooms have round avatars; private rooms square.
+- "Find a chat" filters the list as you type.
+- The footer shows you, the Theme menu and Sign out.
+
+### Open room
+
+- **Header**: avatar, title, connection status (Connecting…, Live,
+  Reconnecting…) and member count, plus **Clear history**.
+- **Transcript**: the last 200 messages you can see, grouped one line per
+  message. A new sender, a gap of more than 5 minutes or a new day starts a new
+  group with the avatar and name; day separators read Today, Yesterday or the
+  date. Times are shown in your local time zone; follow-up times appear on
+  hover. Line breaks are kept. New messages keep the view pinned to the bottom
+  unless you have scrolled up to read.
+- **Composer**: grows with the text up to about six lines. Enter sends,
+  Shift+Enter adds a line. Send is disabled while disconnected; the text stays
+  in the box.
+- **Clear history** asks for confirmation in a dialog (Cancel is the default)
+  and hides the room's messages for you only.
+- **Connection**: if the socket drops, the page retries after 1, 2, 4, 8 and
+  then every 15 seconds. After reconnecting it offers a Reload, since
+  messages sent in between are not replayed. Being signed out sends you to
+  sign in; losing access to the room sends you back to the list.
+
+With no room open, the pane shows a short welcome and a hint to pick a chat.
