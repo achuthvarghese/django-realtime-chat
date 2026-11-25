@@ -36,6 +36,27 @@ Every frame is a JSON object with a `type`.
 `message` is trimmed and must be 1 to 4000 characters. The message is saved
 and made visible to every current member of the room.
 
+### `edit_message`
+
+```json
+{"type": "edit_message", "id": "8f5c…", "message": "Fixed text"}
+```
+
+Changes the text of one of your own messages in this room. The same rules as
+`save_message` apply to `message`. Deleted messages can't be edited.
+
+### `delete_message`
+
+```json
+{"type": "delete_message", "id": "8f5c…"}
+```
+
+Deletes one of your own messages for everyone. The text is removed from the
+database; the message stays as a "Message deleted" placeholder.
+
+Editing or deleting a message that is not yours, is already deleted, or does
+not exist in this room returns an `error` with `code: 403`.
+
 ### `clear_room`
 
 ```json
@@ -57,7 +78,9 @@ members keep their history.
   "user": "maya",
   "name": "Maya Rao",
   "initials": "MR",
-  "created_at": "2026-11-25T09:41:00.123456+00:00"
+  "created_at": "2026-11-25T09:41:00.123456+00:00",
+  "edited": false,
+  "deleted": false
 }
 ```
 
@@ -67,6 +90,12 @@ history from the same shape (`chat/presenters.py: message_data`).
 
 `message`, `user` and `name` are plain text. Clients must insert them as text
 (`textContent`), never as HTML.
+
+### `message_updated` (to every member connected to the room)
+
+Sent after an edit or delete, with the same fields as `save_message`. A deleted
+message has `"deleted": true` and an empty `message`; an edited one has
+`"edited": true`.
 
 ### `clear_room` (to the requesting socket only)
 

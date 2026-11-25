@@ -8,6 +8,7 @@
 | `/account/logout/` | `account:logout` | Signed in | POST only; returns to sign in |
 | `/chat/` | `chat:chat` | Signed in | Room list; `?room=<uuid>` opens a room |
 | `/chat/people/?q=` | `chat:people` | Signed in | JSON people search for New chat |
+| `/chat/rooms/<uuid>/messages/` | `chat:history` | Room members | JSON page of older messages: `?before=<message id>&limit=1..100` |
 | `/chat/new/direct/` | `chat:start_direct` | Signed in | POST `username`; opens or creates the direct chat |
 | `/chat/new/group/` | `chat:start_group` | Signed in | POST `name` and `members`; creates a group |
 | `/account/settings/` | `account:settings` | Signed in | Profile, appearance and password |
@@ -87,14 +88,21 @@ Styles `account/static/account/css/auth.css`, script
 
 - **Header**: avatar, title, connection status (Connecting…, Live,
   Reconnecting…) and member count, plus **Clear history**.
-- **Transcript**: the last 200 messages you can see, grouped one line per
+- **Transcript**: the latest 50 messages you can see; scrolling to the top
+  loads 50 more at a time ("Loading earlier messages…") until "Start of the
+  conversation". Messages are grouped one line per
   message. A new sender, a gap of more than 5 minutes or a new day starts a new
   group with the avatar and name; day separators read Today, Yesterday or the
   date. Times are shown in your local time zone; follow-up times appear on
   hover. Line breaks are kept. New messages keep the view pinned to the bottom
   unless you have scrolled up to read.
+- **Your messages** show Edit and Delete on hover or keyboard focus (always
+  visible on touch screens). Edit opens an inline box: Enter saves, Esc
+  cancels. Delete asks for confirmation and leaves "Message deleted" for
+  everyone. Edited messages show "(edited)". Changes reach everyone live, and
+  the sidebar preview follows edits and deletes of the latest message.
 - **Composer**: grows with the text up to about six lines. Enter sends,
-  Shift+Enter adds a line. Send is disabled while disconnected; the text stays
+  Shift+Enter adds a line, ↑ in an empty composer edits your last message. Send is disabled while disconnected; the text stays
   in the box.
 - **Clear history** asks for confirmation in a dialog (Cancel is the default)
   and hides the room's messages for you only.

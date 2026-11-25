@@ -3,6 +3,7 @@ import uuid
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -20,7 +21,21 @@ from chat.services import (
 
 User = get_user_model()
 
-HISTORY_LIMIT = 200
+PAGE_SIZE = 50
+
+
+def history_page(room, user, before=None, limit=PAGE_SIZE):
+    """Up to `limit` messages the user can see, oldest first, ending just
+    before `before` (a Message) when given. Returns (messages, has_more)."""
+    qs = Message.objects.filter(room=room, visible_for=user).select_related("user")
+    if before is not None:
+        qs = qs.filter(
+            Q(created_at__lt=before.created_at)
+            | Q(created_at=before.created_at, id__lt=before.id)
+        )
+    page = list(qs.order_by("-created_at", "-id")[: limit + 1])
+    has_more = len(page) > limit
+    return [message_data(m) for m in reversed(page[:limit])], has_more
 
 
 def room_url(room):
@@ -33,6 +48,7 @@ def chat(request):
     room = None
     room_summary = None
     room_messages = []
+    has_more = False
 
     room_id = request.GET.get("room")
     if room_id:
@@ -42,12 +58,7 @@ def chat(request):
             # Unknown ids and rooms the user is not a member of look the same.
             raise Http404("Room not found")
         room_summary = next(r for r in rooms if r["id"] == str(room.id))
-        recent = (
-            Message.objects.filter(room=room, visible_for=request.user)
-            .select_related("user")
-            .order_by("-created_at")[:HISTORY_LIMIT]
-        )
-        room_messages = [message_data(m) for m in reversed(recent)]
+        room_messages, has_more = history_page(room, request.user)
 
     me = display_name(request.user)
     context = {
@@ -56,6 +67,7 @@ def chat(request):
         "room": room,
         "room_summary": room_summary,
         "room_messages": room_messages,
+        "history": {"has_more": has_more, "page_size": PAGE_SIZE},
         "me": {"username": request.user.username, "name": me, "initials": initials(me)},
         "max_group_name": MAX_GROUP_NAME,
     }
@@ -99,3 +111,22 @@ def start_group(request):
         return redirect("chat:chat")
     messages.success(request, f"Created {room.name}.")
     return redirect(room_url(room))
+
+
+@login_required
+@require_GET
+def room_history(request, room_id):
+    """Older messages for infinite scroll: ?before=<message id>&limit=<1..100>."""
+    room = get_object_or_404(request.user.rooms, id=room_id)
+    before = None
+    if request.GET.get("before"):
+        try:
+            before = Message.objects.get(id=uuid.UUID(request.GET["before"]), room=room)
+        except (ValueError, Message.DoesNotExist):
+            return JsonResponse({"error": "Unknown message"}, status=400)
+    try:
+        limit = max(1, min(100, int(request.GET.get("limit", PAGE_SIZE))))
+    except ValueError:
+        limit = PAGE_SIZE
+    messages_, has_more = history_page(room, request.user, before, limit)
+    return JsonResponse({"messages": messages_, "has_more": has_more})

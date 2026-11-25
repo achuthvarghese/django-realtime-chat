@@ -30,9 +30,9 @@ def room_title(room, viewer):
 def rooms_for(user):
     """The user's rooms, most recently active first, with the last message
     they can still see."""
-    visible = Message.objects.filter(room=OuterRef("pk"), visible_for=user).order_by(
-        "-created_at"
-    )
+    visible = Message.objects.filter(
+        room=OuterRef("pk"), visible_for=user, deleted_at__isnull=True
+    ).order_by("-created_at")
     rooms = (
         user.rooms.all()
         .prefetch_related("members")
@@ -68,9 +68,11 @@ def message_data(message):
     name = display_name(message.user)
     return {
         "id": str(message.id),
-        "message": message.content,
+        "message": "" if message.is_deleted else message.content,
         "user": message.user.username,
         "name": name,
         "initials": initials(name),
         "created_at": message.created_at.isoformat(),
+        "edited": message.edited_at is not None and not message.is_deleted,
+        "deleted": message.is_deleted,
     }

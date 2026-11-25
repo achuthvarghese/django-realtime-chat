@@ -3,6 +3,22 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 5c: message actions and history
+
+### Added
+- Edit and delete your own messages: hover or focus actions, inline editing
+  (Enter saves, Esc cancels), ↑ in an empty composer to edit your last
+  message, a confirmation before deleting. Updates reach everyone live as
+  `message_updated` frames; messages show "(edited)" or "Message deleted".
+- Infinite scroll: the room opens with the latest 50 messages and loads 50
+  more when you scroll to the top, keeping your place.
+- `/chat/rooms/<uuid>/messages/` JSON history endpoint.
+- `Message.edited_at`, `Message.deleted_at` and a `(room, created_at)` index.
+
+### Changed
+- Deleting a message erases its text in the database.
+- Room previews skip deleted messages.
+
 ## Phase 5b: settings
 
 ### Added

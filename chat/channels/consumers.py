@@ -16,6 +16,9 @@ class WSChatType(str, Enum):
     CLEAR_ROOM = "clear_room"
     CHAT_RESPONSE = "chat_response"
     SAVE_MESSAGE = "save_message"
+    EDIT_MESSAGE = "edit_message"
+    DELETE_MESSAGE = "delete_message"
+    MESSAGE_UPDATED = "message_updated"
     ERROR = "error"
 
 
@@ -77,6 +80,8 @@ class ChatConsumer(WebsocketConsumer):
         handlers = {
             WSChatType.SAVE_MESSAGE.value: self.handle_save_message,
             WSChatType.CLEAR_ROOM.value: self.handle_clear_room,
+            WSChatType.EDIT_MESSAGE.value: self.handle_edit_message,
+            WSChatType.DELETE_MESSAGE.value: self.handle_delete_message,
         }
         handler = handlers.get(payload.get("type"))
         if handler is None:
@@ -86,14 +91,74 @@ class ChatConsumer(WebsocketConsumer):
 
     # Handlers
 
-    def handle_save_message(self, payload):
+    def clean_content(self, payload):
+        """Trimmed message text, or None after sending the sender an error."""
         content = payload.get("message")
         if not isinstance(content, str) or not content.strip():
             self.send_error("Message cannot be empty")
-            return
+            return None
         content = content.strip()
         if len(content) > MAX_MESSAGE_LENGTH:
             self.send_error(f"Message is longer than {MAX_MESSAGE_LENGTH} characters")
+            return None
+        return content
+
+    def own_message(self, payload):
+        """The sender's own, not deleted, message in this room named by `id`."""
+        try:
+            message_id = uuid.UUID(str(payload.get("id")))
+        except ValueError:
+            message_id = None
+        message = (
+            Message.objects.filter(
+                id=message_id, room=self.room, user=self.user, deleted_at__isnull=True
+            )
+            .select_related("user")
+            .first()
+            if message_id
+            else None
+        )
+        if message is None:
+            self.send_error("You can only change your own messages", code=403)
+        return message
+
+    def broadcast_update(self, message):
+        async_to_sync(self.channel_layer.group_send)(
+            self.room_group_name,
+            {
+                "type": WSChatType.CHAT_RESPONSE.value,
+                "data": {
+                    "type": WSChatType.MESSAGE_UPDATED.value,
+                    **message_data(message),
+                },
+            },
+        )
+
+    def handle_edit_message(self, payload):
+        content = self.clean_content(payload)
+        if content is None:
+            return
+        message = self.own_message(payload)
+        if message is None:
+            return
+        if content != message.content:
+            message.content = content
+            message.edited_at = timezone.now()
+            message.save(update_fields=["content", "edited_at"])
+        self.broadcast_update(message)
+
+    def handle_delete_message(self, payload):
+        message = self.own_message(payload)
+        if message is None:
+            return
+        message.deleted_at = timezone.now()
+        message.content = ""
+        message.save(update_fields=["deleted_at", "content"])
+        self.broadcast_update(message)
+
+    def handle_save_message(self, payload):
+        content = self.clean_content(payload)
+        if content is None:
             return
 
         message = Message.objects.create(
