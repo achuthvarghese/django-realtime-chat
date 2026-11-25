@@ -7,6 +7,9 @@
 | `/account/signup/` | `account:signup` | Signed out | Create account; signs the new user in |
 | `/account/logout/` | `account:logout` | Signed in | POST only; returns to sign in |
 | `/chat/` | `chat:chat` | Signed in | Room list; `?room=<uuid>` opens a room |
+| `/chat/people/?q=` | `chat:people` | Signed in | JSON people search for New chat |
+| `/chat/new/direct/` | `chat:start_direct` | Signed in | POST `username`; opens or creates the direct chat |
+| `/chat/new/group/` | `chat:start_group` | Signed in | POST `name` and `members`; creates a group |
 | `/styleguide/` | `core:styleguide` | Debug only | Component gallery |
 | `/admin/` | | Staff | Django admin |
 | `ws(s)://<host>/chat/<uuid>` | | Room members | Live room socket, see [websocket-protocol.md](./websocket-protocol.md) |
@@ -98,4 +101,20 @@ Styles `account/static/account/css/auth.css`, script
   messages sent in between are not replayed. Being signed out sends you to
   sign in; losing access to the room sends you back to the list.
 
-With no room open, the pane shows a short welcome and a hint to pick a chat.
+With no room open, the pane shows a short welcome with a New chat button.
+
+### New chat
+
+The **New chat** button (top of the sidebar, and on the welcome pane) opens a
+dialog with two tabs:
+
+- **Direct**: search by name or username (`@` optional). Picking a person
+  opens your existing private chat with them, or creates one. You can't start
+  a chat with yourself.
+- **Group**: give the group a name (up to 50 characters), search and add
+  people as chips (click again or × to remove), then **Create group**. You are
+  added automatically. Groups hold up to 50 members.
+
+Search matches usernames, first names, last names and "first last", ignores
+inactive accounts and returns up to 20 people. Errors (unknown people, missing
+name) appear as a notice above the chat.

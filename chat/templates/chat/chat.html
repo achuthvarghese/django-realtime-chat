@@ -8,6 +8,9 @@
     <nav class="chat-side on-chrome" aria-label="Chats">
         <div class="chat-side__top">
             <a class="wordmark" href="{% url 'chat:chat' %}">relay</a>
+            <button class="btn btn--primary btn--sm chat-side__new" type="button" data-open-new-chat aria-haspopup="dialog">
+                <span aria-hidden="true">+</span><span class="chat-side__new-label">New chat</span>
+            </button>
         </div>
 
         {% if rooms %}
@@ -32,7 +35,7 @@
                 </a>
             </li>
             {% empty %}
-            <li class="room-list__empty">No chats yet. An admin can add you to a room for now; starting chats from here is coming next.</li>
+            <li class="room-list__empty">No chats yet. Use New chat to message someone or start a group.</li>
             {% endfor %}
         </ul>
         <p class="room-list__nomatch" id="room-nomatch" hidden>No chats match.</p>
@@ -52,6 +55,7 @@
     </nav>
 
     <main id="main" class="chat-main">
+        {% if messages %}<div class="chat-notices">{% include "core/partials/notices.html" %}</div>{% endif %}
         {% if room %}
         <header class="chat-head">
             <a class="chat-head__back btn btn--ghost btn--icon" href="{% url 'chat:chat' %}" aria-label="Back to chats">←</a>
@@ -102,14 +106,56 @@
                 <div class="msg"><span class="msg__time">now</span><span class="msg__node avatar avatar--mine">{{ me.initials }}</span><span class="msg__body"><span class="msg__name">You</span>opened Relay</span></div>
             </div>
             <h1>{% if rooms %}Pick a chat{% else %}Welcome, {{ me.name }}{% endif %}</h1>
-            <p class="muted">{% if rooms %}Choose a conversation from the list to pick up the thread.{% else %}You're not in any chats yet. Once someone adds you to a room it shows up here.{% endif %}</p>
+            <p class="muted">{% if rooms %}Choose a conversation from the list, or start a new one.{% else %}You're not in any chats yet. Message someone or start a group.{% endif %}</p>
+            <div><button class="btn btn--primary" type="button" data-open-new-chat aria-haspopup="dialog">New chat</button></div>
         </div>
         {% endif %}
     </main>
 </div>
+
+<dialog class="new-chat" id="new-chat" aria-labelledby="new-chat-title">
+    <div class="new-chat__head">
+        <h2 id="new-chat-title">New chat</h2>
+        <form method="dialog"><button class="btn btn--ghost btn--icon btn--sm" aria-label="Close">×</button></form>
+    </div>
+    <div class="segmented new-chat__tabs" role="tablist" aria-label="Chat type">
+        <label><input type="radio" name="new-chat-kind" value="direct" checked data-tab="new-chat-direct"><span>Direct</span></label>
+        <label><input type="radio" name="new-chat-kind" value="group" data-tab="new-chat-group"><span>Group</span></label>
+    </div>
+
+    <section id="new-chat-direct" class="new-chat__panel">
+        <form method="post" action="{% url 'chat:start_direct' %}" id="direct-form">
+            {% csrf_token %}
+            <input type="hidden" name="username" id="direct-username">
+        </form>
+        <div class="field">
+            <label class="field__label" for="direct-q">Find someone by name or username</label>
+            <input class="input" type="search" id="direct-q" autocomplete="off" placeholder="e.g. Maya or @maya" data-people-search="direct">
+        </div>
+        <ul class="people" id="direct-results" aria-live="polite"></ul>
+    </section>
+
+    <section id="new-chat-group" class="new-chat__panel" hidden>
+        <form method="post" action="{% url 'chat:start_group' %}" class="new-chat__group" id="group-form">
+            {% csrf_token %}
+            <div class="field">
+                <label class="field__label" for="group-name">Group name</label>
+                <input class="input" id="group-name" name="name" maxlength="{{ max_group_name }}" required placeholder="e.g. Design team">
+            </div>
+            <div class="field">
+                <label class="field__label" for="group-q">Add people</label>
+                <input class="input" type="search" id="group-q" autocomplete="off" placeholder="Search by name or username" data-people-search="group">
+            </div>
+            <ul class="chips" id="group-members" aria-label="Members to add"></ul>
+            <ul class="people" id="group-results" aria-live="polite"></ul>
+            <button class="btn btn--primary btn--block" type="submit" id="group-create" disabled>Create group</button>
+        </form>
+    </section>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 {{ me.username|json_script:"me" }}
+<script src="{% static 'chat/js/new-chat.js' %}" defer></script>
 <script src="{% static 'chat/js/chat.js' %}" defer></script>
 {% endblock %}

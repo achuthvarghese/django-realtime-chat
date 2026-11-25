@@ -3,6 +3,19 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 5a: start chats
+
+### Added
+- **New chat** dialog: search people by name or username and open a direct
+  chat (reusing an existing one), or name a group and add people as chips.
+- `/chat/people/` JSON search, and POST endpoints to start direct chats and
+  create groups, with validation (no chats with yourself, group name up to 50
+  characters, 1 to 49 other members, active users only).
+- Flash notices on the chat screen.
+
+### Fixed
+- An empty room no longer shows a bare spine above "No messages yet".
+
 ## Phase 4: chat screen
 
 ### Added

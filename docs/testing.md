@@ -17,7 +17,7 @@ hasher. No `.env` or Redis is needed.
 | --- | --- |
 | `account/tests.py` | Login, signup, logout, `next` redirects, validation and the auth screens |
 | `core/tests.py` | Theme options, palette keys in sync across Python/CSS/JS, base template, error pages, home page |
-| `chat/tests.py` | Chat view access, room list order and previews, history limit, initials, WebSocket auth, membership, message handling and broadcast shape |
+| `chat/tests.py` | Chat view access, room list order and previews, history limit, initials, WebSocket auth, membership, message handling, broadcast shape, people search, direct and group creation |
 
 WebSocket tests use `channels.testing.WebsocketCommunicator` against the full
 ASGI application, so routing and origin validation are exercised too. Mark

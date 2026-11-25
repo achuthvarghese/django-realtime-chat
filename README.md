@@ -13,8 +13,8 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-Open http://localhost:8000 and create an account. Rooms are created from the
-Django admin at `/admin/` for now; starting chats in the app is on the roadmap.
+Open http://localhost:8000, create an account, then use **New chat** to
+message someone or start a group.
 
 Or with Docker: `docker compose up --build`.
 
