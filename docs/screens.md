@@ -10,6 +10,8 @@
 | `/chat/people/?q=` | `chat:people` | Signed in | JSON people search for New chat |
 | `/chat/new/direct/` | `chat:start_direct` | Signed in | POST `username`; opens or creates the direct chat |
 | `/chat/new/group/` | `chat:start_group` | Signed in | POST `name` and `members`; creates a group |
+| `/account/settings/` | `account:settings` | Signed in | Profile, appearance and password |
+| `/account/settings/appearance/` | `account:appearance` | Signed in | POST any of `palette`, `mode`, `density`; JSON when `Accept: application/json` |
 | `/styleguide/` | `core:styleguide` | Debug only | Component gallery |
 | `/admin/` | | Staff | Django admin |
 | `ws(s)://<host>/chat/<uuid>` | | Room members | Live room socket, see [websocket-protocol.md](./websocket-protocol.md) |
@@ -118,3 +120,20 @@ dialog with two tabs:
 Search matches usernames, first names, last names and "first last", ignores
 inactive accounts and returns up to 20 people. Errors (unknown people, missing
 name) appear as a notice above the chat.
+
+## Settings
+
+`/account/settings/`, reached from your name at the bottom of the chat sidebar.
+A chrome side menu (a top bar on phones) links to three sections:
+
+- **Profile**: first name, last name and email (required, validated). Saving
+  shows "Profile saved."
+- **Appearance**: the full theme picker. Each change applies at once and is
+  saved to your account, so every device you sign in on uses it. "Saved."
+  confirms; if saving fails the choice still applies on this device. Without
+  JavaScript, a Save button posts the form.
+- **Password**: current password plus the new one twice, checked against the
+  password rules. You stay signed in after changing it.
+
+Each form posts its own `section`, so an error in one never clears another.
+The palette picked during signup is saved as your first preference.

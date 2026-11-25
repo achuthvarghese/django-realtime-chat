@@ -47,8 +47,13 @@ Paper switches its chrome to graphite tones in dark mode.
 2. An inline script in `base.html` applies the choice saved on this device
    (`localStorage` keys `relay.palette`, `relay.mode`, `relay.density`) before
    the first paint, so there is no flash.
-3. Signed-in users' saved preferences (settings phase) will be rendered by the
-   server with `data-theme-source="server"`, which the inline script respects.
+3. For signed-in users the server renders their saved
+   [`Preference`](./data-model.md#accountpreference) with
+   `data-theme-source="server"`, so the inline script leaves it alone.
+   `theme.js` then also POSTs every change to `data-theme-save-url`
+   (`/account/settings/appearance/`) using the CSRF token from
+   `<meta name="csrf-token">`, and fires `relay:theme-save-failed` if that
+   fails.
 
 Any element with `data-theme-control` containing radio inputs named
 `palette`, `mode` or `density` (or with `data-axis` set to one of those, so a
@@ -92,16 +97,17 @@ Use tokens, never literal colours, in components.
 | `.shell`, `.shell__side`, `.shell__main` | App layout: chrome sidebar plus reading pane |
 | `.on-chrome` | Paints an element with chrome colours and adapts buttons and inputs inside |
 | `.page-center` | Centred single-column page |
+| `.password`, `.password__toggle` | Show/Hide button inside a password input |
 
 Screen-specific components live with their screens:
 
 | Class | File | Notes |
 | --- | --- | --- |
 | `.auth`, `.auth__aside`, `.auth__panel` | `account/css/auth.css` | Two-column sign-in layout |
-| `.password`, `.password__toggle` | `account/css/auth.css` | Show/Hide button inside a password input |
 | `.form-spine`, `.form-spine__step` | `account/css/auth.css` | Form groups as spine nodes; `is-done`, `has-error` |
 | `.palette-chip` | `account/css/auth.css` | Compact palette radio |
 | `.home-hero`, `.home-demo`, `.feature-spine` | `core/css/home.css` | Home page |
+| `.settings`, `.settings__nav`, `.settings__section` | `account/css/settings.css` | Settings page |
 | `.chat`, `.chat-side`, `.room-link`, `.chat-head`, `.status`, `.chat-toast`, `.confirm` | `chat/css/chat.css` | Chat screen; see [screens.md](./screens.md#chat) |
 
 ### Transcript

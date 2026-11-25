@@ -3,6 +3,21 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 5b: settings
+
+### Added
+- Settings page at `/account/settings/` with Profile (name, email), Appearance
+  and Password sections, linked from your name in the chat sidebar.
+- `Preference` model: palette, mode and density saved to the account. Pages
+  render the saved theme for signed-in users and the theme picker saves each
+  change, so the choice follows you across devices.
+- The palette picked during signup is saved as the first preference.
+- `docs/data-model.md`.
+
+### Changed
+- The Show/Hide password control moved into the shared stylesheet so it works
+  on light surfaces as well as on the sign-in screens.
+
 ## Phase 5a: start chats
 
 ### Added
