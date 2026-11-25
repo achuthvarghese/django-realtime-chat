@@ -3,6 +3,11 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Fixes after phase 5
+
+- Touch screens no longer show Edit and Delete on every one of your messages;
+  tap a message to show its actions.
+
 ## Phase 5d: presence, typing and unread
 
 ### Added
