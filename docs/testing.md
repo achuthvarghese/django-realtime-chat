@@ -35,6 +35,6 @@ isort .
 `.github/workflows/python_code_checks.yml` runs on pushes and pull requests to
 `master` and `dev`:
 
-- **lint**: `black --check` and `isort --check`
+- **check_format_and_imports** (required on `master`): `black --check` and `isort --check`
 - **test**: on Python 3.12 and 3.13, checks for missing migrations, runs
   `manage.py check`, then `pytest`
