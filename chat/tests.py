@@ -49,6 +49,23 @@ class TestChatView:
         assert [m["id"] for m in response.context["room_messages"]] == [str(message.id)]
 
 
+def make_messages(room, user, count):
+    """`count` messages m0..m{count-1}, one second apart, visible to members."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    start = timezone.now() - timedelta(seconds=count)
+    members = list(room.members.all())
+    created = []
+    for i in range(count):
+        m = Message.objects.create(content=f"m{i}", room=room, user=user)
+        Message.objects.filter(pk=m.pk).update(created_at=start + timedelta(seconds=i))
+        m.visible_for.add(*members)
+        created.append(m)
+    return created
+
+
 def make_communicator(room_id, user=None):
     communicator = WebsocketCommunicator(
         application, f"/chat/{room_id}", headers=[(b"origin", b"http://localhost")]
@@ -269,17 +286,15 @@ class TestChatScreen:
         assert response.context["room_summary"]["initials"] == "AK"
 
     def test_history_is_limited_and_in_order(self, client, maya, room):
-        from chat.views import HISTORY_LIMIT
+        from chat.views import PAGE_SIZE
 
-        for i in range(HISTORY_LIMIT + 5):
-            m = Message.objects.create(content=f"m{i}", room=room, user=maya)
-            m.visible_for.add(maya)
+        make_messages(room, maya, PAGE_SIZE + 5)
         client.force_login(maya)
-        messages = client.get(reverse("chat:chat"), {"room": room.id}).context[
-            "room_messages"
-        ]
-        assert len(messages) == HISTORY_LIMIT
-        assert messages[-1]["message"] == f"m{HISTORY_LIMIT + 4}"
+        response = client.get(reverse("chat:chat"), {"room": room.id})
+        messages = response.context["room_messages"]
+        assert len(messages) == PAGE_SIZE
+        assert messages[-1]["message"] == f"m{PAGE_SIZE + 4}"
+        assert response.context["history"]["has_more"] is True
 
     def test_message_text_cannot_break_out_of_json(self, client, maya, room):
         m = Message.objects.create(content="</script><b>x</b>", room=room, user=maya)
@@ -422,3 +437,139 @@ class TestStartGroup:
         html = client.get(reverse("chat:chat")).content.decode()
         assert 'id="new-chat"' in html
         assert reverse("chat:start_group") in html
+
+
+@pytest.mark.django_db
+class TestHistoryEndpoint:
+    def url(self, room):
+        return reverse("chat:history", args=[room.id])
+
+    def test_pages_backwards_without_gaps(self, client, maya, room):
+        make_messages(room, maya, 120)
+        client.force_login(maya)
+        first = client.get(self.url(room)).json()
+        assert [m["message"] for m in first["messages"]][-1] == "m119"
+        assert first["has_more"] is True
+        seen = [m["message"] for m in first["messages"]]
+        before = first["messages"][0]["id"]
+        while True:
+            page = client.get(self.url(room), {"before": before}).json()
+            seen = [m["message"] for m in page["messages"]] + seen
+            if not page["has_more"]:
+                break
+            before = page["messages"][0]["id"]
+        assert seen == [f"m{i}" for i in range(120)]
+
+    def test_limit_is_clamped(self, client, maya, room):
+        make_messages(room, maya, 5)
+        client.force_login(maya)
+        assert len(client.get(self.url(room), {"limit": 2}).json()["messages"]) == 2
+        assert len(client.get(self.url(room), {"limit": 0}).json()["messages"]) == 1
+        assert len(client.get(self.url(room), {"limit": "x"}).json()["messages"]) == 5
+
+    def test_non_member_gets_404(self, client, room):
+        outsider = User.objects.create_user("eve", password="pw")
+        client.force_login(outsider)
+        assert client.get(self.url(room)).status_code == 404
+
+    def test_unknown_before_is_400(self, client, maya, room):
+        client.force_login(maya)
+        response = client.get(self.url(room), {"before": "not-a-uuid"})
+        assert response.status_code == 400
+
+    def test_hides_cleared_messages(self, client, maya, arjun, room):
+        hidden = make_messages(room, arjun, 1)[0]
+        hidden.visible_for.remove(maya)
+        client.force_login(maya)
+        assert client.get(self.url(room)).json()["messages"] == []
+
+
+@pytest.mark.django_db(transaction=True)
+class TestEditDelete:
+    async def connect_pair(self, maya, arjun, room):
+        sender = make_communicator(room.id, maya)
+        other = make_communicator(room.id, arjun)
+        await sender.connect()
+        await other.connect()
+        await sender.send_json_to({"type": "save_message", "message": "first"})
+        saved = await sender.receive_json_from()
+        await other.receive_json_from()
+        return sender, other, saved["id"]
+
+    async def test_edit_own_message(self, maya, arjun, room):
+        sender, other, message_id = await self.connect_pair(maya, arjun, room)
+        await sender.send_json_to(
+            {"type": "edit_message", "id": message_id, "message": " second "}
+        )
+        update = await other.receive_json_from()
+        assert update["type"] == "message_updated"
+        assert (update["message"], update["edited"], update["deleted"]) == (
+            "second",
+            True,
+            False,
+        )
+        stored = await database_sync_to_async(Message.objects.get)(id=message_id)
+        assert stored.content == "second" and stored.edited_at is not None
+        await sender.disconnect()
+        await other.disconnect()
+
+    async def test_delete_own_message_clears_content(self, maya, arjun, room):
+        sender, other, message_id = await self.connect_pair(maya, arjun, room)
+        await sender.send_json_to({"type": "delete_message", "id": message_id})
+        update = await other.receive_json_from()
+        assert (update["deleted"], update["message"]) == (True, "")
+        stored = await database_sync_to_async(Message.objects.get)(id=message_id)
+        assert stored.content == "" and stored.deleted_at is not None
+        await sender.disconnect()
+        await other.disconnect()
+
+    async def test_cannot_change_someone_elses_message(self, maya, arjun, room):
+        sender, other, message_id = await self.connect_pair(maya, arjun, room)
+        for payload in (
+            {"type": "edit_message", "id": message_id, "message": "hacked"},
+            {"type": "delete_message", "id": message_id},
+        ):
+            await other.send_json_to(payload)
+            error = await other.receive_json_from()
+            assert (error["type"], error["code"]) == ("error", 403)
+        assert await sender.receive_nothing()
+        stored = await database_sync_to_async(Message.objects.get)(id=message_id)
+        assert stored.content == "first"
+        await sender.disconnect()
+        await other.disconnect()
+
+    async def test_cannot_edit_deleted_or_empty(self, maya, arjun, room):
+        sender, other, message_id = await self.connect_pair(maya, arjun, room)
+        await sender.send_json_to(
+            {"type": "edit_message", "id": message_id, "message": "  "}
+        )
+        assert (await sender.receive_json_from())["type"] == "error"
+        await sender.send_json_to({"type": "delete_message", "id": message_id})
+        await sender.receive_json_from()
+        await other.receive_json_from()
+        await sender.send_json_to(
+            {"type": "edit_message", "id": message_id, "message": "back"}
+        )
+        assert (await sender.receive_json_from())["code"] == 403
+        await sender.disconnect()
+        await other.disconnect()
+
+    async def test_bad_id_is_rejected(self, maya, room):
+        sender = make_communicator(room.id, maya)
+        await sender.connect()
+        await sender.send_json_to({"type": "delete_message", "id": "nope"})
+        assert (await sender.receive_json_from())["code"] == 403
+        await sender.disconnect()
+
+
+@pytest.mark.django_db
+class TestDeletedInViews:
+    def test_deleted_message_hidden_from_preview_and_payload(self, client, maya, room):
+        from django.utils import timezone
+
+        m = make_messages(room, maya, 1)[0]
+        Message.objects.filter(pk=m.pk).update(deleted_at=timezone.now(), content="")
+        client.force_login(maya)
+        response = client.get(reverse("chat:chat"), {"room": room.id})
+        assert response.context["rooms"][0]["last_content"] == ""
+        assert response.context["room_messages"][0]["deleted"] is True
