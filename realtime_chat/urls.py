@@ -8,6 +8,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("chat.urls")),
     path("account/", include("account.urls")),
+    path("", include("core.urls")),
 ]
 
 if settings.ENABLE_DEBUG_TOOLBAR:
