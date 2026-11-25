@@ -32,6 +32,7 @@ Or with Docker: `docker compose up --build`.
 
 - [Setup and configuration](./docs/setup.md): local, Docker, environment variables, production notes
 - [Testing](./docs/testing.md): running the suite, layout, CI
+- [Design system](./docs/design-system.md): Signal tokens, palettes, components
 - [WebSocket protocol](./docs/websocket-protocol.md): connection rules and message frames
 - [Changelog](./CHANGELOG.md)
 
@@ -45,6 +46,7 @@ Or with Docker: `docker compose up --build`.
 
 ```
 account/        login, signup, logout
+core/           design system, base template, error pages
 chat/           rooms, messages, chat view
 chat/channels/  WebSocket consumer and routing
 realtime_chat/  settings, URLs, ASGI/WSGI entry points
