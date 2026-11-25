@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
+from chat import presence
 from chat.models import Message
 from chat.presenters import display_name, initials, message_data, rooms_for
 from chat.services import (
@@ -57,7 +58,9 @@ def chat(request):
         except (ValueError, request.user.rooms.model.DoesNotExist):
             # Unknown ids and rooms the user is not a member of look the same.
             raise Http404("Room not found")
+        presence.mark_read(request.user, room)
         room_summary = next(r for r in rooms if r["id"] == str(room.id))
+        room_summary["unread"] = 0
         room_messages, has_more = history_page(room, request.user)
 
     me = display_name(request.user)

@@ -3,6 +3,7 @@
 from django.db.models import OuterRef, Subquery
 
 from chat.models import Message, Room
+from chat.presence import unread_counts
 
 
 def initials(name):
@@ -42,9 +43,12 @@ def rooms_for(user):
             last_user_id=Subquery(visible.values("user_id")[:1]),
         )
     )
+    rooms = list(rooms)
+    unread = unread_counts(user, [r.pk for r in rooms])
     summaries = []
     for room in rooms:
         title = room_title(room, user)
+        others = [m for m in room.members.all() if m.pk != user.pk]
         summaries.append(
             {
                 "id": str(room.id),
@@ -55,6 +59,13 @@ def rooms_for(user):
                 "last_content": room.last_content or "",
                 "last_at": room.last_at,
                 "last_is_mine": room.last_user_id == user.pk,
+                "unread": unread[room.pk],
+                "other_username": (
+                    others[0].username
+                    if room.type == Room.RoomTypes.PRIVATE and len(others) == 1
+                    else ""
+                ),
+                "member_usernames": [m.username for m in room.members.all()],
                 "sort_key": room.last_at or room.created_at,
             }
         )
