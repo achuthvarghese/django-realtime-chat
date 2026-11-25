@@ -80,14 +80,22 @@ Styles `account/static/account/css/auth.css`, script
   rooms) or the room name (groups), the last message you can still see
   (prefixed "You:" when it was yours) and its time: clock time today,
   "Yesterday", or a short date.
-- Group rooms have round avatars; private rooms square.
+- Group rooms have round avatars; private rooms square, with a dot that turns
+  green while the other person is online.
+- Rooms with unread messages show a count badge and bold text; the browser
+  tab title shows the total, for example "(3) Chats · Relay". New messages in
+  other rooms update the preview and move the room to the top live. A room
+  created by someone else while the page is open shows a "New conversation ·
+  Refresh" prompt.
 - "Find a chat" filters the list as you type.
 - The footer shows you, the Theme menu and Sign out.
 
 ### Open room
 
 - **Header**: avatar, title, connection status (Connecting…, Live,
-  Reconnecting…) and member count, plus **Clear history**.
+  Reconnecting…), then "Online"/"Offline" for a private chat or "N members ·
+  N online" for a group, a "… is typing…" indicator, and **Clear history**.
+  Opening a room marks it read.
 - **Transcript**: the latest 50 messages you can see; scrolling to the top
   loads 50 more at a time ("Loading earlier messages…") until "Start of the
   conversation". Messages are grouped one line per
