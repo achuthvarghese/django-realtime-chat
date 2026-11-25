@@ -200,3 +200,169 @@ class TestAuthScreens:
             },
         )
         assert not User.objects.filter(username="bad name!").exists()
+
+
+@pytest.mark.django_db
+class TestSettings:
+    def test_requires_login(self, client):
+        response = client.get(reverse("account:settings"))
+        assert response.status_code == 302
+
+    def test_page_renders_sections(self, client, user):
+        client.force_login(user)
+        html = client.get(reverse("account:settings")).content.decode()
+        for anchor in ('id="profile"', 'id="appearance"', 'id="security"'):
+            assert anchor in html
+        assert 'data-theme-save-url="/account/settings/appearance/"' in html
+        assert 'name="csrf-token"' in html
+
+    def test_update_profile(self, client, user):
+        client.force_login(user)
+        response = client.post(
+            reverse("account:settings"),
+            {
+                "section": "profile",
+                "first_name": "Maya",
+                "last_name": "Rao",
+                "email": "maya@new.example",
+            },
+        )
+        assert response.url == reverse("account:settings")
+        user.refresh_from_db()
+        assert (user.first_name, user.last_name, user.email) == (
+            "Maya",
+            "Rao",
+            "maya@new.example",
+        )
+
+    def test_profile_requires_valid_email(self, client, user):
+        client.force_login(user)
+        response = client.post(
+            reverse("account:settings"),
+            {"section": "profile", "first_name": "M", "last_name": "R", "email": "x"},
+        )
+        assert response.status_code == 200
+        assert 'id="email-error"' in response.content.decode()
+
+    def test_change_password_keeps_session(self, client, user):
+        client.force_login(user)
+        new = "an0ther-Strong-pass"
+        response = client.post(
+            reverse("account:settings"),
+            {
+                "section": "password",
+                "old_password": PASSWORD,
+                "new_password1": new,
+                "new_password2": new,
+            },
+        )
+        assert response.status_code == 302
+        user.refresh_from_db()
+        assert user.check_password(new)
+        assert client.get(reverse("account:settings")).status_code == 200
+
+    def test_wrong_old_password_is_rejected(self, client, user):
+        client.force_login(user)
+        response = client.post(
+            reverse("account:settings"),
+            {
+                "section": "password",
+                "old_password": "nope",
+                "new_password1": "an0ther-Strong-pass",
+                "new_password2": "an0ther-Strong-pass",
+            },
+        )
+        assert response.status_code == 200
+        user.refresh_from_db()
+        assert user.check_password(PASSWORD)
+
+
+@pytest.mark.django_db
+class TestAppearance:
+    def test_json_save_partial(self, client, user):
+        from account.models import Preference
+
+        client.force_login(user)
+        response = client.post(
+            reverse("account:appearance"),
+            {"palette": "plum"},
+            HTTP_ACCEPT="application/json",
+        )
+        assert response.json() == {
+            "ok": True,
+            "palette": "plum",
+            "mode": "system",
+            "density": "compact",
+        }
+        client.post(
+            reverse("account:appearance"),
+            {"mode": "dark"},
+            HTTP_ACCEPT="application/json",
+        )
+        pref = Preference.objects.get(user=user)
+        assert (pref.palette, pref.mode) == ("plum", "dark")
+
+    def test_invalid_value_rejected(self, client, user):
+        client.force_login(user)
+        response = client.post(
+            reverse("account:appearance"),
+            {"palette": "neon"},
+            HTTP_ACCEPT="application/json",
+        )
+        assert response.status_code == 400
+
+    def test_form_post_redirects(self, client, user):
+        client.force_login(user)
+        response = client.post(
+            reverse("account:appearance"), {"density": "comfortable"}
+        )
+        assert response.url == reverse("account:settings")
+
+    def test_saved_theme_renders_from_server(self, client, user):
+        from account.models import Preference
+
+        Preference.objects.create(user=user, palette="moss", mode="light")
+        client.force_login(user)
+        html = client.get(reverse("chat:chat")).content.decode()
+        assert 'data-palette="moss"' in html
+        assert 'data-mode="light"' in html
+        assert 'data-theme-source="server"' in html
+
+    def test_requires_login_and_post(self, client, user):
+        assert client.post(reverse("account:appearance")).status_code == 302
+        client.force_login(user)
+        assert client.get(reverse("account:appearance")).status_code == 405
+
+    def test_signup_saves_chosen_palette(self, client):
+        from account.models import Preference
+
+        client.post(
+            reverse("account:signup"),
+            {
+                "first_name": "Neo",
+                "last_name": "A",
+                "username": "neo",
+                "email": "neo@example.com",
+                "password1": PASSWORD,
+                "password2": PASSWORD,
+                "signup_palette": "slate",
+            },
+        )
+        assert Preference.objects.get(user__username="neo").palette == "slate"
+
+    def test_signup_ignores_unknown_palette(self, client):
+        from account.models import Preference
+
+        client.post(
+            reverse("account:signup"),
+            {
+                "first_name": "Neo",
+                "last_name": "A",
+                "username": "neo",
+                "email": "neo@example.com",
+                "password1": PASSWORD,
+                "password2": PASSWORD,
+                "signup_palette": "neon",
+            },
+        )
+        assert not Preference.objects.filter(user__username="neo").exists()
