@@ -62,6 +62,7 @@ def make_messages(room, user, count):
         m = Message.objects.create(content=f"m{i}", room=room, user=user)
         Message.objects.filter(pk=m.pk).update(created_at=start + timedelta(seconds=i))
         m.visible_for.add(*members)
+        m.refresh_from_db()
         created.append(m)
     return created
 
@@ -573,3 +574,185 @@ class TestDeletedInViews:
         response = client.get(reverse("chat:chat"), {"room": room.id})
         assert response.context["rooms"][0]["last_content"] == ""
         assert response.context["room_messages"][0]["deleted"] is True
+
+
+@pytest.mark.django_db
+class TestUnreadCounts:
+    def test_counts_messages_from_others_after_last_read(self, maya, arjun, room):
+        from datetime import timedelta
+
+        from chat.presence import mark_read, unread_count
+
+        msgs = make_messages(room, arjun, 3)
+        make_messages(room, maya, 1)  # own messages never count
+        assert unread_count(maya, room) == 3
+        mark_read(maya, room, msgs[0].created_at + timedelta(milliseconds=1))
+        assert unread_count(maya, room) == 2
+
+    def test_skips_deleted_and_cleared(self, maya, arjun, room):
+        from django.utils import timezone
+
+        from chat.presence import unread_count
+
+        deleted, cleared, kept = make_messages(room, arjun, 3)
+        Message.objects.filter(pk=deleted.pk).update(deleted_at=timezone.now())
+        cleared.visible_for.remove(maya)
+        assert unread_count(maya, room) == 1
+
+    def test_opening_room_marks_it_read(self, client, maya, arjun, room):
+        make_messages(room, arjun, 2)
+        client.force_login(maya)
+        listed = client.get(reverse("chat:chat")).context["rooms"]
+        assert listed[0]["unread"] == 2
+        opened = client.get(reverse("chat:chat"), {"room": room.id}).context
+        assert opened["room_summary"]["unread"] == 0
+        assert client.get(reverse("chat:chat")).context["rooms"][0]["unread"] == 0
+
+    def test_room_summary_has_presence_fields(self, client, maya, arjun, room):
+        client.force_login(maya)
+        summary = client.get(reverse("chat:chat")).context["rooms"][0]
+        assert summary["other_username"] == "arjun"
+        assert sorted(summary["member_usernames"]) == ["arjun", "maya"]
+
+
+@pytest.mark.django_db
+class TestPresenceHelpers:
+    def test_online_window(self, maya):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from chat.models import Connection
+        from chat.presence import ONLINE_WINDOW, is_online, open_connection
+
+        assert open_connection(maya, "c1") is True
+        assert open_connection(maya, "c2") is False  # already online
+        assert is_online(maya)
+        Connection.objects.update(
+            last_seen=timezone.now() - ONLINE_WINDOW - timedelta(1)
+        )
+        assert not is_online(maya)
+
+    def test_close_reports_last_connection(self, maya):
+        from chat.presence import close_connection, open_connection
+
+        open_connection(maya, "c1")
+        open_connection(maya, "c2")
+        assert close_connection(maya, "c1") is False
+        assert close_connection(maya, "c2") is True
+
+
+def make_inbox(user):
+    communicator = WebsocketCommunicator(
+        application, "/inbox/", headers=[(b"origin", b"http://localhost")]
+    )
+    communicator.scope["user"] = user
+    return communicator
+
+
+@pytest.mark.django_db(transaction=True)
+class TestLiveFeatures:
+    async def test_typing_reaches_others_and_is_throttled(self, maya, arjun, room):
+        sender = make_communicator(room.id, maya)
+        other = make_communicator(room.id, arjun)
+        await sender.connect()
+        await other.connect()
+        await sender.send_json_to({"type": "typing"})
+        await sender.send_json_to({"type": "typing"})  # within a second: dropped
+        event = await other.receive_json_from()
+        assert (event["type"], event["user"]) == ("typing", "maya")
+        assert await other.receive_nothing(timeout=0.3)
+        await sender.disconnect()
+        await other.disconnect()
+
+    async def test_read_frame_updates_read_state(self, maya, arjun, room):
+        from chat.models import ReadState
+
+        make = database_sync_to_async(make_messages)
+        await make(room, arjun, 2)
+        communicator = make_communicator(room.id, maya)
+        await communicator.connect()
+        await communicator.send_json_to({"type": "read"})
+        await communicator.receive_nothing(timeout=0.2)
+        count = await database_sync_to_async(
+            ReadState.objects.filter(user=maya, room=room).count
+        )()
+        assert count == 1
+        await communicator.disconnect()
+
+    async def test_inbox_requires_login(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        connected, code = await make_inbox(AnonymousUser()).connect()
+        assert (connected, code) == (False, 4401)
+
+    async def test_presence_snapshot_and_updates(self, maya, arjun, room):
+        arjun_inbox = make_inbox(arjun)
+        await arjun_inbox.connect()
+        assert (await arjun_inbox.receive_json_from()) == {
+            "type": "presence_snapshot",
+            "online": [],
+        }
+
+        maya_inbox = make_inbox(maya)
+        await maya_inbox.connect()
+        assert (await maya_inbox.receive_json_from())["online"] == ["arjun"]
+        assert (await arjun_inbox.receive_json_from()) == {
+            "type": "presence",
+            "user": "maya",
+            "online": True,
+        }
+
+        await maya_inbox.send_json_to({"type": "ping"})
+        assert (await maya_inbox.receive_json_from())["type"] == "presence_snapshot"
+
+        await maya_inbox.disconnect()
+        assert (await arjun_inbox.receive_json_from()) == {
+            "type": "presence",
+            "user": "maya",
+            "online": False,
+        }
+        await arjun_inbox.disconnect()
+
+    async def test_presence_not_sent_to_strangers(self, maya, room):
+        stranger = await database_sync_to_async(User.objects.create_user)(
+            "eve", password="pw"
+        )
+        eve_inbox = make_inbox(stranger)
+        await eve_inbox.connect()
+        await eve_inbox.receive_json_from()
+        maya_inbox = make_inbox(maya)
+        await maya_inbox.connect()
+        await maya_inbox.receive_json_from()
+        assert await eve_inbox.receive_nothing(timeout=0.3)
+        await maya_inbox.disconnect()
+        await eve_inbox.disconnect()
+
+    async def test_new_message_reaches_inboxes_with_unread(self, maya, arjun, room):
+        arjun_inbox = make_inbox(arjun)
+        await arjun_inbox.connect()
+        await arjun_inbox.receive_json_from()  # snapshot
+
+        sender = make_communicator(room.id, maya)
+        await sender.connect()
+        await sender.send_json_to({"type": "save_message", "message": "ping"})
+        await sender.receive_json_from()
+
+        activity = await arjun_inbox.receive_json_from()
+        assert activity["type"] == "room_activity"
+        assert activity["room"] == str(room.id)
+        assert activity["unread"] == 1
+        assert activity["message"]["message"] == "ping"
+        await sender.disconnect()
+        await arjun_inbox.disconnect()
+
+    async def test_sending_marks_sender_read(self, maya, arjun, room):
+        from chat.presence import unread_count
+
+        await database_sync_to_async(make_messages)(room, arjun, 2)
+        sender = make_communicator(room.id, maya)
+        await sender.connect()
+        await sender.send_json_to({"type": "save_message", "message": "reply"})
+        await sender.receive_json_from()
+        assert await database_sync_to_async(unread_count)(maya, room) == 0
+        await sender.disconnect()
