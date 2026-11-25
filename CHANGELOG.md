@@ -3,6 +3,24 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 6: documentation
+
+### Added
+- `docs/architecture.md`: components diagram, apps and modules, request and
+  message flow, presence, security model, front-end layout, scaling notes.
+- `CONTRIBUTING.md`: branches, one PR per change, commit style, checks, and
+  which docs to update for each kind of change.
+- `docs/README.md`: documentation index.
+- Screenshots in `docs/images/` (home, create account, chat in light and
+  dark, New chat, settings, phone list and room) and a rewritten README with a
+  feature list.
+- A test that keeps the chat page's query count flat as rooms grow, backing
+  the claim in the architecture guide.
+
+### Fixed
+- `readme/config_static_files.md`: broken `settings.py` link, examples now use
+  this project's files, and a section on how static files are organised here.
+
 ## Fixes after phase 5
 
 - Touch screens no longer show Edit and Delete on every one of your messages;
