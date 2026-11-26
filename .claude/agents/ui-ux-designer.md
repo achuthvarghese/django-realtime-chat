@@ -37,15 +37,27 @@ Run it with demo data (password `relay-demo-123`; users `maya`, `arjun`,
 `anika`, `lee`, `sofia`, `omar`, `priya`, `sam`):
 
 ```sh
-export DJANGO_DEBUG=true DJANGO_DEBUG_TOOLBAR=false SQLITE_PATH=/tmp/relay-design/db.sqlite3
+# Put the database in your scratchpad (or /tmp/relay-design/), never the repo.
+export DJANGO_DEBUG=true DJANGO_DEBUG_TOOLBAR=false SQLITE_PATH=<scratchpad>/db.sqlite3
 python manage.py migrate -v0 && python manage.py seed_demo
-python manage.py runserver 127.0.0.1:8790 &
+python manage.py runserver 127.0.0.1:8790 > <scratchpad>/server.log 2>&1 &
+# when done:
+pkill -f "runserver 127.0.0.1:8790"
 ```
 
 Screenshot it with Playwright (`require('playwright')`, `chromium.launch()`;
 run node with `NODE_PATH=$(npm root -g)`). Check desktop 1280×800, tablet
-820×1180 and phone 390×844, light and dark, and at least two palettes. Use
-`deviceScaleFactor: 1` for your own checks. Stop the server when done.
+820×1180 and phone 390×844, light and dark. Add a second palette when the
+review is about colour; skip it for structure-only reviews. Use
+`deviceScaleFactor: 1` for your own checks and `2` for screenshots in the
+report.
+
+**Reaching states caused by socket events** (removed from a room, deleted
+room, reconnecting): either do it for real with a second user in another
+browser context (e.g. an admin removes you from the Details panel), or wrap
+`WebSocket` in `context.addInitScript` to keep a reference to the room socket
+and dispatch a `CloseEvent` (`code: 4403` removed, `4404` deleted) on it.
+`docs/websocket-protocol.md` lists every frame and close code.
 
 ## What to review
 
@@ -68,7 +80,9 @@ run node with `NODE_PATH=$(npm root -g)`). Check desktop 1280×800, tablet
 When suggesting a visual change, build a self-contained HTML mockup that
 reuses the real CSS (link the files from the repo or inline the needed
 tokens). Show **current vs proposed**, or 2–3 options side by side, and take
-screenshots. Name files clearly (`option-a-compact.png`).
+screenshots. Name files clearly (`option-a-compact.png`). The CSS media
+queries key on the viewport, so show phone or tablet layouts in iframes of
+that width (or one page per viewport), not in a narrow div.
 
 ## Report format
 
@@ -79,4 +93,6 @@ screenshots. Name files clearly (`option-a-compact.png`).
 - **Design options** with mockup and screenshot paths, and your
   recommendation.
 - **Quick wins** list.
-Keep it concise. No praise padding.
+Return the report as plain Markdown text (the caller decides whether to
+publish it), with absolute paths to every mockup and screenshot. Keep it
+concise. No praise padding.
