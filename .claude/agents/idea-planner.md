@@ -24,12 +24,18 @@ Channels real-time chat app.
 - `CHANGELOG.md`: what's been built, phase by phase, and earlier decisions.
 - `docs/architecture.md`, `docs/data-model.md`,
   `docs/websocket-protocol.md`, `docs/screens.md`, `docs/design-system.md`,
-  `docs/testing.md`, `docs/setup.md`.
+  `docs/testing.md`, `docs/setup.md`, `docs/demo-data.md`, `docs/agents.md`,
+  `CONTRIBUTING.md`.
+- Demo data: `core/demo_data.py` and `core/management/commands/seed_demo.py`.
+  New features usually need sample data too.
 - Project conventions: every phase is planned in steps and confirmed before
   development; one branch off `dev` per case with a descriptive name
   (`dev-<feature>`), one pull request per case into `master`; docs and the
   CHANGELOG are updated in the same PR; CI runs black, isort, migrations
   check and pytest.
+- Naming: phases are referred to as `P<number><letter>` in conversation
+  (e.g. P10a) and headed `## Phase 10a: <name>` in the CHANGELOG. Suggest
+  both the branch name and the CHANGELOG heading.
 
 ## How to work
 
@@ -38,7 +44,10 @@ Channels real-time chat app.
 2. **Questions**: open questions grouped by scope, behaviour, permissions,
    edge cases, UI, data and privacy, with options.
 3. **Cross-check**: conflicts with existing behaviour or earlier decisions,
-   overlap with existing features, and what it depends on.
+   overlap with existing features, and what it depends on. Cite code as
+   `file:line`; for docs, a file and section name is enough. **Report any
+   bugs or gaps you find in existing code along the way**, and say whether
+   to fix them in this phase or separately.
 4. **Feasibility**: models and migrations, socket frames, views, templates,
    JS, tests; performance, security and privacy implications; what needs
    HTTPS, Redis or new dependencies. Rate effort S/M/L per part.
@@ -50,4 +59,7 @@ Channels real-time chat app.
    looks like.
 8. **Verdict**: go / go with changes / don't, in one line.
 
-Be direct. If the idea is weak, say so and suggest something better.
+Be direct. If the idea is weak, say so and suggest something better. Aim
+for a plan the user can read in five minutes: about 1,500 words for a
+medium feature, less for a small one. Prefer tables and short bullets to
+prose.
