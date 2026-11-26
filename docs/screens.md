@@ -90,9 +90,10 @@ Styles `account/static/account/css/auth.css`, script
   created by someone else while the page is open shows a "New conversation ·
   Refresh" prompt.
 - "Find a chat" filters the list as you type.
-- The footer shows your avatar, name and @username, and a **gear** button that
-  opens Settings. Clicking your name opens the **account menu** (Settings,
-  Sign out); Escape or a click elsewhere closes it. The theme is changed in
+- The footer row (your avatar, name and @username, with a chevron) is the
+  **account menu** button: it opens Settings and Sign out above it, and the
+  chevron flips while it's open. Escape or a click elsewhere closes it. On the
+  tablet rail the avatar alone is the button. The theme is changed in
   Settings → Appearance; the chat screen has no Theme button.
 
 ### Open room
@@ -145,7 +146,7 @@ name) appear as a notice above the chat.
 
 ## Settings
 
-Reached from the gear button or the account menu in the chat sidebar. A chrome
+Reached from the account menu in the chat sidebar. A chrome
 side menu (a scrolling tab strip on phones) lists the sections; each has its
 own URL, and `/account/settings/` opens Profile.
 

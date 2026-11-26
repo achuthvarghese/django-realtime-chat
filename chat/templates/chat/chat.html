@@ -52,9 +52,10 @@
                 <summary class="chat-side__me-link" aria-label="Account menu for {{ me.name }}">
                     <span class="avatar avatar--mine avatar--lg">{{ me.initials }}</span>
                     <span class="chat-side__me-text">
-                        <span class="chat-side__me-name">{{ me.name }} <span aria-hidden="true">▾</span></span>
+                        <span class="chat-side__me-name">{{ me.name }}</span>
                         <span class="chat-side__me-handle">@{{ me.username }}</span>
                     </span>
+                    <svg class="account-menu__chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m18 15-6-6-6 6"/></svg>
                 </summary>
                 <div class="account-menu__panel">
                     <div class="account-menu__who">
@@ -68,7 +69,6 @@
                     </form>
                 </div>
             </details>
-            <a class="btn btn--ghost btn--icon btn--sm chat-side__gear" href="{% url 'account:settings' %}" aria-label="Settings" title="Settings">{% include "core/partials/icon_gear.html" %}</a>
         </div>
     </nav>
 

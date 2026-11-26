@@ -11,8 +11,8 @@ into `master`.
   type (capitals to lowercase, spaces to `_`) and explains any broken rule.
 - Migration `account/0002_conform_usernames` renames older accounts to the
   rules and prints every rename.
-- Account menu on your name in the chat sidebar (Settings, Sign out) and a gear
-  button that opens Settings.
+- Account menu: the whole footer row in the chat sidebar (avatar, name,
+  @username and a chevron) opens Settings and Sign out.
 - Settings sections with their own URLs: Profile (with read-only @username),
   Appearance and Password.
 

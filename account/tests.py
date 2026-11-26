@@ -538,7 +538,9 @@ class TestAccountMenu:
         client.force_login(user)
         html = client.get(reverse("chat:chat")).content.decode()
         assert 'class="account-menu"' in html
-        assert 'aria-label="Settings"' in html
+        assert "account-menu__chevron" in html
+        assert "chat-side__gear" not in html  # Settings lives in the menu only
+        assert reverse("account:settings") in html
         assert 'class="theme-menu"' not in html
         assert reverse("account:logout") in html
 
