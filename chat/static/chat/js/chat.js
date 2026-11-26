@@ -123,7 +123,32 @@
             nodes.push(day);
             prev = null;
         }
-        const continues = prev && prev.user === data.user && date - prevDate < GROUP_GAP_MS;
+        if (data.kind === "system") {
+            // Group events: a muted line with a diamond node, no avatar.
+            const row = document.createElement("div");
+            row.className = "msg msg--system";
+            row.dataset.id = data.id;
+            const time = document.createElement("time");
+            time.className = "msg__time";
+            time.dateTime = data.created_at;
+            time.title = fullFormat.format(date);
+            time.textContent = timeFormat.format(date);
+            const node = document.createElement("span");
+            node.className = "msg__sysnode";
+            node.setAttribute("aria-hidden", "true");
+            const body = document.createElement("div");
+            body.className = "msg__body";
+            const text = document.createElement("span");
+            text.className = "msg__text";
+            text.textContent = data.message;
+            body.append(text);
+            row.append(time, node, body);
+            nodes.push(row);
+            return nodes;
+        }
+
+        const continues =
+            prev && prev.kind !== "system" && prev.user === data.user && date - prevDate < GROUP_GAP_MS;
 
         const row = document.createElement("div");
         row.className = "msg" + (continues ? " msg--cont" : "") + (mine ? " msg--mine" : "");
@@ -325,7 +350,8 @@
             if (data.type === "save_message") {
                 const stick = nearBottom() || data.user === me;
                 appendMessage(data);
-                updatePreview(data);
+                // Previews show conversation, not group events (matches the server).
+                if (data.kind !== "system") updatePreview(data);
                 if (stick) scrollToEnd();
                 if (data.user !== me) {
                     hideTyping(data.user);
@@ -343,6 +369,8 @@
                 hasMore = false;
                 renderAll();
                 showToast("History cleared for you.");
+            } else if (data.type === "room_updated") {
+                applyRoomUpdate(data);
             } else if (data.type === "error") {
                 showToast(data.message);
             }
@@ -351,7 +379,12 @@
         socket.addEventListener("close", (event) => {
             // 4401 signed out, 4403 not a member, 4404 unknown room
             if (event.code === 4401) return window.location.assign("/account/login/");
-            if (event.code === 4403 || event.code === 4404) return window.location.assign("/chat/");
+            if (event.code === 4403 || event.code === 4404) {
+                setStatus("offline");
+                input.disabled = true;
+                showToast(event.code === 4404 ? "This chat was deleted." : "You're no longer in this chat.", { persist: true });
+                return setTimeout(() => window.location.assign("/chat/"), 2500);
+            }
             setStatus("offline");
             attempts += 1;
             const delay = Math.min(15000, 1000 * 2 ** Math.min(attempts - 1, 4));
@@ -393,6 +426,37 @@
         clearTimeout(existing.timer);
         typers.delete(user);
         renderTyping();
+    }
+
+    // Group changes: new name or member count in the header and sidebar.
+    // Same rule as chat/presenters.py: first letters of two words, else the
+    // first two characters.
+    function initialsOf(name) {
+        const words = name.replace(/@/g, "").split(/\s+/).filter(Boolean);
+        if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+        return (words[0] || "?").slice(0, 2).toUpperCase();
+    }
+
+    function applyRoomUpdate(data) {
+        const title = document.querySelector(".chat-head__title");
+        const isGroup = title && !title.dataset.private;
+        if (isGroup && data.name) {
+            title.textContent = data.name;
+            const headAvatar = document.querySelector(".chat-head .avatar");
+            if (headAvatar) headAvatar.textContent = initialsOf(data.name);
+            input.placeholder = `Message ${data.name}`;
+            document.querySelector('label[for="message"]').textContent = `Message ${data.name}`;
+        }
+        const count = document.querySelector("[data-member-count]");
+        if (count) count.textContent = `${data.member_count} member${data.member_count === 1 ? "" : "s"}`;
+        const link = document.querySelector(`.room-link[data-room-id="${CSS.escape(roomId)}"]`);
+        if (link && data.name && !link.dataset.username) {
+            link.querySelector(".room-link__title").textContent = data.name;
+            link.querySelector(".room-link__avatar").textContent = initialsOf(data.name);
+            link.dataset.title = data.name.toLowerCase();
+            link.title = data.name;
+        }
+        document.dispatchEvent(new CustomEvent("relay:room-updated", { detail: data }));
     }
 
     function send(payload) {
@@ -535,7 +599,7 @@
     // Up arrow in an empty composer edits your last message.
     input.addEventListener("keydown", (event) => {
         if (event.key !== "ArrowUp" || input.value !== "") return;
-        const lastMine = [...messages].reverse().find((m) => m.user === me && !m.deleted);
+        const lastMine = [...messages].reverse().find((m) => m.user === me && !m.deleted && m.kind !== "system");
         if (!lastMine) return;
         const row = transcript.querySelector(`.msg[data-id="${CSS.escape(lastMine.id)}"]`);
         if (!row) return;
@@ -546,17 +610,20 @@
 
     // Clear history, after confirmation
 
-    const clearButton = document.getElementById("clear-room");
+    // The button lives in the Details panel, which is loaded later, so
+    // listen on the document.
     const dialog = document.getElementById("clear-dialog");
-    clearButton.addEventListener("click", () => {
-        if (typeof dialog.showModal === "function") {
-            dialog.returnValue = "";
-            dialog.showModal();
-        }
+    let clearOpener = null;
+    document.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-clear-room]");
+        if (!button || typeof dialog.showModal !== "function") return;
+        clearOpener = button;
+        dialog.returnValue = "";
+        dialog.showModal();
     });
     dialog.addEventListener("close", () => {
         if (dialog.returnValue === "clear") send({ type: "clear_room" });
-        clearButton.focus();
+        clearOpener?.focus();
     });
 
     if (window.matchMedia("(min-width: 600px)").matches) input.focus();
