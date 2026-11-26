@@ -32,7 +32,10 @@ def rooms_for(user):
     """The user's rooms, most recently active first, with the last message
     they can still see."""
     visible = Message.objects.filter(
-        room=OuterRef("pk"), visible_for=user, deleted_at__isnull=True
+        room=OuterRef("pk"),
+        visible_for=user,
+        deleted_at__isnull=True,
+        kind=Message.Kinds.TEXT,
     ).order_by("-created_at")
     rooms = (
         user.rooms.all()
@@ -86,4 +89,5 @@ def message_data(message):
         "created_at": message.created_at.isoformat(),
         "edited": message.edited_at is not None and not message.is_deleted,
         "deleted": message.is_deleted,
+        "kind": message.kind,
     }

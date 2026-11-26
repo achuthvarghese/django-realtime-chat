@@ -85,7 +85,9 @@ def unread_counts(user, room_ids):
     for room_id, when in last_read.items():
         scope |= Q(room_id=room_id, created_at__gt=when)
     rows = (
-        Message.objects.filter(scope, visible_for=user, deleted_at__isnull=True)
+        Message.objects.filter(
+            scope, visible_for=user, deleted_at__isnull=True, kind=Message.Kinds.TEXT
+        )
         .exclude(user=user)
         .values("room_id")
         .annotate(n=Count("pk"))
