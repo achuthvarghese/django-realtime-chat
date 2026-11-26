@@ -267,22 +267,28 @@
 .details__foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); }
 
 .members { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.member { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-2); padding: 4px 0; }
+/* Avatar | name and @username (+ Admin) | menu. The menu column is the same
+   on every row, so the ⋯ buttons line up whether or not someone is admin. */
+.member { display: grid; grid-template-columns: auto minmax(0, 1fr) 32px; align-items: center; gap: var(--space-2); padding: 4px 0; }
+.member .member-menu { grid-column: 3; justify-self: end; }
 .member .avatar { width: 28px; height: 28px; border-radius: 8px; font-size: 10px; }
 .member__text { display: flex; flex-direction: column; min-width: 0; }
 .member__name { font-size: var(--text-sm); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.member__handle { font-size: var(--text-xs); color: var(--muted); }
+.member__sub { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.member__handle { font-size: var(--text-xs); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member__badge {
+    flex: none;
     font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
+    font-weight: 700;
+    line-height: 16px;
     color: var(--accent);
-    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-    border-radius: 4px;
-    padding: 0 5px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border-radius: 99px;
+    padding: 0 7px;
 }
-.presence-dot--surface { border-color: var(--surface); }
+/* On the white panel the dot needs a surface-coloured ring, and a neutral
+   offline colour (the base rule is tuned for the dark sidebar). */
+.member .presence-dot { border-color: var(--surface); background: color-mix(in srgb, var(--muted) 55%, var(--surface)); }
 .member.is-online .presence-dot { background: var(--success); }
 
 .member-menu { position: relative; }

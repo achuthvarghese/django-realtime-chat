@@ -54,9 +54,11 @@
                 </span>
                 <span class="member__text">
                     <span class="member__name">{{ m.name }}{% if m.is_me %} (you){% endif %}</span>
-                    <span class="member__handle">@{{ m.username }}</span>
+                    <span class="member__sub">
+                        <span class="member__handle">@{{ m.username }}</span>
+                        {% if m.is_admin %}<span class="member__badge">Admin</span>{% endif %}
+                    </span>
                 </span>
-                {% if m.is_admin %}<span class="member__badge">Admin</span>{% endif %}
                 {% if viewer_is_admin %}
                 {% if not m.is_me or m.is_admin %}
                 <details class="member-menu" data-popover>
