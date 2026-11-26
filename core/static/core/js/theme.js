@@ -66,16 +66,17 @@
         syncControls();
     });
 
-    // Close an open theme menu on Escape or an outside click.
+    // Close an open popover menu (theme menu, account menu) on Escape or an
+    // outside click.
     document.addEventListener("keydown", (event) => {
         if (event.key !== "Escape") return;
-        for (const menu of document.querySelectorAll("details.theme-menu[open]")) {
+        for (const menu of document.querySelectorAll("details[data-popover][open]")) {
             menu.open = false;
             menu.querySelector("summary")?.focus();
         }
     });
     document.addEventListener("click", (event) => {
-        for (const menu of document.querySelectorAll("details.theme-menu[open]")) {
+        for (const menu of document.querySelectorAll("details[data-popover][open]")) {
             if (!menu.contains(event.target)) menu.open = false;
         }
     });
