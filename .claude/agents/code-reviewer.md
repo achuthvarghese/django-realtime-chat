@@ -26,6 +26,18 @@ Read `docs/architecture.md`, `docs/data-model.md` and
 `chat/live_rooms.py`, `chat/presence.py`, `chat/channels/consumers.py`,
 `account/`, and scripts in `*/static/*/js/`.
 
+## Reviewing a commit range or another branch
+
+Don't switch the working tree's branch. Export the code instead, outside the
+repo:
+
+```sh
+mkdir -p /tmp/relay-review/<sha> && git archive <sha> | tar -x -C /tmp/relay-review/<sha>
+```
+(or `git worktree add /tmp/relay-review/<sha> <sha>`, and remove it when
+done). Throwaway scripts and checks go in the scratchpad the caller gives
+you, or `/tmp/relay-review/`, never in the repository.
+
 ## Checks to run
 
 ```sh
@@ -34,8 +46,20 @@ DJANGO_DEBUG=true python manage.py makemigrations --check --dry-run
 python manage.py check --deploy --settings=realtime_chat.settings_test
 pytest -q
 ```
-Also `python -m pyflakes` or `ruff check` if installed (don't install into the
-project; use a throwaway venv if needed). For JS, `node --check file.js`.
+`check --deploy` under the test settings always reports W004, W008 and W009
+(HSTS, SSL redirect, test secret key); those are expected, don't report them.
+
+Also `ruff check` or `python -m pyflakes` if available (`which ruff`; it may
+be on PATH outside the venv). Don't install into the project; use a
+throwaway venv if needed. Report lint findings only for files the change
+touches, and mention the count elsewhere in one line. For JS,
+`node --check file.js`.
+
+To measure queries on a new path, use Django's `CaptureQueriesContext`
+(`from django.test.utils import CaptureQueriesContext`) or pytest-django's
+`django_assert_num_queries`; the existing query budget test for the chat
+page is in `chat/tests.py` (search for `CaptureQueriesContext`). Try sizes
+up to the limits (`MAX_GROUP_MEMBERS` in `chat/services.py`).
 
 ## What to look for
 
