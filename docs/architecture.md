@@ -47,6 +47,7 @@ Inside `chat`, each module has one job:
 | --- | --- |
 | `services.py` | Create rooms: people search, direct chats, groups |
 | `groups.py` | Group rules: add, remove, rename, admins, leave, delete; writes group events |
+| `live_rooms.py` | After a commit, tell each affected person's inbox sockets that a room was added, changed or removed |
 | `realtime.py` | Channel layer group names and helpers for sending to room and inbox sockets from views |
 | `presenters.py` | Turn rooms and messages into plain data for templates, JSON and sockets |
 | `presence.py` | Online status (`Connection`) and unread counts (`ReadState`) |

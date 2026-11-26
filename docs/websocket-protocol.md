@@ -218,6 +218,37 @@ room already open.
 }
 ```
 
+**`room_added`**, **`room_changed`**, **`room_removed`**: keep the room list
+live. `room_added` goes to each person when a direct chat or group is created
+with them in it or they're added to a group; `room_changed` goes to every
+member when a group is renamed. Both carry that person's own view of the room
+(a direct chat is titled with the other person's name), and are sent only
+after the database change commits.
+
+```json
+{
+  "type": "room_added",
+  "room": {
+    "id": "<room uuid>", "title": "Launch prep", "initials": "LP", "type": "group",
+    "member_count": 3, "last_content": "", "last_at": null, "last_is_mine": false,
+    "unread": 0, "other_username": "", "member_usernames": ["arjun", "maya", "sam"]
+  }
+}
+```
+
+`room_removed` goes to a person who was removed or left, and to every member
+when a group is deleted. If that room is open, its room socket closes too
+(`4403` or `4404`) and the page shows "You're no longer in this chat" or "This
+chat was deleted".
+
+```json
+{"type": "room_removed", "room": "<room uuid>"}
+```
+
+If a `room_activity` frame names a room the page doesn't list (a `room_added`
+frame was missed while reconnecting), the page fetches the row from
+`GET /chat/rooms/<uuid>/summary/`, which returns the same `room` object.
+
 Presence and activity use the database and the channel layer, so they work
 across server processes when `REDIS_URL` is set. Connections left behind by
 a crashed process stop counting after 90 seconds and are deleted after an
