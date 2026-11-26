@@ -30,6 +30,9 @@ into `master`.
 
 ### Fixed
 - Escape closes the innermost open menu or dialog before the Details panel.
+- Group action errors are looked up by code from a fixed message table
+  instead of returning exception text (CodeQL: information exposure through
+  an exception).
 
 ## Account UX and username rules
 

@@ -29,8 +29,36 @@ from chat.services import MAX_GROUP_MEMBERS, MAX_GROUP_NAME
 User = get_user_model()
 
 
+# What people see when a group change isn't allowed. Views look the sentence
+# up by code from this fixed table; exception text never reaches a response.
+GROUP_ERROR_MESSAGES = {
+    "not_group": "Only group chats have members to manage.",
+    "not_member": "You're not in this group.",
+    "not_admin": "Only admins can do that.",
+    "nobody_new": "Pick at least one person who isn't in the group yet.",
+    "too_many": f"Groups can have at most {MAX_GROUP_MEMBERS} members.",
+    "unknown_people": "Some of those people couldn't be found.",
+    "remove_self": "Use Leave group to remove yourself.",
+    "target_not_member": "That person isn't in this group.",
+    "name_missing": "Give the group a name.",
+    "name_too_long": f"Group names can be at most {MAX_GROUP_NAME} characters.",
+    "last_admin": "A group needs at least one admin. Make someone else an admin first.",
+}
+UNKNOWN_ERROR_MESSAGE = "That change couldn't be made."
+
+
+def error_message(code):
+    """The sentence to show for a GroupError code."""
+    return GROUP_ERROR_MESSAGES.get(code, UNKNOWN_ERROR_MESSAGE)
+
+
 class GroupError(ValueError):
-    """A group change that isn't allowed, with a message for the person."""
+    """A group change that isn't allowed. Carries only a `code`; see
+    GROUP_ERROR_MESSAGES for the matching sentence."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
 
 
 # Queries
@@ -50,17 +78,17 @@ def admin_count(room):
 
 def require_group(room):
     if room.type != Room.RoomTypes.GROUP:
-        raise GroupError("Only group chats have members to manage.")
+        raise GroupError("not_group")
 
 
 def require_member(room, user):
     if membership(room, user) is None:
-        raise GroupError("You're not in this group.")
+        raise GroupError("not_member")
 
 
 def require_admin(room, user):
     if not is_admin(room, user):
-        raise GroupError("Only admins can do that.")
+        raise GroupError("not_admin")
 
 
 # Events
@@ -113,13 +141,13 @@ def add_members(room, actor, usernames):
     current = set(room.members.values_list("username", flat=True))
     wanted -= current
     if not wanted:
-        raise GroupError("Pick at least one person who isn't in the group yet.")
+        raise GroupError("nobody_new")
     if len(current) + len(wanted) > MAX_GROUP_MEMBERS:
-        raise GroupError(f"Groups can have at most {MAX_GROUP_MEMBERS} members.")
+        raise GroupError("too_many")
     users = list(User.objects.filter(username__in=wanted, is_active=True))
     missing = wanted - {u.username for u in users}
     if missing:
-        raise GroupError("Unknown people: " + ", ".join(sorted(missing)) + ".")
+        raise GroupError("unknown_people")
     users.sort(key=lambda u: display_name(u).lower())
     now = timezone.now()
     Membership.objects.bulk_create(
@@ -135,10 +163,10 @@ def remove_member(room, actor, target):
     require_group(room)
     require_admin(room, actor)
     if target.pk == actor.pk:
-        raise GroupError("Use Leave group to remove yourself.")
+        raise GroupError("remove_self")
     entry = membership(room, target)
     if entry is None:
-        raise GroupError(f"{display_name(target)} isn't in this group.")
+        raise GroupError("target_not_member")
     entry.delete()
     system_message(room, actor, f"{display_name(actor)} removed {display_name(target)}")
     revoke_access(room, target)
@@ -151,9 +179,9 @@ def rename(room, actor, name):
     require_admin(room, actor)
     name = (name or "").strip()
     if not name:
-        raise GroupError("Give the group a name.")
+        raise GroupError("name_missing")
     if len(name) > MAX_GROUP_NAME:
-        raise GroupError(f"Group names can be at most {MAX_GROUP_NAME} characters.")
+        raise GroupError("name_too_long")
     if name == room.name:
         return
     room.name = name
@@ -168,13 +196,11 @@ def set_admin(room, actor, target, make_admin):
     require_admin(room, actor)
     entry = membership(room, target)
     if entry is None:
-        raise GroupError(f"{display_name(target)} isn't in this group.")
+        raise GroupError("target_not_member")
     if entry.is_admin == make_admin:
         return
     if not make_admin and admin_count(room) == 1:
-        raise GroupError(
-            "A group needs at least one admin. Make someone else an admin first."
-        )
+        raise GroupError("last_admin")
     entry.is_admin = make_admin
     entry.save(update_fields=["is_admin"])
     if make_admin:
@@ -193,7 +219,7 @@ def leave(room, user):
     require_group(room)
     entry = membership(room, user)
     if entry is None:
-        raise GroupError("You're not in this group.")
+        raise GroupError("not_member")
     was_admin = entry.is_admin
     entry.delete()
     remaining = Membership.objects.filter(room=room).order_by("joined_at", "id")

@@ -828,13 +828,13 @@ class TestGroupRules:
     def test_add_rejects_existing_unknown_and_too_many(self, group, maya):
         from chat import groups
 
-        with pytest.raises(groups.GroupError, match="isn't in the group yet"):
+        with pytest.raises(groups.GroupError, match="nobody_new"):
             groups.add_members(group, maya, ["arjun"])
-        with pytest.raises(groups.GroupError, match="Unknown people: ghost"):
+        with pytest.raises(groups.GroupError, match="unknown_people"):
             groups.add_members(group, maya, ["ghost"])
         for i in range(47):
             User.objects.create_user(f"user{i}", password="pw")
-        with pytest.raises(groups.GroupError, match="at most 50"):
+        with pytest.raises(groups.GroupError, match="too_many"):
             groups.add_members(group, maya, [f"user{i}" for i in range(48)])
 
     def test_only_admins_rename_remove_and_delete(self, group, arjun, lee):
@@ -846,7 +846,7 @@ class TestGroupRules:
             lambda: groups.delete_group(group, arjun),
             lambda: groups.set_admin(group, arjun, lee, True),
         ):
-            with pytest.raises(groups.GroupError, match="Only admins"):
+            with pytest.raises(groups.GroupError, match="not_admin"):
                 action()
         group.refresh_from_db()
         assert group.name == "Design team"
@@ -870,7 +870,7 @@ class TestGroupRules:
     def test_only_admin_cannot_step_down_until_another_admin(self, group, maya, arjun):
         from chat import groups
 
-        with pytest.raises(groups.GroupError, match="at least one admin"):
+        with pytest.raises(groups.GroupError, match="last_admin"):
             groups.set_admin(group, maya, maya, False)
         groups.set_admin(group, maya, arjun, True)
         groups.set_admin(group, maya, maya, False)
@@ -888,7 +888,7 @@ class TestGroupRules:
     def test_admin_cannot_remove_self(self, group, maya):
         from chat import groups
 
-        with pytest.raises(groups.GroupError, match="Leave group"):
+        with pytest.raises(groups.GroupError, match="remove_self"):
             groups.remove_member(group, maya, maya)
 
     def test_last_admin_leaving_promotes_longest_standing(self, group, maya, arjun):
@@ -930,7 +930,7 @@ class TestGroupRules:
     def test_private_rooms_are_not_managed(self, room, maya, arjun):
         from chat import groups
 
-        with pytest.raises(groups.GroupError, match="Only group chats"):
+        with pytest.raises(groups.GroupError, match="not_group"):
             groups.leave(room, maya)
 
     def test_system_messages_are_not_unread_or_previews(
@@ -944,6 +944,23 @@ class TestGroupRules:
         client.force_login(arjun)
         summary = client.get(reverse("chat:chat")).context["rooms"][0]
         assert summary["last_content"] == ""
+
+
+class TestGroupErrorMessages:
+    def test_every_raised_code_has_a_message(self):
+        import re
+        from pathlib import Path
+
+        from chat import groups
+
+        source = Path(groups.__file__).read_text()
+        raised = set(re.findall(r'raise GroupError\("([a-z_]+)"\)', source))
+        assert raised and raised <= set(groups.GROUP_ERROR_MESSAGES)
+
+    def test_unknown_code_has_a_safe_fallback(self):
+        from chat import groups
+
+        assert groups.error_message("nope") == groups.UNKNOWN_ERROR_MESSAGE
 
 
 @pytest.mark.django_db
@@ -1021,6 +1038,14 @@ class TestGroupEndpoints:
         assert response.url == f"/chat/?room={group.id}"
         response = client.get(response.url)
         assert "Only admins can do that." in response.content.decode()
+
+    def test_json_errors_come_from_the_message_table(self, client, group, maya):
+        from chat import groups
+
+        client.force_login(maya)
+        response = self.post(client, group, "add", {"members": ["ghost"]})
+        assert response.json()["error"] == groups.GROUP_ERROR_MESSAGES["unknown_people"]
+        assert "ghost" not in response.content.decode()
 
     def test_unknown_action_and_get(self, client, group, maya):
         client.force_login(maya)

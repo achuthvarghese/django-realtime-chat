@@ -173,7 +173,9 @@ thing first (a menu or dialog, then the panel).
   manage.
 
 Every change is announced in the chat as a group event. The rules live in
-`chat/groups.py`.
+`chat/groups.py`. When a change isn't allowed, the panel shows a fixed
+sentence from `GROUP_ERROR_MESSAGES` there (for example "Only admins can do
+that."); error responses never include exception text.
 
 ### New chat
 

@@ -220,5 +220,5 @@ def group_action(request, room_id, action):
         else:
             raise Http404
     except groups.GroupError as error:
-        return _group_response(request, room, error=str(error))
+        return _group_response(request, room, error=groups.error_message(error.code))
     return _group_response(request, room)
