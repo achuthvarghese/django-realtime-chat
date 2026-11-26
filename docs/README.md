@@ -10,7 +10,7 @@
 | [Design system](./design-system.md) | Signal tokens, palettes, modes, density, components |
 | [Demo data](./demo-data.md) | Sample users, chats and sign-in details loaded in debug mode |
 | [Testing](./testing.md) | Running the suite, what each test file covers, CI |
-| [Claude Code agents](./agents.md) | Design, code review, user testing and planning agents in `.claude/agents/` |
+| [Claude Code agents](./agents.md) | Reviewer and builder agents in `.claude/agents/` and the team workflow |
 
 Also see [CONTRIBUTING.md](../CONTRIBUTING.md) and the
 [changelog](../CHANGELOG.md). Screenshots live in [images/](./images/).
