@@ -10,6 +10,7 @@ from django.utils import timezone
 from chat import presence
 from chat.models import Message, Room
 from chat.presenters import display_name, message_data
+from chat.realtime import inbox_group, room_group
 
 MAX_MESSAGE_LENGTH = 4000
 
@@ -60,7 +61,7 @@ class ChatConsumer(WebsocketConsumer):
             self.reject(403, "You are not a member of this room", CloseCode.FORBIDDEN)
             return
 
-        self.room_group_name = f"chat_room_{self.room.id.hex}"
+        self.room_group_name = room_group(self.room.id)
         async_to_sync(self.channel_layer.group_add)(
             self.room_group_name, self.channel_name
         )
@@ -80,6 +81,12 @@ class ChatConsumer(WebsocketConsumer):
             return
         if not isinstance(payload, dict):
             self.send_error("Expected a JSON object")
+            return
+
+        # Membership can change while the socket is open (removed, left, group
+        # deleted); check it on every frame rather than trusting connect().
+        if not self.room.members.filter(pk=self.user.pk).exists():
+            self.reject_open(403, "You're no longer in this chat", CloseCode.FORBIDDEN)
             return
 
         handlers = {
@@ -118,7 +125,11 @@ class ChatConsumer(WebsocketConsumer):
             message_id = None
         message = (
             Message.objects.filter(
-                id=message_id, room=self.room, user=self.user, deleted_at__isnull=True
+                id=message_id,
+                room=self.room,
+                user=self.user,
+                deleted_at__isnull=True,
+                kind=Message.Kinds.TEXT,
             )
             .select_related("user")
             .first()
@@ -234,6 +245,14 @@ class ChatConsumer(WebsocketConsumer):
     def chat_response(self, event):
         self.send_json(event["data"])
 
+    def membership_revoked(self, event):
+        """Sent when someone is removed or leaves; only their sockets close."""
+        if event["user_id"] == self.user.pk:
+            self.reject_open(403, "You're no longer in this chat", CloseCode.FORBIDDEN)
+
+    def room_deleted(self, event):
+        self.reject_open(404, "This chat was deleted", CloseCode.NOT_FOUND)
+
     # Helpers
 
     def send_json(self, data):
@@ -255,16 +274,17 @@ class ChatConsumer(WebsocketConsumer):
         self.send_error(message, code=code)
         self.close(code=close_code)
 
+    def reject_open(self, code, message, close_code):
+        """Tell an open socket why, then close it."""
+        self.send_error(message, code=code)
+        self.close(code=close_code)
+
     @staticmethod
     def get_room(room_id):
         try:
             return Room.objects.get(id=uuid.UUID(str(room_id)))
         except (Room.DoesNotExist, ValueError, TypeError):
             return None
-
-
-def inbox_group(user_pk):
-    return f"inbox_user_{user_pk}"
 
 
 class InboxConsumer(WebsocketConsumer):
