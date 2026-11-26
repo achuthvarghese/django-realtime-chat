@@ -3,7 +3,8 @@
 ```mermaid
 erDiagram
     User ||--o| Preference : "has"
-    User }o--o{ Room : "member of"
+    User ||--o{ Membership : "has"
+    Room ||--o{ Membership : "has"
     Room ||--o{ Message : "contains"
     User ||--o{ Message : "sends"
     User }o--o{ Message : "can see (visible_for)"
@@ -26,11 +27,25 @@ applied to older accounts by migration `account/0002_conform_usernames`).
 | `id` | UUID primary key; used in URLs and the WebSocket path |
 | `name` | Up to 50 characters. Groups show it as the title; private rooms show the other person's name instead |
 | `type` | `private` (exactly two members, one per pair of people) or `group` |
-| `members` | Many-to-many to `User` (`user.rooms`) |
+| `members` | Many-to-many to `User` (`user.rooms`) through `Membership` |
 | `created_at` | Set on creation |
+| `created_by` | The group's creator (null for direct chats, or if the account is deleted) |
 
 Rooms are created by `chat/services.py`: `get_or_create_direct_room` and
-`create_group_room`.
+`create_group_room`. Group changes go through `chat/groups.py`.
+
+## `chat.Membership`
+
+| Field | Notes |
+| --- | --- |
+| `room`, `user` | Unique together (`room.memberships`, `user.memberships`) |
+| `is_admin` | Admins can rename, remove members, change admins and delete the group |
+| `joined_at` | When they joined; decides who becomes admin when the last admin leaves |
+
+Stored in `chat_room_members`, the table Django first created for
+`Room.members`. Migration `chat/0004_group_admins` adopted it without copying
+rows, then made each existing group's earliest-added member its admin and
+creator.
 
 ## `chat.Message`
 
@@ -38,6 +53,7 @@ Rooms are created by `chat/services.py`: `get_or_create_direct_room` and
 | --- | --- |
 | `id` | UUID primary key |
 | `content` | Text, 1 to 4000 characters after trimming (enforced by the consumer) |
+| `kind` | `text`, or `system` for group events written by the server |
 | `room`, `user` | Where and by whom |
 | `created_at` | Set on creation; messages are ordered by it (indexed with `room`) |
 | `edited_at` | Set when the author edits the text |

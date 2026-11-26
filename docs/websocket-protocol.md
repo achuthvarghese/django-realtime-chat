@@ -31,8 +31,10 @@ the Django session cookie identifies the user.
 | Signed in but not a member | Accepted, sends an `error` with `code: 403`, closes with `4403` |
 | Member | Accepted and joined to the room's group |
 
-The client redirects to the login page on `4401` and to the room list on
-`4403` or `4404`.
+Membership is also checked on **every frame**, and when a member is removed,
+leaves, or the group is deleted, their open sockets get an `error` (`403` or
+`404`) and close with `4403` or `4404`. The client redirects to the login page
+on `4401`; on `4403` or `4404` it shows why and returns to the room list.
 
 ## Client to server
 
@@ -110,9 +112,14 @@ members keep their history.
   "initials": "MR",
   "created_at": "2026-11-25T09:41:00.123456+00:00",
   "edited": false,
-  "deleted": false
+  "deleted": false,
+  "kind": "text"
 }
 ```
+
+`kind` is `text` for messages people write, or `system` for group events
+("Maya added Lee"), where `message` is the event text and `user` is who did
+it. System messages can't be edited or deleted and never count as unread.
 
 `user` is the username; `name` is the full name, or the username when no name
 is set; `initials` is derived from `name`. The chat page renders its initial
@@ -129,6 +136,16 @@ history from the same shape (`chat/presenters.py: message_data`).
 
 Clients ignore their own and show "Maya Rao is typing…" for 4 seconds or
 until that person's message arrives.
+
+### `room_updated` (to every socket in the room)
+
+```json
+{"type": "room_updated", "room": "<room uuid>", "name": "Design crew", "member_count": 4}
+```
+
+Sent after any group change (members added or removed, admins changed,
+renamed). Clients update the header and sidebar and reload the Details panel
+if it's open.
 
 ### `message_updated` (to every member connected to the room)
 

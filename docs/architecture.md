@@ -46,9 +46,11 @@ Inside `chat`, each module has one job:
 | Module | Job |
 | --- | --- |
 | `services.py` | Create rooms: people search, direct chats, groups |
+| `groups.py` | Group rules: add, remove, rename, admins, leave, delete; writes group events |
+| `realtime.py` | Channel layer group names and helpers for sending to room and inbox sockets from views |
 | `presenters.py` | Turn rooms and messages into plain data for templates, JSON and sockets |
 | `presence.py` | Online status (`Connection`) and unread counts (`ReadState`) |
-| `views.py` | HTTP: chat page, people search, start chats, history pages |
+| `views.py` | HTTP: chat page, people search, start chats, history pages, Details panel, group actions |
 | `channels/consumers.py` | WebSockets: `ChatConsumer` (one room) and `InboxConsumer` (everything else) |
 
 ## Request flow
@@ -101,8 +103,9 @@ process simply expire.
 | Concern | Where it's handled |
 | --- | --- |
 | Signed-in only | `login_required` on views; consumers close with `4401` for anonymous users |
-| Room membership | Views look rooms up through `request.user.rooms`; `ChatConsumer` closes with `4403` for non-members |
-| Message ownership | Edit and delete only match the sender's own, undeleted messages |
+| Room membership | Views look rooms up through `request.user.rooms`; `ChatConsumer` checks membership on connect **and on every frame**, and removal or deletion closes open sockets (`4403`/`4404`) |
+| Group permissions | `chat/groups.py` checks admin rights server-side for rename, remove, admin changes and delete; the panel only hides controls |
+| Message ownership | Edit and delete only match the sender's own, undeleted, non-system messages |
 | Cross-site WebSockets | `AllowedHostsOriginValidator` checks the `Origin` header against `ALLOWED_HOSTS` |
 | XSS | Templates autoescape; scripts build messages with text nodes, never `innerHTML`; initial data uses `json_script` |
 | CSRF | Django's middleware; theme saves send the token from `<meta name="csrf-token">` |
