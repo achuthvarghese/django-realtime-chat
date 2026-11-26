@@ -379,12 +379,7 @@
         socket.addEventListener("close", (event) => {
             // 4401 signed out, 4403 not a member, 4404 unknown room
             if (event.code === 4401) return window.location.assign("/account/login/");
-            if (event.code === 4403 || event.code === 4404) {
-                setStatus("offline");
-                input.disabled = true;
-                showToast(event.code === 4404 ? "This chat was deleted." : "You're no longer in this chat.", { persist: true });
-                return setTimeout(() => window.location.assign("/chat/"), 2500);
-            }
+            if (event.code === 4403 || event.code === 4404) return showGone(event.code === 4404);
             setStatus("offline");
             attempts += 1;
             const delay = Math.min(15000, 1000 * 2 ** Math.min(attempts - 1, 4));
@@ -426,6 +421,34 @@
         clearTimeout(existing.timer);
         typers.delete(user);
         renderTyping();
+    }
+
+    // The room went away while open: explain in the pane, with a way back.
+    function showGone(deleted) {
+        const main = document.querySelector(".chat-main");
+        const box = document.createElement("div");
+        box.className = "chat-gone";
+        box.setAttribute("role", "status");
+        const heading = document.createElement("h1");
+        heading.textContent = deleted ? "This chat was deleted" : "You're no longer in this chat";
+        const text = document.createElement("p");
+        text.className = "muted";
+        text.textContent = deleted
+            ? "An admin deleted it, so its messages are gone for everyone."
+            : "You were removed or left, so you can't read or send messages here any more.";
+        const back = document.createElement("a");
+        back.className = "btn btn--primary";
+        back.href = "/chat/";
+        back.textContent = "Back to chats";
+        const actions = document.createElement("div");
+        actions.append(back);
+        box.append(heading, text, actions);
+        main.replaceChildren(box);
+        document.getElementById("details")?.setAttribute("hidden", "");
+        document.querySelector(".chat")?.classList.remove("chat--details-open");
+        // inbox.js owns the room list (and its empty state).
+        document.dispatchEvent(new CustomEvent("relay:room-removed", { detail: { room: roomId } }));
+        back.focus();
     }
 
     // Group changes: new name or member count in the header and sidebar.
