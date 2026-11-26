@@ -1,0 +1,34 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block styles %}<link rel="stylesheet" href="{% static 'account/css/settings.css' %}">{% endblock %}
+
+{% block body %}
+<div class="settings">
+    <nav class="settings__nav on-chrome" aria-label="Settings">
+        <a class="wordmark" href="{% url 'chat:chat' %}">relay</a>
+        <a class="btn btn--ghost btn--sm settings__back" href="{% url 'chat:chat' %}">← Back to chats</a>
+        <p class="section-label">Settings</p>
+        <ul class="settings__links">
+            {% for key, label, url_name in sections %}
+            <li><a href="{% url url_name %}" {% if key == section %}aria-current="page"{% endif %}>{{ label }}</a></li>
+            {% endfor %}
+        </ul>
+        <form class="settings__signout" action="{% url 'account:logout' %}" method="post">
+            {% csrf_token %}
+            <button class="btn btn--ghost btn--sm" type="submit">Sign out</button>
+        </form>
+    </nav>
+
+    <main id="main" class="settings__main">
+        <header class="settings__head">
+            <p class="section-label">Settings</p>
+            <h1>{% block heading %}{% endblock %}</h1>
+        </header>
+        {% include "core/partials/notices.html" %}
+        {% block section %}{% endblock %}
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{% static 'account/js/auth.js' %}" defer></script>{% endblock %}
