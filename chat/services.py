@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Q
 
+from chat import live_rooms
 from chat.models import Membership, Room
 
 User = get_user_model()
@@ -64,6 +65,7 @@ def get_or_create_direct_room(user, other):
             name="-".join(names)[:MAX_GROUP_NAME], type=Room.RoomTypes.PRIVATE
         )
         room.members.add(user, other)
+        live_rooms.room_added(room, [user, other])
     return room, True
 
 
@@ -93,4 +95,5 @@ def create_group_room(creator, name, usernames):
         )
         Membership.objects.create(room=room, user=creator, is_admin=True)
         room.members.add(*members)
+        live_rooms.room_added(room, [creator, *members])
     return room

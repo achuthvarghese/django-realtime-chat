@@ -222,3 +222,15 @@ def group_action(request, room_id, action):
     except groups.GroupError as error:
         return _group_response(request, room, error=groups.error_message(error.code))
     return _group_response(request, room)
+
+
+@login_required
+@require_GET
+def room_summary_view(request, room_id):
+    """One sidebar row as JSON (used when the list hears of a room it lacks)."""
+    from chat.presenters import room_summary
+
+    summary = room_summary(request.user, room_id)
+    if summary is None:
+        raise Http404("Room not found")
+    return JsonResponse(summary)

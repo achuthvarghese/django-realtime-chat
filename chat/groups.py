@@ -21,7 +21,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 
-from chat import realtime
+from chat import live_rooms, realtime
 from chat.models import Membership, Message, Room
 from chat.presenters import display_name, message_data
 from chat.services import MAX_GROUP_MEMBERS, MAX_GROUP_NAME
@@ -155,6 +155,7 @@ def add_members(room, actor, usernames):
     )
     system_message(room, actor, f"{display_name(actor)} added {name_list(users)}")
     announce_room_changed(room)
+    live_rooms.room_added(room, users)
     return users
 
 
@@ -171,6 +172,7 @@ def remove_member(room, actor, target):
     system_message(room, actor, f"{display_name(actor)} removed {display_name(target)}")
     revoke_access(room, target)
     announce_room_changed(room)
+    live_rooms.room_removed(room.id, [target.pk])
 
 
 @transaction.atomic
@@ -188,6 +190,7 @@ def rename(room, actor, name):
     room.save(update_fields=["name"])
     system_message(room, actor, f'{display_name(actor)} renamed the group to "{name}"')
     announce_room_changed(room)
+    live_rooms.room_changed(room)
 
 
 @transaction.atomic
@@ -227,6 +230,7 @@ def leave(room, user):
         room_id = room.id
         room.delete()
         realtime.send_to_room(room_id, {"type": "room.deleted"})
+        live_rooms.room_removed(room_id, [user.pk])
         return False
     system_message(room, user, f"{display_name(user)} left")
     if was_admin and not remaining.filter(is_admin=True).exists():
@@ -238,6 +242,7 @@ def leave(room, user):
         )
     revoke_access(room, user)
     announce_room_changed(room)
+    live_rooms.room_removed(room.id, [user.pk])
     return True
 
 
@@ -246,5 +251,7 @@ def delete_group(room, actor):
     require_group(room)
     require_admin(room, actor)
     room_id = room.id
+    member_pks = list(room.members.values_list("pk", flat=True))
     room.delete()
     realtime.send_to_room(room_id, {"type": "room.deleted"})
+    live_rooms.room_removed(room_id, member_pks)

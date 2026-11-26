@@ -356,6 +356,13 @@ class InboxConsumer(WebsocketConsumer):
             )
         )
 
+    def inbox_room(self, event):
+        """A room was added to or changed in this user's list."""
+        self.send(text_data=json.dumps({"type": event["frame"], "room": event["room"]}))
+
+    def inbox_room_removed(self, event):
+        self.send(text_data=json.dumps({"type": "room_removed", "room": event["room"]}))
+
     def inbox_message(self, event):
         data = event["data"]
         room = Room.objects.filter(id=event["room"]).first()
