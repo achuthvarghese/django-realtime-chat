@@ -59,8 +59,8 @@
     function onActivity(event) {
         const link = document.querySelector(`.room-link[data-room-id="${CSS.escape(event.room)}"]`);
         if (!link) {
-            // A room created by someone else since this page loaded.
-            if (event.message.user !== me) showNewRoomNote();
+            // Missed the room_added frame (e.g. while reconnecting): fetch the row.
+            fetchRoom(event.room);
             return;
         }
         if (event.room === currentRoom) return; // the room socket handles it
@@ -74,20 +74,96 @@
         item.parentElement.prepend(item);
     }
 
-    let noteShown = false;
-    function showNewRoomNote() {
-        if (noteShown) return;
-        noteShown = true;
-        const list = document.getElementById("room-list");
-        const li = document.createElement("li");
-        li.className = "room-list__new";
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "btn btn--ghost btn--sm";
-        button.textContent = "New conversation · Refresh";
-        button.addEventListener("click", () => window.location.reload());
-        li.append(button);
-        list.prepend(li);
+    // Live room list: rooms appear, change and disappear without a reload.
+
+    const list = document.getElementById("room-list");
+
+    function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+    }
+
+    // Mirrors the room row in chat/templates/chat/chat.html.
+    function buildRoomItem(room) {
+        const link = el("a", "room-link");
+        link.href = `/chat/?room=${encodeURIComponent(room.id)}`;
+        link.dataset.roomId = room.id;
+        if (room.other_username) link.dataset.username = room.other_username;
+        link.dataset.unread = "0";
+
+        const wrap = el("span", "room-link__avatar-wrap");
+        wrap.append(el("span", "avatar room-link__avatar" + (room.type === "group" ? " room-link__avatar--group" : "")));
+        if (room.other_username) {
+            const dot = el("span", "presence-dot");
+            dot.setAttribute("aria-hidden", "true");
+            wrap.append(dot);
+        }
+        const text = el("span", "room-link__text");
+        text.append(el("span", "room-link__title"), el("span", "room-link__preview"));
+        const meta = el("span", "room-link__meta");
+        const badge = el("span", "badge room-link__unread");
+        badge.hidden = true;
+        badge.append(el("span", "visually-hidden", "Unread: "));
+        const count = el("span", null, "0");
+        count.dataset.unreadCount = "";
+        badge.append(count);
+        meta.append(el("time", "room-link__time"), badge);
+        link.append(wrap, text, meta);
+
+        const item = el("li");
+        item.append(link);
+        return item;
+    }
+
+    function fillRoomItem(link, room) {
+        link.dataset.title = room.title.toLowerCase();
+        link.title = room.title;
+        link.querySelector(".room-link__avatar").textContent = room.initials;
+        link.querySelector(".room-link__title").textContent = room.title;
+        link.querySelector(".room-link__preview").textContent = room.last_content
+            ? (room.last_is_mine ? "You: " : "") + room.last_content
+            : "No messages yet";
+        const time = link.querySelector(".room-link__time");
+        time.textContent = room.last_at ? timeFormat.format(new Date(room.last_at)) : "";
+        if (room.id !== currentRoom) setUnread(link, room.unread);
+    }
+
+    function upsertRoom(room, { moveToTop }) {
+        let link = list.querySelector(`.room-link[data-room-id="${CSS.escape(room.id)}"]`);
+        if (!link) {
+            list.querySelector(".room-list__empty")?.remove();
+            const item = buildRoomItem(room);
+            item.classList.add("room-list__new");
+            list.prepend(item);
+            link = item.querySelector(".room-link");
+        } else if (moveToTop) {
+            list.prepend(link.parentElement);
+        }
+        fillRoomItem(link, room);
+        renderPresence();
+        renderTitle();
+    }
+
+    function removeRoom(roomId) {
+        list.querySelector(`.room-link[data-room-id="${CSS.escape(roomId)}"]`)?.parentElement.remove();
+        if (!list.querySelector(".room-link") && !list.querySelector(".room-list__empty")) {
+            list.append(el("li", "room-list__empty", "No chats yet. Use New chat to message someone or start a group."));
+        }
+        renderTitle();
+    }
+
+    const pending = new Set();
+    async function fetchRoom(roomId) {
+        if (pending.has(roomId)) return;
+        pending.add(roomId);
+        try {
+            const response = await fetch(`/chat/rooms/${encodeURIComponent(roomId)}/summary/`, { credentials: "same-origin" });
+            if (response.ok) upsertRoom(await response.json(), { moveToTop: true });
+        } finally {
+            pending.delete(roomId);
+        }
     }
 
     // Connection with reconnect and a 30-second keepalive
@@ -122,6 +198,12 @@
                 renderPresence();
             } else if (data.type === "room_activity") {
                 onActivity(data);
+            } else if (data.type === "room_added") {
+                upsertRoom(data.room, { moveToTop: true });
+            } else if (data.type === "room_changed") {
+                upsertRoom(data.room, { moveToTop: false });
+            } else if (data.type === "room_removed") {
+                removeRoom(data.room);
             }
         });
         socket.addEventListener("close", (event) => {
@@ -133,6 +215,7 @@
     }
 
     document.addEventListener("relay:details-loaded", renderPresence);
+    document.addEventListener("relay:room-removed", (event) => removeRoom(event.detail.room));
     renderTitle();
     connect();
 })();

@@ -551,7 +551,20 @@
 .presence-label.is-online { color: var(--success); font-weight: 600; }
 .typing { color: var(--accent); font-weight: 600; }
 .typing[hidden] { display: none; }
-.room-list__new { padding: 0 var(--space-1) var(--space-1); }
+/* A room that just arrived slides in. */
+.room-list__new { animation: room-in 320ms ease-out; }
+@keyframes room-in { from { opacity: 0; transform: translateX(-10px); } }
+
+/* The open room went away (removed, left elsewhere, or deleted). */
+.chat-gone {
+    margin: auto;
+    width: min(100% - 2 * var(--space-4), 420px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    text-align: left;
+}
+.chat-gone h1 { font-size: var(--text-xl); }
 
 @media (max-width: 1023px) {
     .room-link { position: relative; }

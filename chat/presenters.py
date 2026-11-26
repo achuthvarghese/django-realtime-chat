@@ -28,23 +28,22 @@ def room_title(room, viewer):
     return room.name
 
 
-def rooms_for(user):
+def rooms_for(user, room_ids=None):
     """The user's rooms, most recently active first, with the last message
-    they can still see."""
+    they can still see. `room_ids` limits it to those rooms."""
     visible = Message.objects.filter(
         room=OuterRef("pk"),
         visible_for=user,
         deleted_at__isnull=True,
         kind=Message.Kinds.TEXT,
     ).order_by("-created_at")
-    rooms = (
-        user.rooms.all()
-        .prefetch_related("members")
-        .annotate(
-            last_content=Subquery(visible.values("content")[:1]),
-            last_at=Subquery(visible.values("created_at")[:1]),
-            last_user_id=Subquery(visible.values("user_id")[:1]),
-        )
+    rooms = user.rooms.all()
+    if room_ids is not None:
+        rooms = rooms.filter(pk__in=room_ids)
+    rooms = rooms.prefetch_related("members").annotate(
+        last_content=Subquery(visible.values("content")[:1]),
+        last_at=Subquery(visible.values("created_at")[:1]),
+        last_user_id=Subquery(visible.values("user_id")[:1]),
     )
     rooms = list(rooms)
     unread = unread_counts(user, [r.pk for r in rooms])
@@ -74,6 +73,18 @@ def rooms_for(user):
         )
     summaries.sort(key=lambda r: r["sort_key"], reverse=True)
     return summaries
+
+
+def room_summary(user, room_id):
+    """One room's sidebar row for `user`, ready for JSON (or None if they're
+    not a member). Used to add or refresh rooms in the list live."""
+    rows = rooms_for(user, room_ids=[room_id])
+    if not rows:
+        return None
+    row = dict(rows[0])
+    row.pop("sort_key")
+    row["last_at"] = row["last_at"].isoformat() if row["last_at"] else None
+    return row
 
 
 def message_data(message):

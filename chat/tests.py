@@ -1157,3 +1157,118 @@ class TestGroupAdminMigration:
         ) == ["arjun"]
         assert not dm.memberships.filter(is_admin=True).exists()
         assert set(g.memberships.values_list("joined_at", flat=True)) == {g.created_at}
+
+
+# Live room list (P9b)
+
+
+@pytest.mark.django_db
+class TestRoomSummary:
+    def test_summary_is_per_viewer(self, maya, arjun, room):
+        from chat.presenters import room_summary
+
+        assert room_summary(maya, room.id)["title"] == "arjun"
+        assert room_summary(arjun, room.id)["title"] == "maya"
+        outsider = User.objects.create_user("eve", password="pw")
+        assert room_summary(outsider, room.id) is None
+
+    def test_summary_endpoint(self, client, maya, room):
+        client.force_login(maya)
+        data = client.get(reverse("chat:summary", args=[room.id])).json()
+        assert data["id"] == str(room.id) and data["other_username"] == "arjun"
+        outsider = User.objects.create_user("eve", password="pw")
+        client.force_login(outsider)
+        assert client.get(reverse("chat:summary", args=[room.id])).status_code == 404
+
+
+async def next_frame_of_type(communicator, frame_type, attempts=5):
+    for _ in range(attempts):
+        frame = await communicator.receive_json_from(timeout=2)
+        if frame["type"] == frame_type:
+            return frame
+    raise AssertionError(f"no {frame_type} frame")
+
+
+@pytest.mark.django_db(transaction=True)
+class TestLiveRoomList:
+    async def open_inbox(self, user):
+        inbox = make_inbox(user)
+        await inbox.connect()
+        await inbox.receive_json_from()  # presence snapshot
+        return inbox
+
+    async def test_new_group_reaches_members(self, maya, arjun, lee):
+        from chat.services import create_group_room
+
+        arjun_inbox = await self.open_inbox(arjun)
+        group = await database_sync_to_async(create_group_room)(maya, "Team", ["arjun"])
+        frame = await next_frame_of_type(arjun_inbox, "room_added")
+        assert frame["room"]["id"] == str(group.id)
+        assert frame["room"]["title"] == "Team"
+        assert frame["room"]["type"] == "group"
+        await arjun_inbox.disconnect()
+
+    async def test_new_direct_chat_reaches_both_with_their_own_title(self, maya, arjun):
+        from chat.services import get_or_create_direct_room
+
+        maya_inbox = await self.open_inbox(maya)
+        arjun_inbox = await self.open_inbox(arjun)
+        room, created = await database_sync_to_async(get_or_create_direct_room)(
+            maya, arjun
+        )
+        assert created
+        assert (await next_frame_of_type(arjun_inbox, "room_added"))["room"][
+            "title"
+        ] == "maya"
+        assert (await next_frame_of_type(maya_inbox, "room_added"))["room"][
+            "title"
+        ] == "arjun"
+        # Reusing it sends nothing.
+        await database_sync_to_async(get_or_create_direct_room)(maya, arjun)
+        assert await arjun_inbox.receive_nothing(timeout=0.3)
+        await maya_inbox.disconnect()
+        await arjun_inbox.disconnect()
+
+    async def test_added_renamed_removed(self, maya, arjun, lee):
+        from chat import groups
+        from chat.services import create_group_room
+
+        group = await database_sync_to_async(create_group_room)(maya, "Team", ["arjun"])
+        lee_inbox = await self.open_inbox(lee)
+        arjun_inbox = await self.open_inbox(arjun)
+
+        await database_sync_to_async(groups.add_members)(group, arjun, ["lee"])
+        assert (await next_frame_of_type(lee_inbox, "room_added"))["room"][
+            "title"
+        ] == "Team"
+
+        await database_sync_to_async(groups.rename)(group, maya, "Crew")
+        changed = await next_frame_of_type(arjun_inbox, "room_changed")
+        assert (changed["room"]["title"], changed["room"]["initials"]) == ("Crew", "CR")
+
+        await database_sync_to_async(groups.remove_member)(group, maya, lee)
+        removed = await next_frame_of_type(lee_inbox, "room_removed")
+        assert removed["room"] == str(group.id)
+        await lee_inbox.disconnect()
+        await arjun_inbox.disconnect()
+
+    async def test_leave_and_delete(self, maya, arjun, lee):
+        from chat import groups
+        from chat.services import create_group_room
+
+        group = await database_sync_to_async(create_group_room)(
+            maya, "Team", ["arjun", "lee"]
+        )
+        group_id = str(group.id)  # delete() clears the instance's pk
+        arjun_inbox = await self.open_inbox(arjun)
+        lee_inbox = await self.open_inbox(lee)
+
+        await database_sync_to_async(groups.leave)(group, arjun)
+        left = await next_frame_of_type(arjun_inbox, "room_removed")
+        assert left["room"] == group_id
+
+        await database_sync_to_async(groups.delete_group)(group, maya)
+        deleted = await next_frame_of_type(lee_inbox, "room_removed")
+        assert deleted["room"] == group_id
+        await arjun_inbox.disconnect()
+        await lee_inbox.disconnect()

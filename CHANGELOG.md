@@ -3,6 +3,21 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 9b: live rooms
+
+### Added
+- The room list updates live over the inbox socket: new direct chats and
+  groups slide in at the top, renamed groups update, and rooms you're removed
+  from, leave or that are deleted disappear (inbox frames `room_added`,
+  `room_changed`, `room_removed`; see docs/websocket-protocol.md).
+- `GET /chat/rooms/<uuid>/summary/`: one room-list row as JSON, used when the
+  page sees activity in a room it doesn't list yet.
+- A "You're no longer in this chat" / "This chat was deleted" pane replaces an
+  open room when you lose access, with a Back to chats button.
+
+### Removed
+- The "New conversation · Refresh" prompt; new rooms now appear by themselves.
+
 ## Phase 9a: group admins
 
 ### Added

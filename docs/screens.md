@@ -9,6 +9,7 @@
 | `/chat/` | `chat:chat` | Signed in | Room list; `?room=<uuid>` opens a room |
 | `/chat/people/?q=` | `chat:people` | Signed in | JSON people search for New chat |
 | `/chat/rooms/<uuid>/messages/` | `chat:history` | Room members | JSON page of older messages: `?before=<message id>&limit=1..100` |
+| `/chat/rooms/<uuid>/summary/` | `chat:summary` | Room members | JSON room-list row (the `room` object of the inbox `room_added` frame) |
 | `/chat/rooms/<uuid>/details/` | `chat:details` | Room members | HTML for the Details panel |
 | `/chat/rooms/<uuid>/group/<action>/` | `chat:group_action` | Room members | POST; `action` is `add` (`members`), `rename` (`name`), `make-admin`, `remove-admin`, `remove` (`username`), `leave` or `delete`. JSON with `Accept: application/json`, otherwise a redirect with a notice |
 | `/chat/new/direct/` | `chat:start_direct` | Signed in | POST `username`; opens or creates the direct chat |
@@ -88,9 +89,12 @@ Styles `account/static/account/css/auth.css`, script
   green while the other person is online.
 - Rooms with unread messages show a count badge and bold text; the browser
   tab title shows the total, for example "(3) Chats · Relay". New messages in
-  other rooms update the preview and move the room to the top live. A room
-  created by someone else while the page is open shows a "New conversation ·
-  Refresh" prompt.
+  other rooms update the preview and move the room to the top live.
+- The list changes live, without a reload: a chat or group someone starts
+  with you slides in at the top, a renamed group updates its title, and a
+  group you're removed from (or that's deleted) disappears. If you have that
+  room open, the conversation is replaced by "You're no longer in this chat"
+  (or "This chat was deleted") with a **Back to chats** button.
 - "Find a chat" filters the list as you type.
 - The footer row (your avatar, name and @username, with a chevron) is the
   **account menu** button: it opens Settings and Sign out above it, and the
