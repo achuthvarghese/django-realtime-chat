@@ -9,6 +9,8 @@
 | `/chat/` | `chat:chat` | Signed in | Room list; `?room=<uuid>` opens a room |
 | `/chat/people/?q=` | `chat:people` | Signed in | JSON people search for New chat |
 | `/chat/rooms/<uuid>/messages/` | `chat:history` | Room members | JSON page of older messages: `?before=<message id>&limit=1..100` |
+| `/chat/rooms/<uuid>/details/` | `chat:details` | Room members | HTML for the Details panel |
+| `/chat/rooms/<uuid>/group/<action>/` | `chat:group_action` | Room members | POST; `action` is `add` (`members`), `rename` (`name`), `make-admin`, `remove-admin`, `remove` (`username`), `leave` or `delete`. JSON with `Accept: application/json`, otherwise a redirect with a notice |
 | `/chat/new/direct/` | `chat:start_direct` | Signed in | POST `username`; opens or creates the direct chat |
 | `/chat/new/group/` | `chat:start_group` | Signed in | POST `name` and `members`; creates a group |
 | `/account/settings/` | `account:settings` | Signed in | Redirects to the Profile section |
@@ -100,8 +102,9 @@ Styles `account/static/account/css/auth.css`, script
 
 - **Header**: avatar, title, connection status (Connecting…, Live,
   Reconnecting…), then "Online"/"Offline" for a private chat or "N members ·
-  N online" for a group, a "… is typing…" indicator, and **Clear history**.
-  Opening a room marks it read.
+  N online" for a group, a "… is typing…" indicator, and a **Details** button
+  (ⓘ) that opens the [Details panel](#group-details). Opening a room marks it
+  read.
 - **Transcript**: the latest 50 messages you can see; scrolling to the top
   loads 50 more at a time ("Loading earlier messages…") until "Start of the
   conversation". Messages are grouped one line per
@@ -119,14 +122,60 @@ Styles `account/static/account/css/auth.css`, script
 - **Composer**: grows with the text up to about six lines. Enter sends,
   Shift+Enter adds a line, ↑ in an empty composer edits your last message. Send is disabled while disconnected; the text stays
   in the box.
-- **Clear history** asks for confirmation in a dialog (Cancel is the default)
-  and hides the room's messages for you only.
+- **Group events** ("Maya added Lee", "Arjun is now an admin") appear as muted
+  one-line rows with a small diamond on the spine. They never join a sender's
+  group of messages, can't be edited, and don't count as unread or show as the
+  room preview.
+- **Clear history** (in the Details panel) asks for confirmation (Cancel is the
+  default) and hides the room's messages for you only.
 - **Connection**: if the socket drops, the page retries after 1, 2, 4, 8 and
   then every 15 seconds. After reconnecting it offers a Reload, since
   messages sent in between are not replayed. Being signed out sends you to
-  sign in; losing access to the room sends you back to the list.
+  sign in. If you're removed from a group, or it's deleted, while it's open,
+  the composer is disabled, a notice says "You're no longer in this chat." or
+  "This chat was deleted.", and you're taken back to the list.
 
 With no room open, the pane shows a short welcome with a New chat button.
+
+### Group details
+
+The **Details** button in the room header opens a panel: a third column on
+desktop and tablet, full screen on phones. Escape closes the innermost open
+thing first (a menu or dialog, then the panel).
+
+| Part | Who sees it | What it does |
+| --- | --- | --- |
+| Name, member count, "Created by" | Everyone | Direct chats show the other person's @username instead |
+| Rename group | Admins | Inline form; the new name reaches everyone's header and sidebar live |
+| Members | Everyone | You first, then admins, then others; Admin badge and online dot |
+| + Add people | Any member | Search by name or username, pick people as chips, **Add to group** |
+| Member menu (⋯) | Admins | **Make admin** / **Remove admin**, **Remove from group** (asks first) |
+| Your own menu (⋯) | Admins | **Step down as admin** when other admins exist; otherwise a note says to make someone else admin first |
+| Clear history (for you) | Everyone | Same as before, now here instead of the header |
+| Leave group | Everyone in a group | Asks first; warns the only admin that the longest-standing member will become admin |
+| Delete group | Admins | Asks first; deletes the group and its messages for everyone |
+
+#### Group permissions
+
+| Action | Admins | Members |
+| --- | --- | --- |
+| Add people | ✅ | ✅ |
+| Rename, remove members, delete the group | ✅ | ❌ |
+| Make someone admin, remove admin | ✅ | ❌ |
+| Leave | ✅ | ✅ |
+
+- The person who creates a group is its first admin; a group can have several.
+- The only admin can't remove their own admin role: they make someone else
+  admin, then step down.
+- When the last admin leaves, the member who joined earliest becomes admin.
+- When the last member leaves, the group is deleted.
+- Groups hold up to 50 members. Direct chats have no admins or members to
+  manage.
+
+Every change is announced in the chat as a group event. The rules live in
+`chat/groups.py`. When a change isn't allowed, the panel shows a fixed
+sentence from `GROUP_ERROR_MESSAGES` there (for example "Only admins can do
+that."); error responses never include exception text.
 
 ### New chat
 

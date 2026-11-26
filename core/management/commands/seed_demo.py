@@ -18,7 +18,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from account.models import Preference
-from chat.models import Message, ReadState, Room
+from chat.models import Membership, Message, ReadState, Room
 from core import demo_data as data
 
 User = get_user_model()
@@ -107,11 +107,22 @@ class Command(BaseCommand):
                 )
 
         rooms = {}
+        history_start = now - timedelta(days=14)
         for key, name, kind, members in data.ROOMS:
+            is_group = kind == Room.RoomTypes.GROUP
             room = Room.objects.create(
-                name=name or "-".join(sorted(members)), type=kind
+                name=name or "-".join(sorted(members)),
+                type=kind,
+                created_by=users[members[0]] if is_group else None,
             )
-            room.members.add(*(users[m] for m in members))
+            admins = {members[0], *data.ADMINS.get(key, [])} if is_group else set()
+            for order, username in enumerate(members):
+                Membership.objects.create(
+                    room=room,
+                    user=users[username],
+                    is_admin=username in admins,
+                    joined_at=history_start + timedelta(minutes=order),
+                )
             rooms[key] = room
 
         rng = random.Random(7)  # deterministic filler
@@ -129,11 +140,23 @@ class Command(BaseCommand):
             (room, sender, text, now - timedelta(minutes=minutes))
             for room, sender, text, minutes in data.SCRIPT
         ]
+        system_rows = [
+            (room, actor, text, now - timedelta(minutes=minutes))
+            for room, actor, text, minutes in data.SYSTEM
+        ]
 
         for room_key, sender, text, when in sorted(rows, key=lambda r: r[3]):
             room = rooms[room_key]
             message = Message.objects.create(
                 content=text, room=room, user=users[sender]
+            )
+            Message.objects.filter(pk=message.pk).update(created_at=when)
+            message.visible_for.add(*room.members.all())
+
+        for room_key, actor, text, when in system_rows:
+            room = rooms[room_key]
+            message = Message.objects.create(
+                content=text, room=room, user=users[actor], kind=Message.Kinds.SYSTEM
             )
             Message.objects.filter(pk=message.pk).update(created_at=when)
             message.visible_for.add(*room.members.all())

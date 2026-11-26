@@ -1,0 +1,126 @@
+{# Details panel for one room, loaded into #details by details.js. #}
+<div class="details__inner" data-room-id="{{ room.id }}">
+    <div class="details__head">
+        <h2 class="details__title">Details</h2>
+        <button class="btn btn--ghost btn--icon btn--sm" type="button" data-details-close aria-label="Close details">×</button>
+    </div>
+
+    <section class="details__sec">
+        <div class="details__identity">
+            <span class="avatar details__avatar{% if is_group %} room-link__avatar--group{% endif %}" aria-hidden="true">{{ summary.initials }}</span>
+            <div class="details__identity-text">
+                <p class="details__name" data-details-name>{{ summary.title }}</p>
+                <p class="muted details__meta">
+                    {% if is_group %}Group · {{ members|length }} member{{ members|length|pluralize }}{% if created_by %} · Created by {{ created_by }}{% endif %}
+                    {% else %}@{{ summary.other_username }}{% endif %}
+                </p>
+            </div>
+        </div>
+        {% if is_group and viewer_is_admin %}
+        <details class="details__rename">
+            <summary class="details__link">Rename group</summary>
+            <form method="post" action="{% url 'chat:group_action' room.id 'rename' %}" class="details__form" data-group-action>
+                {% csrf_token %}
+                <label class="visually-hidden" for="rename-input">Group name</label>
+                <input class="input" id="rename-input" name="name" value="{{ room.name }}" maxlength="{{ max_group_name }}" required>
+                <button class="btn btn--primary btn--sm" type="submit">Save</button>
+            </form>
+        </details>
+        {% endif %}
+    </section>
+
+    {% if is_group %}
+    <section class="details__sec" aria-labelledby="members-label">
+        <div class="details__row">
+            <h3 class="section-label" id="members-label">Members</h3>
+            <button class="details__link" type="button" data-add-toggle aria-expanded="false" aria-controls="add-people">+ Add people</button>
+        </div>
+
+        <form method="post" action="{% url 'chat:group_action' room.id 'add' %}" class="details__add" id="add-people" data-group-action hidden>
+            {% csrf_token %}
+            <label class="visually-hidden" for="add-q">Find people to add</label>
+            <input class="input" type="search" id="add-q" placeholder="Search by name or username" autocomplete="off" data-add-search>
+            <ul class="chips" data-add-chips></ul>
+            <ul class="people" data-add-results aria-live="polite"></ul>
+            <button class="btn btn--primary btn--sm" type="submit" data-add-submit disabled>Add to group</button>
+        </form>
+
+        <ul class="members">
+            {% for m in members %}
+            <li class="member" data-username="{{ m.username }}">
+                <span class="room-link__avatar-wrap">
+                    <span class="avatar{% if m.is_me %} avatar--mine{% endif %}">{{ m.initials }}</span>
+                    {% if not m.is_me %}<span class="presence-dot presence-dot--surface" aria-hidden="true"></span>{% endif %}
+                </span>
+                <span class="member__text">
+                    <span class="member__name">{{ m.name }}{% if m.is_me %} (you){% endif %}</span>
+                    <span class="member__sub">
+                        <span class="member__handle">@{{ m.username }}</span>
+                        {% if m.is_admin %}<span class="member__badge">Admin</span>{% endif %}
+                    </span>
+                </span>
+                {% if viewer_is_admin %}
+                {% if not m.is_me or m.is_admin %}
+                <details class="member-menu" data-popover>
+                    <summary class="btn btn--ghost btn--icon btn--sm" aria-label="Options for {{ m.name }}">⋯</summary>
+                    <div class="member-menu__panel">
+                        {% if m.is_me %}
+                            {% if admin_count > 1 %}
+                            <form method="post" action="{% url 'chat:group_action' room.id 'remove-admin' %}" data-group-action
+                                  data-confirm-title="Step down as admin?" data-confirm-body="You'll no longer be able to rename the group, remove members or delete it." data-confirm-button="Step down">
+                                {% csrf_token %}<input type="hidden" name="username" value="{{ m.username }}">
+                                <button class="member-menu__item" type="submit">Step down as admin</button>
+                            </form>
+                            {% else %}
+                            <p class="member-menu__note">You're the only admin. Make someone else an admin before stepping down.</p>
+                            {% endif %}
+                        {% else %}
+                            {% if m.is_admin %}
+                            <form method="post" action="{% url 'chat:group_action' room.id 'remove-admin' %}" data-group-action>
+                                {% csrf_token %}<input type="hidden" name="username" value="{{ m.username }}">
+                                <button class="member-menu__item" type="submit">Remove admin</button>
+                            </form>
+                            {% else %}
+                            <form method="post" action="{% url 'chat:group_action' room.id 'make-admin' %}" data-group-action>
+                                {% csrf_token %}<input type="hidden" name="username" value="{{ m.username }}">
+                                <button class="member-menu__item" type="submit">Make admin</button>
+                            </form>
+                            {% endif %}
+                            <form method="post" action="{% url 'chat:group_action' room.id 'remove' %}" data-group-action
+                                  data-confirm-title="Remove {{ m.name }}?" data-confirm-body="They'll leave {{ room.name }} straight away and stop receiving its messages." data-confirm-button="Remove">
+                                {% csrf_token %}<input type="hidden" name="username" value="{{ m.username }}">
+                                <button class="member-menu__item member-menu__item--danger" type="submit">Remove from group</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </details>
+                {% endif %}
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    <section class="details__sec">
+        <h3 class="section-label">This chat</h3>
+        <button class="details__link details__link--plain" type="button" data-clear-room>Clear history (for you)</button>
+    </section>
+
+    {% if is_group %}
+    <div class="details__foot">
+        <form method="post" action="{% url 'chat:group_action' room.id 'leave' %}" data-group-action
+              data-confirm-title="Leave {{ room.name }}?" data-confirm-body="{% if viewer_is_admin and admin_count == 1 and members|length > 1 %}You're the only admin, so the longest-standing member will become admin. {% endif %}You'll stop receiving messages from this group." data-confirm-button="Leave">
+            {% csrf_token %}
+            <button class="btn btn--ghost btn--block" type="submit">Leave group</button>
+        </form>
+        {% if viewer_is_admin %}
+        <form method="post" action="{% url 'chat:group_action' room.id 'delete' %}" data-group-action
+              data-confirm-title="Delete {{ room.name }}?" data-confirm-body="The group and all its messages will be deleted for everyone. This can't be undone." data-confirm-button="Delete group">
+            {% csrf_token %}
+            <button class="btn btn--danger btn--block" type="submit">Delete group</button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

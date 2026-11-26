@@ -54,11 +54,11 @@ with `python manage.py createsuperuser` if you need `/admin/`.
 
 ## Rooms
 
-| Room | Type | Members | What's in it |
+| Room | Type | Members (admins in bold) | What's in it |
 | --- | --- | --- | --- |
-| Design team | Group | maya, arjun, anika, lee | 135 messages over ten days, enough for **infinite scroll** (the room opens with 50); grouping and day separators; one **edited** message |
-| Ops | Group | maya, lee, omar, sofia | Deploy chatter; one **deleted** message ("Message deleted") |
-| Book club | Group | anika, sofia, priya, omar, maya | A week-old thread plus recent replies; Priya has cleared her older history |
+| Design team | Group, created by maya | **maya**, **arjun**, anika, lee | 135 messages over ten days, enough for **infinite scroll** (the room opens with 50); grouping and day separators; one **edited** message; two group events |
+| Ops | Group, created by lee | **lee**, omar, sofia, maya | Deploy chatter; one **deleted** message ("Message deleted"); a group event |
+| Book club | Group, created by anika | **anika**, sofia, priya, omar, maya | A week-old thread plus recent replies; Priya has cleared her older history |
 | Maya ↔ Arjun | Direct | maya, arjun | Short recent exchange, all read |
 | Maya ↔ Anika | Direct | maya, anika | One unread message for Maya |
 | Arjun ↔ Lee | Direct | arjun, lee | Code review chat |
@@ -80,6 +80,11 @@ with `python manage.py createsuperuser` if you need `/admin/`.
 6. **New chat**: as `sam`, use New chat to message `maya`, or create a group.
 7. **Phone layout**: open the site with your browser's device toolbar; tap one
    of your messages to show Edit and Delete.
+8. **Group admin**: as `maya`, open Design team → Details (ⓘ). Make `anika` an
+   admin, rename the group, or remove `lee` while `lee` has it open in another
+   window: their tab says "You're no longer in this chat." As `lee` (Ops'
+   only admin) try stepping down: the panel asks you to make someone else
+   admin first.
 
 ## Changing the data
 

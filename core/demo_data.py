@@ -20,10 +20,11 @@ USERS = [
     ("noah", "Noah", "Kim", False, None),
 ]
 
-# Rooms: key, name, type, members.
+# Rooms: key, name, type, members. For groups the first member is the
+# creator (and first admin); members join in the order listed.
 ROOMS = [
     ("design", "Design team", "group", ["maya", "arjun", "anika", "lee"]),
-    ("ops", "Ops", "group", ["maya", "lee", "omar", "sofia"]),
+    ("ops", "Ops", "group", ["lee", "omar", "sofia", "maya"]),
     ("books", "Book club", "group", ["anika", "sofia", "priya", "omar", "maya"]),
     ("maya-arjun", None, "private", ["maya", "arjun"]),
     ("maya-anika", None, "private", ["maya", "anika"]),
@@ -105,6 +106,16 @@ FILLER_LINES = [
     "The rail view works well on the tablet.",
     "Who's taking notes today?",
     "Moving the meeting to Thursday.",
+]
+
+# Extra group admins besides each creator.
+ADMINS = {"design": ["arjun"]}
+
+# Group events shown as system messages: (room, actor, text, minutes before now).
+SYSTEM = [
+    ("design", "maya", "Maya Rao added Lee Chen", 4330),
+    ("design", "maya", "Maya Rao made Arjun Kumar an admin", 4325),
+    ("ops", "lee", "Lee Chen added Maya Rao", 320),
 ]
 
 # Message edits and deletes, matched by room and exact text.

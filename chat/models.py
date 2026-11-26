@@ -2,15 +2,23 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.utils import timezone
 
 User = get_user_model()
 
 
 class Message(models.Model):
+    class Kinds(models.TextChoices):
+        TEXT = "text", "Text"
+        # Group events ("Maya added Lee"); written by the server, never edited,
+        # never counted as unread.
+        SYSTEM = "system", "System"
+
     id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False, unique=True
     )
     content = models.TextField()
+    kind = models.CharField(max_length=10, choices=Kinds.choices, default=Kinds.TEXT)
     room = models.ForeignKey("Room", on_delete=models.CASCADE, related_name="messages")
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -26,6 +34,10 @@ class Message(models.Model):
     def is_deleted(self):
         return self.deleted_at is not None
 
+    @property
+    def is_system(self):
+        return self.kind == self.Kinds.SYSTEM
+
 
 class Room(models.Model):
     class RoomTypes(models.TextChoices):
@@ -36,14 +48,35 @@ class Room(models.Model):
         primary_key=True, default=uuid.uuid4, editable=False, unique=True
     )
     name = models.CharField(max_length=50)
-    members = models.ManyToManyField(User, related_name="rooms")
+    members = models.ManyToManyField(User, related_name="rooms", through="Membership")
     created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     type = models.CharField(
         max_length=10, default=RoomTypes.PRIVATE, choices=RoomTypes.choices
     )
 
     def __str__(self):
         return f"{self.type} :: {self.name}"
+
+
+class Membership(models.Model):
+    """A user's place in a room. Uses the table Django originally created for
+    Room.members, so existing memberships carried over unchanged."""
+
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="memberships")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
+    is_admin = models.BooleanField(default=False)
+    joined_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "chat_room_members"
+        unique_together = [("room", "user")]
+        ordering = ["joined_at", "id"]
+
+    def __str__(self):
+        return f"{self.user} in {self.room}{' (admin)' if self.is_admin else ''}"
 
 
 class ReadState(models.Model):

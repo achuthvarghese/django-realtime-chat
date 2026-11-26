@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Q
 
-from chat.models import Room
+from chat.models import Membership, Room
 
 User = get_user_model()
 
@@ -88,6 +88,9 @@ def create_group_room(creator, name, usernames):
         raise RoomError("Unknown people: " + ", ".join(sorted(missing)) + ".")
 
     with transaction.atomic():
-        room = Room.objects.create(name=name, type=Room.RoomTypes.GROUP)
-        room.members.add(creator, *members)
+        room = Room.objects.create(
+            name=name, type=Room.RoomTypes.GROUP, created_by=creator
+        )
+        Membership.objects.create(room=room, user=creator, is_admin=True)
+        room.members.add(*members)
     return room

@@ -3,6 +3,37 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 9a: group admins
+
+### Added
+- **Details panel** (ⓘ in the room header): group name and creator, members
+  with Admin badges and online dots, Add people, per-member menus, Clear
+  history, Leave group and Delete group, with confirmations. Third column on
+  desktop and tablet, full screen on phones.
+- **Admins**: the creator is the first admin; groups can have several. Admins
+  rename, remove members, make or remove admins and delete the group; any
+  member can add people. The only admin can't step down until someone else is
+  admin; when the last admin leaves, the earliest member becomes admin; the
+  last member leaving deletes the group.
+- **Group events** as one-line system messages on the spine ("Maya added
+  Lee"); not unread, not previews, not editable.
+- Live updates: `room_updated` frames refresh the header, sidebar and panel;
+  removed members and deleted groups close open sockets with a notice.
+- `Membership` model (adopting the existing members table), `Room.created_by`,
+  `Message.kind`; migration `chat/0004_group_admins` gives existing groups an
+  admin (earliest member).
+- Demo data: group creators, admins and group events.
+
+### Changed
+- Clear history moved from the room header into the Details panel.
+- Socket membership is checked on every frame, not only on connect.
+
+### Fixed
+- Escape closes the innermost open menu or dialog before the Details panel.
+- Group action errors are looked up by code from a fixed message table
+  instead of returning exception text (CodeQL: information exposure through
+  an exception).
+
 ## Account UX and username rules
 
 ### Added

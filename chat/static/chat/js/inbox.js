@@ -18,8 +18,9 @@
     // Presence
 
     function renderPresence() {
-        for (const link of document.querySelectorAll(".room-link[data-username]")) {
-            link.classList.toggle("is-online", online.has(link.dataset.username));
+        // Room list rows and member rows in the Details panel.
+        for (const row of document.querySelectorAll(".room-link[data-username], .member[data-username]")) {
+            row.classList.toggle("is-online", online.has(row.dataset.username));
         }
         for (const label of document.querySelectorAll("[data-presence-for]")) {
             const isOnline = online.has(label.dataset.presenceFor);
@@ -131,6 +132,7 @@
         });
     }
 
+    document.addEventListener("relay:details-loaded", renderPresence);
     renderTitle();
     connect();
 })();

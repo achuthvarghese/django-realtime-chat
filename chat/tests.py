@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from channels.db import database_sync_to_async
 from channels.testing import WebsocketCommunicator
@@ -776,3 +778,382 @@ class TestQueryBudget:
                 client.get(reverse("chat:chat"))
             counts.append(len(ctx.captured_queries))
         assert counts[0] == counts[1]
+
+
+# Group admins (P9a)
+
+
+@pytest.fixture
+def lee(db):
+    return User.objects.create_user("lee", password="pw", first_name="Lee")
+
+
+@pytest.fixture
+def group(maya, arjun, lee):
+    """Design team: maya created it (admin); arjun and lee are members."""
+    from chat.services import create_group_room
+
+    return create_group_room(maya, "Design team", ["arjun", "lee"])
+
+
+def member(room, user):
+    from chat.models import Membership
+
+    return Membership.objects.get(room=room, user=user)
+
+
+def system_texts(room):
+    return list(
+        Message.objects.filter(room=room, kind=Message.Kinds.SYSTEM)
+        .order_by("created_at")
+        .values_list("content", flat=True)
+    )
+
+
+@pytest.mark.django_db
+class TestGroupRules:
+    def test_creator_is_admin_and_creator(self, group, maya, arjun):
+        assert group.created_by == maya
+        assert member(group, maya).is_admin
+        assert not member(group, arjun).is_admin
+
+    def test_any_member_can_add(self, group, arjun):
+        from chat import groups
+
+        User.objects.create_user("sofia", password="pw", first_name="Sofia")
+        groups.add_members(group, arjun, ["sofia"])
+        assert group.members.filter(username="sofia").exists()
+        assert system_texts(group)[-1] == "arjun added Sofia"
+
+    def test_add_rejects_existing_unknown_and_too_many(self, group, maya):
+        from chat import groups
+
+        with pytest.raises(groups.GroupError, match="nobody_new"):
+            groups.add_members(group, maya, ["arjun"])
+        with pytest.raises(groups.GroupError, match="unknown_people"):
+            groups.add_members(group, maya, ["ghost"])
+        for i in range(47):
+            User.objects.create_user(f"user{i}", password="pw")
+        with pytest.raises(groups.GroupError, match="too_many"):
+            groups.add_members(group, maya, [f"user{i}" for i in range(48)])
+
+    def test_only_admins_rename_remove_and_delete(self, group, arjun, lee):
+        from chat import groups
+
+        for action in (
+            lambda: groups.rename(group, arjun, "Mine now"),
+            lambda: groups.remove_member(group, arjun, lee),
+            lambda: groups.delete_group(group, arjun),
+            lambda: groups.set_admin(group, arjun, lee, True),
+        ):
+            with pytest.raises(groups.GroupError, match="not_admin"):
+                action()
+        group.refresh_from_db()
+        assert group.name == "Design team"
+
+    def test_admin_actions_and_system_messages(self, group, maya, arjun, lee):
+        from chat import groups
+
+        groups.rename(group, maya, "Design crew")
+        groups.set_admin(group, maya, arjun, True)
+        groups.remove_member(group, maya, lee)
+        group.refresh_from_db()
+        assert group.name == "Design crew"
+        assert member(group, arjun).is_admin
+        assert not group.members.filter(pk=lee.pk).exists()
+        assert system_texts(group) == [
+            'maya renamed the group to "Design crew"',
+            "maya made arjun an admin",
+            "maya removed Lee",
+        ]
+
+    def test_only_admin_cannot_step_down_until_another_admin(self, group, maya, arjun):
+        from chat import groups
+
+        with pytest.raises(groups.GroupError, match="last_admin"):
+            groups.set_admin(group, maya, maya, False)
+        groups.set_admin(group, maya, arjun, True)
+        groups.set_admin(group, maya, maya, False)
+        assert not member(group, maya).is_admin
+        assert system_texts(group)[-1] == "maya is no longer an admin"
+
+    def test_admin_can_demote_another_admin(self, group, maya, arjun):
+        from chat import groups
+
+        groups.set_admin(group, maya, arjun, True)
+        groups.set_admin(group, maya, arjun, False)
+        assert not member(group, arjun).is_admin
+        assert system_texts(group)[-1] == "maya removed arjun as admin"
+
+    def test_admin_cannot_remove_self(self, group, maya):
+        from chat import groups
+
+        with pytest.raises(groups.GroupError, match="remove_self"):
+            groups.remove_member(group, maya, maya)
+
+    def test_last_admin_leaving_promotes_longest_standing(self, group, maya, arjun):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from chat import groups
+
+        # lee joined before arjun
+        member_lee = group.memberships.get(user__username="lee")
+        member_lee.joined_at = timezone.now() - timedelta(days=1)
+        member_lee.save()
+        assert groups.leave(group, maya) is True
+        assert member(group, member_lee.user).is_admin
+        assert not member(group, arjun).is_admin
+        assert system_texts(group)[-2:] == ["maya left", "Lee is now an admin"]
+
+    def test_leaving_with_other_admins_promotes_no_one(self, group, maya, arjun):
+        from chat import groups
+
+        groups.set_admin(group, maya, arjun, True)
+        groups.leave(group, maya)
+        admins = list(
+            group.memberships.filter(is_admin=True).values_list(
+                "user__username", flat=True
+            )
+        )
+        assert admins == ["arjun"]
+
+    def test_last_member_leaving_deletes_group(self, group, maya, arjun, lee):
+        from chat import groups
+
+        groups.leave(group, arjun)
+        groups.leave(group, lee)
+        assert groups.leave(group, maya) is False
+        assert not Room.objects.filter(pk=group.pk).exists()
+
+    def test_private_rooms_are_not_managed(self, room, maya, arjun):
+        from chat import groups
+
+        with pytest.raises(groups.GroupError, match="not_group"):
+            groups.leave(room, maya)
+
+    def test_system_messages_are_not_unread_or_previews(
+        self, group, maya, arjun, client
+    ):
+        from chat import groups
+        from chat.presence import unread_count
+
+        groups.rename(group, maya, "Renamed")
+        assert unread_count(arjun, group) == 0
+        client.force_login(arjun)
+        summary = client.get(reverse("chat:chat")).context["rooms"][0]
+        assert summary["last_content"] == ""
+
+
+class TestGroupErrorMessages:
+    def test_every_raised_code_has_a_message(self):
+        import re
+        from pathlib import Path
+
+        from chat import groups
+
+        source = Path(groups.__file__).read_text()
+        raised = set(re.findall(r'raise GroupError\("([a-z_]+)"\)', source))
+        assert raised and raised <= set(groups.GROUP_ERROR_MESSAGES)
+
+    def test_unknown_code_has_a_safe_fallback(self):
+        from chat import groups
+
+        assert groups.error_message("nope") == groups.UNKNOWN_ERROR_MESSAGE
+
+
+@pytest.mark.django_db
+class TestGroupEndpoints:
+    def post(self, client, room, action, data=None, json=True):
+        headers = {"HTTP_ACCEPT": "application/json"} if json else {}
+        return client.post(
+            reverse("chat:group_action", args=[room.id, action]), data or {}, **headers
+        )
+
+    def test_details_panel_for_admin_and_member(self, client, group, maya, arjun):
+        client.force_login(maya)
+        html = client.get(reverse("chat:details", args=[group.id])).content.decode()
+        assert (
+            "Rename group" in html and "Delete group" in html and "Make admin" in html
+        )
+        assert "Created by maya" in html
+        client.force_login(arjun)
+        html = client.get(reverse("chat:details", args=[group.id])).content.decode()
+        assert "Rename group" not in html and "Delete group" not in html
+        assert "Make admin" not in html
+        assert "+ Add people" in html and "Leave group" in html
+
+    def test_only_admin_sees_step_down_note(self, client, group, maya):
+        client.force_login(maya)
+        html = client.get(reverse("chat:details", args=[group.id])).content.decode()
+        assert "only admin" in html
+
+    def test_details_for_direct_chat(self, client, room, maya):
+        client.force_login(maya)
+        html = client.get(reverse("chat:details", args=[room.id])).content.decode()
+        assert "@arjun" in html and "Clear history" in html
+        assert "Leave group" not in html
+
+    def test_details_hidden_from_non_members(self, client, group):
+        outsider = User.objects.create_user("eve", password="pw")
+        client.force_login(outsider)
+        assert client.get(reverse("chat:details", args=[group.id])).status_code == 404
+        assert self.post(client, group, "leave").status_code == 404
+
+    def test_rename_and_errors_as_json(self, client, group, maya, arjun):
+        client.force_login(maya)
+        assert self.post(client, group, "rename", {"name": "New"}).json() == {
+            "ok": True,
+            "redirect": None,
+        }
+        client.force_login(arjun)
+        response = self.post(client, group, "rename", {"name": "Nope"})
+        assert response.status_code == 400
+        assert response.json()["error"] == "Only admins can do that."
+
+    def test_make_admin_remove_and_add(self, client, group, maya, arjun, lee):
+        client.force_login(maya)
+        self.post(client, group, "make-admin", {"username": "arjun"})
+        self.post(client, group, "remove", {"username": "lee"})
+        User.objects.create_user("sofia", password="pw")
+        self.post(client, group, "add", {"members": ["sofia"]})
+        assert member(group, arjun).is_admin
+        assert set(group.members.values_list("username", flat=True)) == {
+            "maya",
+            "arjun",
+            "sofia",
+        }
+
+    def test_leave_and_delete_redirect_to_list(self, client, group, maya, arjun):
+        client.force_login(arjun)
+        assert self.post(client, group, "leave").json()["redirect"] == "/chat/"
+        client.force_login(maya)
+        assert self.post(client, group, "delete").json()["redirect"] == "/chat/"
+        assert not Room.objects.filter(pk=group.pk).exists()
+
+    def test_form_fallback_redirects_with_notice(self, client, group, arjun):
+        client.force_login(arjun)
+        response = self.post(client, group, "rename", {"name": "x"}, json=False)
+        assert response.url == f"/chat/?room={group.id}"
+        response = client.get(response.url)
+        assert "Only admins can do that." in response.content.decode()
+
+    def test_json_errors_come_from_the_message_table(self, client, group, maya):
+        from chat import groups
+
+        client.force_login(maya)
+        response = self.post(client, group, "add", {"members": ["ghost"]})
+        assert response.json()["error"] == groups.GROUP_ERROR_MESSAGES["unknown_people"]
+        assert "ghost" not in response.content.decode()
+
+    def test_unknown_action_and_get(self, client, group, maya):
+        client.force_login(maya)
+        assert self.post(client, group, "explode").status_code == 404
+        url = reverse("chat:group_action", args=[group.id, "leave"])
+        assert client.get(url).status_code == 405
+
+
+@pytest.mark.django_db(transaction=True)
+class TestGroupSockets:
+    async def test_removed_member_is_disconnected(self, maya, arjun, lee):
+        from chat import groups
+        from chat.services import create_group_room
+
+        group = await database_sync_to_async(create_group_room)(
+            maya, "Team", ["arjun", "lee"]
+        )
+        lee_socket = make_communicator(group.id, lee)
+        maya_socket = make_communicator(group.id, maya)
+        await lee_socket.connect()
+        await maya_socket.connect()
+
+        await database_sync_to_async(groups.remove_member)(group, maya, lee)
+
+        seen_by_maya = [await maya_socket.receive_json_from() for _ in range(2)]
+        assert [f["type"] for f in seen_by_maya] == ["save_message", "room_updated"]
+        assert seen_by_maya[0]["kind"] == "system"
+        assert seen_by_maya[1]["member_count"] == 2
+
+        frames = []
+        while True:
+            output = await lee_socket.receive_output()
+            if output["type"] == "websocket.close":
+                break
+            frames.append(json.loads(output["text"]))
+        assert output["code"] == 4403
+        assert frames[-1]["code"] == 403
+        await lee_socket.disconnect()
+        await maya_socket.disconnect()
+
+    async def test_frames_from_ex_member_are_refused(self, maya, arjun, lee):
+        from chat.models import Membership
+        from chat.services import create_group_room
+
+        group = await database_sync_to_async(create_group_room)(maya, "Team", ["lee"])
+        lee_socket = make_communicator(group.id, lee)
+        await lee_socket.connect()
+        # Removed without an event (e.g. by another process that crashed)
+        await database_sync_to_async(
+            Membership.objects.filter(room=group, user=lee).delete
+        )()
+        await lee_socket.send_json_to({"type": "save_message", "message": "hi"})
+        assert (await lee_socket.receive_json_from())["code"] == 403
+        assert (await lee_socket.receive_output())["code"] == 4403
+        await lee_socket.disconnect()
+        count = await database_sync_to_async(Message.objects.filter(room=group).count)()
+        assert count == 0
+
+    async def test_deleting_group_closes_sockets(self, maya, arjun):
+        from chat import groups
+        from chat.services import create_group_room
+
+        group = await database_sync_to_async(create_group_room)(maya, "Team", ["arjun"])
+        socket = make_communicator(group.id, arjun)
+        await socket.connect()
+        await database_sync_to_async(groups.delete_group)(group, maya)
+        assert (await socket.receive_json_from())["code"] == 404
+        assert (await socket.receive_output())["code"] == 4404
+        await socket.disconnect()
+
+    async def test_system_messages_cannot_be_edited(self, maya, arjun):
+        from chat import groups
+        from chat.services import create_group_room
+
+        group = await database_sync_to_async(create_group_room)(maya, "Team", ["arjun"])
+        await database_sync_to_async(groups.rename)(group, maya, "Renamed")
+        system = await database_sync_to_async(
+            Message.objects.filter(room=group, kind="system").first
+        )()
+        socket = make_communicator(group.id, maya)
+        await socket.connect()
+        await socket.send_json_to({"type": "delete_message", "id": str(system.id)})
+        assert (await socket.receive_json_from())["code"] == 403
+        await socket.disconnect()
+
+
+@pytest.mark.django_db
+class TestGroupAdminMigration:
+    def test_backfill_makes_earliest_member_admin(self, maya, arjun, lee):
+        import importlib
+
+        from django.apps import apps
+
+        from chat.models import Membership
+
+        g = Room.objects.create(name="Old group", type=Room.RoomTypes.GROUP)
+        for u in (arjun, maya, lee):  # arjun added first
+            Membership.objects.create(room=g, user=u)
+        dm = Room.objects.create(name="dm", type=Room.RoomTypes.PRIVATE)
+        dm.members.add(maya, arjun)
+
+        module = importlib.import_module("chat.migrations.0004_group_admins")
+        module.backfill(apps, None)
+
+        g.refresh_from_db()
+        assert g.created_by == arjun
+        assert list(
+            g.memberships.filter(is_admin=True).values_list("user__username", flat=True)
+        ) == ["arjun"]
+        assert not dm.memberships.filter(is_admin=True).exists()
+        assert set(g.memberships.values_list("joined_at", flat=True)) == {g.created_at}

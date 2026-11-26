@@ -150,7 +150,18 @@ class TestSeedDemo:
         User = get_user_model()
         assert User.objects.count() == len(demo_data.USERS)
         assert Room.objects.count() == len(demo_data.ROOMS)
-        assert Message.objects.count() == len(demo_data.SCRIPT) + demo_data.FILLER_COUNT
+        assert Message.objects.count() == (
+            len(demo_data.SCRIPT) + demo_data.FILLER_COUNT + len(demo_data.SYSTEM)
+        )
+        design = Room.objects.get(name="Design team")
+        admins = set(
+            design.memberships.filter(is_admin=True).values_list(
+                "user__username", flat=True
+            )
+        )
+        assert admins == {"maya", "arjun"}
+        assert design.created_by.username == "maya"
+        assert Room.objects.get(name="Ops").created_by.username == "lee"
         assert demo_data.DEMO_PASSWORD in output
         maya = User.objects.get(username="maya")
         assert maya.check_password(demo_data.DEMO_PASSWORD)
