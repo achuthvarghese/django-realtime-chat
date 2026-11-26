@@ -29,6 +29,10 @@
     font-size: var(--text-sm);
 }
 .settings__links a:hover { background: var(--chrome-raised); color: var(--chrome-strong); }
+.settings__links a[aria-current="page"] { background: var(--chrome-raised); color: var(--chrome-strong); font-weight: 700; }
+.settings__identity { display: flex; align-items: center; gap: var(--space-3); }
+.settings__avatar { width: 44px; height: 44px; border-radius: 12px; font-size: 14px; }
+.settings__name { font-family: var(--font-display); font-weight: 700; font-size: var(--text-md); }
 .settings__signout { margin-top: auto; }
 
 .settings__main {
@@ -55,7 +59,8 @@
         padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
     }
     .settings__nav .section-label { display: none; }
-    .settings__links { flex-direction: row; order: 3; width: 100%; }
+    .settings__links { flex-direction: row; order: 3; width: 100%; overflow-x: auto; }
+    .settings__links a { white-space: nowrap; }
     .settings__signout { margin: 0 0 0 auto; }
     .settings__main { padding: var(--space-4) max(var(--space-4), env(safe-area-inset-right, 0px)) var(--space-6) max(var(--space-4), env(safe-area-inset-left, 0px)); }
     .settings__row { grid-template-columns: 1fr; }

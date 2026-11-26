@@ -3,6 +3,24 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Account UX and username rules
+
+### Added
+- Username rules: 3–30 lowercase letters, numbers and `_`, starting with a
+  letter, no `_` at the end or twice in a row. The signup field formats as you
+  type (capitals to lowercase, spaces to `_`) and explains any broken rule.
+- Migration `account/0002_conform_usernames` renames older accounts to the
+  rules and prints every rename.
+- Account menu: the whole footer row in the chat sidebar (avatar, name,
+  @username and a chevron) opens Settings and Sign out.
+- Settings sections with their own URLs: Profile (with read-only @username),
+  Appearance and Password.
+
+### Changed
+- Sign-in ignores letter case and spaces in the username.
+- The Theme button is gone from the chat sidebar; signed-in users change the
+  theme in Settings → Appearance. Signed-out pages keep their Theme menu.
+
 ## Demo data
 
 ### Added

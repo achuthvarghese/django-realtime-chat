@@ -70,18 +70,70 @@
 .chat-side__me {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2);
+    padding: var(--space-2) 0 0;
     border-top: 1px solid color-mix(in srgb, var(--chrome-fg) 14%, transparent);
 }
-.chat-side__me-link { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; color: inherit; text-decoration: none; border-radius: var(--radius-sm); }
-.chat-side__me-link:hover .chat-side__me-name { text-decoration: underline; }
+/* The whole footer row is the account menu button. */
+.chat-side__me-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: 6px var(--space-2);
+    border-radius: var(--radius-md);
+    color: inherit;
+    transition: background var(--transition);
+}
+.chat-side__me-link:hover,
+.account-menu[open] > .chat-side__me-link { background: var(--chrome-raised); }
 .chat-side__me-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .chat-side__me-name { font-size: var(--text-sm); font-weight: 700; color: var(--chrome-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-side__me-handle { font-size: var(--text-xs); opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-side .theme-menu .btn--ghost,
-.chat-side__me .btn--ghost { color: var(--chrome-strong); border-color: color-mix(in srgb, var(--chrome-fg) 30%, transparent); }
-.chat-side .theme-menu__panel { top: auto; bottom: calc(100% + var(--space-2)); right: auto; left: 0; }
+.icon { display: block; flex: none; }
+/* Points up because the menu opens upward; flips while it's open. */
+.account-menu__chevron { flex: none; color: color-mix(in srgb, var(--chrome-fg) 80%, transparent); transition: transform var(--transition); }
+.account-menu[open] .account-menu__chevron { transform: rotate(180deg); }
+
+/* Account menu: opens upward from your name in the sidebar footer */
+.account-menu { position: relative; flex: 1; min-width: 0; }
+.account-menu > summary { list-style: none; cursor: pointer; }
+.account-menu > summary::-webkit-details-marker { display: none; }
+.account-menu__panel {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + var(--space-2));
+    z-index: 50;
+    width: 220px;
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-1);
+    background: var(--surface);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-float);
+}
+.account-menu__who { display: flex; flex-direction: column; padding: var(--space-2); border-bottom: 1px solid var(--line); margin-bottom: var(--space-1); font-size: var(--text-xs); }
+.account-menu__name { font-weight: 700; font-size: var(--text-sm); }
+.account-menu__item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: 7px var(--space-2);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+.account-menu__item:hover { background: var(--hover); }
+.account-menu__item--danger { color: var(--danger); border-top: 1px solid var(--line); border-radius: 0 0 var(--radius-sm) var(--radius-sm); margin-top: var(--space-1); }
+.account-menu__glyph { width: 16px; text-align: center; }
 
 /* Main pane */
 
@@ -184,8 +236,10 @@
     .room-link { grid-template-columns: auto; padding: 6px; }
     .room-link__avatar { width: 36px; height: 36px; font-size: 11px; }
     .room-list__empty { display: none; }
-    .chat-side__me { flex-direction: column; padding: var(--space-2) 0; width: 100%; }
-    .chat-side__me-link { flex: none; }
+    .chat-side__me { justify-content: center; width: 100%; }
+    .account-menu { flex: none; }
+    .chat-side__me-link { padding: 4px; }
+    .account-menu__chevron { display: none; }
     .composer__hint { display: none; }
 }
 
@@ -202,10 +256,11 @@
     .room-link__time { display: block; }
     .room-list { align-items: stretch; }
     .room-link { grid-template-columns: auto minmax(0, 1fr) auto; padding: 8px var(--space-2); }
-    .chat-side__me { flex-direction: row; padding: var(--space-2); }
-    .chat-side__me-link { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; color: inherit; text-decoration: none; border-radius: var(--radius-sm); }
-.chat-side__me-link:hover .chat-side__me-name { text-decoration: underline; }
-.chat-side__me-text { display: flex; }
+    .chat-side__me { justify-content: stretch; }
+    .account-menu { flex: 1; }
+    .chat-side__me-link { padding: 6px var(--space-2); }
+    .chat-side__me-text { display: flex; }
+    .account-menu__chevron { display: block; }
 
     .chat-head { padding: var(--space-2); gap: var(--space-2); }
     .chat-head__back { display: inline-flex; }

@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from account.forms import (
     AppearanceForm,
@@ -14,6 +14,7 @@ from account.forms import (
     UserSignUpForm,
 )
 from account.models import Preference
+from chat.presenters import display_name, initials
 from core import theme
 
 User = get_user_model()
@@ -84,49 +85,70 @@ def user_signup(request):
     return render(request, "account/signup.html", context)
 
 
+# Settings sections, in menu order: (key, label, url name).
+SETTINGS_SECTIONS = [
+    ("profile", "Profile", "account:settings_profile"),
+    ("appearance", "Appearance", "account:appearance"),
+    ("password", "Password", "account:settings_password"),
+]
+
+
+def render_settings(request, section, **context):
+    context.update(
+        {
+            "title": f"{dict((k, l) for k, l, _ in SETTINGS_SECTIONS)[section]} · Settings",
+            "section": section,
+            "sections": SETTINGS_SECTIONS,
+            "me_initials": initials(display_name(request.user)),
+        }
+    )
+    return render(request, f"account/settings/{section}.html", context)
+
+
 @login_required
 def user_settings(request):
-    """Profile, appearance and password on one page; each form posts its own
-    `section` so only that form is validated."""
-    profile_form = ProfileForm(instance=request.user)
-    password_form = StyledPasswordChangeForm(request.user)
-    section = request.POST.get("section") if request.method == "POST" else None
-
-    if section == "profile":
-        profile_form = ProfileForm(request.POST, instance=request.user)
-        if profile_form.is_valid():
-            profile_form.save()
-            messages.success(request, "Profile saved.")
-            return redirect("account:settings")
-    elif section == "password":
-        password_form = StyledPasswordChangeForm(request.user, request.POST)
-        if password_form.is_valid():
-            user = password_form.save()
-            update_session_auth_hash(request, user)
-            messages.success(request, "Password changed.")
-            return redirect("account:settings")
-
-    context = {
-        "title": "Settings",
-        "profile_form": profile_form,
-        "password_form": password_form,
-        "section": section,
-    }
-    return render(request, "account/settings.html", context)
+    return redirect("account:settings_profile")
 
 
 @login_required
-@require_POST
+def settings_profile(request):
+    form = ProfileForm(instance=request.user)
+    if request.method == "POST":
+        form = ProfileForm(request.POST, instance=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Profile saved.")
+            return redirect("account:settings_profile")
+    return render_settings(request, "profile", form=form)
+
+
+@login_required
+def settings_password(request):
+    form = StyledPasswordChangeForm(request.user)
+    if request.method == "POST":
+        form = StyledPasswordChangeForm(request.user, request.POST)
+        if form.is_valid():
+            user = form.save()
+            update_session_auth_hash(request, user)
+            messages.success(request, "Password changed.")
+            return redirect("account:settings_password")
+    return render_settings(request, "password", form=form)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
 def appearance(request):
-    """Save any of palette, mode and density. JSON for scripts; a redirect
-    back to settings for the no-JavaScript form."""
+    """GET shows the Appearance section. POST saves any of palette, mode and
+    density: JSON for scripts, a redirect back for the no-JavaScript form."""
+    if request.method == "GET":
+        return render_settings(request, "appearance")
     form = AppearanceForm(request.POST)
     wants_json = "application/json" in request.headers.get("Accept", "")
     if not form.is_valid():
         if wants_json:
             return JsonResponse({"ok": False, "errors": form.errors}, status=400)
         messages.error(request, "That appearance option isn't available.")
-        return redirect("account:settings")
+        return redirect("account:appearance")
 
     pref = Preference.for_user(request.user)
     for field, value in form.changes().items():
@@ -143,4 +165,4 @@ def appearance(request):
             }
         )
     messages.success(request, "Appearance saved.")
-    return redirect("account:settings")
+    return redirect("account:appearance")

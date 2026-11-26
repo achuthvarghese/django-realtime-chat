@@ -55,11 +55,14 @@ Paper switches its chrome to graphite tones in dark mode.
    `<meta name="csrf-token">`, and fires `relay:theme-save-failed` if that
    fails.
 
+Any `<details data-popover>` (the Theme menu, the account menu) closes on Escape or an outside click; `theme.js` handles it.
+
 Any element with `data-theme-control` containing radio inputs named
 `palette`, `mode` or `density` (or with `data-axis` set to one of those, so a
 picker inside a form can use its own group name) changes the theme instantly; `theme.js` handles
 it. Include `core/partials/theme_picker.html` for the full picker or
-`core/partials/theme_menu.html` for a compact popover.
+`core/partials/theme_menu.html` for a compact popover. Signed-out pages use the
+menu; signed-in users change the theme in Settings → Appearance.
 
 ### Adding a palette
 
@@ -107,7 +110,8 @@ Screen-specific components live with their screens:
 | `.form-spine`, `.form-spine__step` | `account/css/auth.css` | Form groups as spine nodes; `is-done`, `has-error` |
 | `.palette-chip` | `account/css/auth.css` | Compact palette radio |
 | `.home-hero`, `.home-demo`, `.feature-spine` | `core/css/home.css` | Home page |
-| `.settings`, `.settings__nav`, `.settings__section` | `account/css/settings.css` | Settings page |
+| `.settings`, `.settings__nav`, `.settings__section`, `.settings__identity` | `account/css/settings.css` | Settings sections; the current section link has `aria-current="page"` |
+| `.account-menu`, `.account-menu__panel`, `.account-menu__item` | `chat/css/chat.css` | Account popover above your name in the chat sidebar |
 | `.chat`, `.chat-side`, `.room-link`, `.chat-head`, `.status`, `.chat-toast`, `.confirm` | `chat/css/chat.css` | Chat screen; see [screens.md](./screens.md#chat) |
 
 ### Transcript

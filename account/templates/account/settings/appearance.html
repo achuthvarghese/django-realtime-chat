@@ -1,0 +1,24 @@
+{% extends "account/settings/base.html" %}
+{% block heading %}Appearance{% endblock %}
+{% block section %}
+<section class="card settings__section">
+    <p class="muted">Changes apply right away and follow you to every device you sign in on.</p>
+    <form method="post" action="{% url 'account:appearance' %}" class="settings__form">
+        {% csrf_token %}
+        {% include "core/partials/theme_picker.html" %}
+        <p class="field__hint" id="appearance-status" role="status"></p>
+        <noscript><div><button class="btn btn--primary" type="submit">Save appearance</button></div></noscript>
+    </form>
+</section>
+{% endblock %}
+{% block scripts %}
+{{ block.super }}
+<script>
+    document.addEventListener("relay:theme", function () {
+        document.getElementById("appearance-status").textContent = "Saved.";
+    });
+    document.addEventListener("relay:theme-save-failed", function () {
+        document.getElementById("appearance-status").textContent = "Couldn't save to your account. It still applies on this device.";
+    });
+</script>
+{% endblock %}

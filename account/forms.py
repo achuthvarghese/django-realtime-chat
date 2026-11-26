@@ -6,6 +6,9 @@ from django.contrib.auth.password_validation import (
     validate_password,
 )
 
+from account.usernames import HELP_TEXT as USERNAME_HELP
+from account.usernames import MAX_LENGTH as USERNAME_MAX
+from account.usernames import tidy, validate_username
 from core import theme
 
 User = get_user_model()
@@ -49,6 +52,12 @@ class UserLoginForm(BaseForm):
         max_length=150,
         widget=text_input("username", autocapitalize="none", autofocus=True),
     )
+
+    def clean_username(self):
+        # Usernames are stored lowercase with _ for spaces, so sign-in accepts
+        # any letter case and spaces.
+        return tidy(self.cleaned_data.get("username"))
+
     password = forms.CharField(
         label="Password",
         max_length=128,
@@ -78,10 +87,16 @@ class UserLoginForm(BaseForm):
 class UserSignUpForm(BaseForm):
     username = forms.CharField(
         label="Username",
-        max_length=150,
-        help_text="Letters, digits and @ . + - _ only.",
-        validators=[User.username_validator],
-        widget=text_input("username", autocapitalize="none"),
+        # Generous limit: spaces collapse to single _ before the 30-character
+        # rule is checked.
+        max_length=USERNAME_MAX * 2,
+        help_text=USERNAME_HELP,
+        widget=text_input(
+            "username",
+            autocapitalize="none",
+            spellcheck="false",
+            **{"data-username-format": ""},
+        ),
     )
     email = forms.EmailField(
         label="Email",
@@ -122,7 +137,8 @@ class UserSignUpForm(BaseForm):
         return [(title, [self[name] for name in names]) for title, names in self.groups]
 
     def clean_username(self):
-        username = self.cleaned_data.get("username")
+        username = tidy(self.cleaned_data.get("username"))
+        validate_username(username)
         if User.objects.filter(username__iexact=username).exists():
             raise forms.ValidationError("Username already exists.", code="exists")
         return username

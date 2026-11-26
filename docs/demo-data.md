@@ -48,6 +48,7 @@ volume, and the next `up` seeds a fresh copy.
 | `sam` | Sam Taylor | Default | **No chats yet**: empty states and starting a first chat with New chat |
 | `noah` | Noah Kim | n/a | **Inactive account**: sign-in is refused and he never appears in people search |
 
+All demo usernames follow the [username rules](./screens.md#username-rules); sign-in ignores letter case, so `Maya` works too.
 Emails are `<username>@example.com`. There is no admin account; create one
 with `python manage.py createsuperuser` if you need `/admin/`.
 

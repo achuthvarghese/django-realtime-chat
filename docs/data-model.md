@@ -12,6 +12,13 @@ erDiagram
     User ||--o{ Connection : "has open"
 ```
 
+## `auth.User`
+
+Django's built-in user model. `username` follows the
+[username rules](./screens.md#username-rules) (enforced by the signup form and
+applied to older accounts by migration `account/0002_conform_usernames`).
+`first_name`, `last_name` and `email` are edited in Settings → Profile.
+
 ## `chat.Room`
 
 | Field | Notes |

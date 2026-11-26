@@ -30,3 +30,21 @@
         });
     }
 })();
+
+// Username field: format as you type (lowercase, spaces become a single _).
+// Other characters are left so the server can explain what's wrong.
+(() => {
+    "use strict";
+    for (const input of document.querySelectorAll("input[data-username-format]")) {
+        input.addEventListener("input", () => {
+            const before = input.value;
+            const caret = input.selectionStart ?? before.length;
+            const format = (text) => text.toLowerCase().replace(/\s+/g, "_").replace(/_{2,}/g, "_");
+            const after = format(before);
+            if (after === before) return;
+            input.value = after;
+            const pos = format(before.slice(0, caret)).length;
+            input.setSelectionRange(pos, pos);
+        });
+    }
+})();

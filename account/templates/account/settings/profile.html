@@ -1,0 +1,23 @@
+{% extends "account/settings/base.html" %}
+{% block heading %}Profile{% endblock %}
+{% block section %}
+<section class="card settings__section" aria-labelledby="profile-identity">
+    <div class="settings__identity" id="profile-identity">
+        <span class="avatar avatar--mine settings__avatar" aria-hidden="true">{{ me_initials }}</span>
+        <div>
+            <p class="settings__name">{{ user.get_full_name|default:user.username }}</p>
+            <p class="muted">@{{ user.username }} · usernames can't be changed</p>
+        </div>
+    </div>
+    <p class="muted">Your name is what others see in chats and search.</p>
+    <form method="post" action="{% url 'account:settings_profile' %}" class="settings__form" novalidate>
+        {% csrf_token %}
+        <div class="settings__row">
+            {% include "account/partials/field.html" with field=form.first_name %}
+            {% include "account/partials/field.html" with field=form.last_name %}
+        </div>
+        {% include "account/partials/field.html" with field=form.email %}
+        <div><button class="btn btn--primary" type="submit">Save profile</button></div>
+    </form>
+</section>
+{% endblock %}

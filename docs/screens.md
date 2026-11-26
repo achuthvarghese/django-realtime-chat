@@ -11,8 +11,10 @@
 | `/chat/rooms/<uuid>/messages/` | `chat:history` | Room members | JSON page of older messages: `?before=<message id>&limit=1..100` |
 | `/chat/new/direct/` | `chat:start_direct` | Signed in | POST `username`; opens or creates the direct chat |
 | `/chat/new/group/` | `chat:start_group` | Signed in | POST `name` and `members`; creates a group |
-| `/account/settings/` | `account:settings` | Signed in | Profile, appearance and password |
-| `/account/settings/appearance/` | `account:appearance` | Signed in | POST any of `palette`, `mode`, `density`; JSON when `Accept: application/json` |
+| `/account/settings/` | `account:settings` | Signed in | Redirects to the Profile section |
+| `/account/settings/profile/` | `account:settings_profile` | Signed in | Name and email |
+| `/account/settings/appearance/` | `account:appearance` | Signed in | GET shows the section; POST any of `palette`, `mode`, `density` (JSON when `Accept: application/json`) |
+| `/account/settings/password/` | `account:settings_password` | Signed in | Change password |
 | `/styleguide/` | `core:styleguide` | Debug only | Component gallery |
 | `/admin/` | | Staff | Django admin |
 | `ws(s)://<host>/chat/<uuid>` | | Room members | Live room socket, see [websocket-protocol.md](./websocket-protocol.md) |
@@ -88,7 +90,11 @@ Styles `account/static/account/css/auth.css`, script
   created by someone else while the page is open shows a "New conversation ·
   Refresh" prompt.
 - "Find a chat" filters the list as you type.
-- The footer shows you, the Theme menu and Sign out.
+- The footer row (your avatar, name and @username, with a chevron) is the
+  **account menu** button: it opens Settings and Sign out above it, and the
+  chevron flips while it's open. Escape or a click elsewhere closes it. On the
+  tablet rail the avatar alone is the button. The theme is changed in
+  Settings → Appearance; the chat screen has no Theme button.
 
 ### Open room
 
@@ -140,17 +146,36 @@ name) appear as a notice above the chat.
 
 ## Settings
 
-`/account/settings/`, reached from your name at the bottom of the chat sidebar.
-A chrome side menu (a top bar on phones) links to three sections:
+Reached from the account menu in the chat sidebar. A chrome
+side menu (a scrolling tab strip on phones) lists the sections; each has its
+own URL, and `/account/settings/` opens Profile.
 
-- **Profile**: first name, last name and email (required, validated). Saving
-  shows "Profile saved."
-- **Appearance**: the full theme picker. Each change applies at once and is
-  saved to your account, so every device you sign in on uses it. "Saved."
-  confirms; if saving fails the choice still applies on this device. Without
-  JavaScript, a Save button posts the form.
-- **Password**: current password plus the new one twice, checked against the
-  password rules. You stay signed in after changing it.
+| Section | URL | Contents |
+| --- | --- | --- |
+| **Profile** | `/account/settings/profile/` | Your initials avatar, name and read-only @username ("usernames can't be changed"); first name, last name and email (required, validated). Saving shows "Profile saved." |
+| **Appearance** | `/account/settings/appearance/` | The full theme picker. Each change applies at once and is saved to your account, so every device you sign in on uses it. "Saved." confirms; if saving fails the choice still applies on this device. Without JavaScript, a Save button posts the form |
+| **Password** | `/account/settings/password/` | Current password plus the new one twice, checked against the password rules. You stay signed in after changing it |
 
-Each form posts its own `section`, so an error in one never clears another.
-The palette picked during signup is saved as your first preference.
+More sections (Notifications, Privacy) are added with the features that need
+them. The palette picked during signup is saved as your first preference.
+
+## Username rules
+
+Usernames are chosen at signup and can't be changed.
+
+| Rule | Valid | Rejected |
+| --- | --- | --- |
+| 3 to 30 characters | `lee`, `maya_rao2` | `al` |
+| Lowercase letters, numbers and `_` only | `lee2` | `Lee`, `lee.chen`, `lee-chen` |
+| Starts with a letter | `lee` | `2fast`, `_sam` |
+| No `_` at the end or twice in a row | `a_b_c`, `sam_2` | `sam_`, `a__b` |
+| Unique | | an existing name, in any letter case |
+
+While you type, the signup field formats for you: capitals become lowercase
+and spaces become a single `_` ("Maya Rao" → `maya_rao`). Other characters stay
+so the error under the field can say what's wrong. Sign-in applies the same
+formatting, so `MAYA` or `Maya Rao` find `maya` and `maya_rao`.
+
+Rules live in `account/usernames.py`. Accounts created before these rules were
+renamed by migration `account/0002_conform_usernames` (see
+[setup.md](./setup.md#upgrading)).

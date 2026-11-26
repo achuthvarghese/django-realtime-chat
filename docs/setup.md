@@ -60,3 +60,11 @@ root is loaded automatically; real environment variables take precedence.
   and unread updates depend on it in the same way.
 - Presence is stored in the database (`chat.Connection`), so all processes
   must share one database.
+
+## Upgrading
+
+Run `python manage.py migrate` after pulling. Data migrations to know about:
+
+| Migration | What it does |
+| --- | --- |
+| `account/0002_conform_usernames` | Renames usernames that break the [username rules](./screens.md#username-rules) to their closest valid form (`Lee.Chen` → `lee_chen`, `2fast` → `user_2fast`). Clashes get `_2`, `_3`…; valid names keep priority. Every rename is printed (`'Maya' -> 'maya_2'`), so tell those people their new username. It can't be undone; the old names exist only in that output |
