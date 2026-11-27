@@ -12,6 +12,8 @@
 - Git identity `achuthvarghese` / `acvknr@gmail.com` (resets on session
   restart; check before committing).
 - This `claude-memory` branch keeps session records; never merge it.
+  **Update it after every merged PR** with the phase's notes, reports,
+  screenshots and mockups, and this log.
 
 ## Pull request history
 
@@ -33,7 +35,7 @@
 | #18 | dev-account-ux | Account UX and username rules |
 | #19 | dev-group-admins | Phase 9a: group admins |
 | #20 | dev-live-rooms | Phase 9b: live rooms |
-| #21 | dev-agents | Claude Code agents, CLAUDE.md orchestrator playbook |
+| #21 | dev-agents | Claude Code agents (11), CLAUDE.md orchestrator playbook |
 | (open) | dev-live-rooms-fixes | Phase 9c: live-room fixes (team phase) |
 
 ## Key decisions
