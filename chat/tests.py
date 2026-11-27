@@ -2793,3 +2793,121 @@ class TestReplyDemoData:
         assert [q["excerpt"] for q in quoted] == [
             "Next pick: The Left Hand of Darkness?"
         ]
+
+
+@pytest.mark.django_db
+class TestReplyReviewFixes:
+    def test_history_cursor_must_be_visible(self, client, maya, arjun, room):
+        hidden = visible_text(room, arjun, "cleared", visible=[arjun])
+        client.force_login(maya)
+        url = reverse("chat:history", args=[room.id])
+        for before in (hidden.id, "00000000-0000-0000-0000-000000000000"):
+            response = client.get(url, {"before": before})
+            assert response.status_code == 400
+            assert response.json() == {"error": "Unknown message"}
+
+    def test_cross_room_reply_never_quotes(self, client, maya, arjun, room):
+        from chat.presenters import message_data
+
+        other = Room.objects.create(name="other", type=Room.RoomTypes.PRIVATE)
+        other.members.add(maya, arjun)
+        elsewhere = visible_text(other, arjun, "other room secret")
+        stray = reply(room, maya, elsewhere, "stray")  # bypasses the socket check
+        client.force_login(maya)
+        data = client.get(reverse("chat:history", args=[room.id])).json()
+        row = next(m for m in data["messages"] if m["id"] == str(stray.id))
+        assert row["reply_to"] == {"id": str(elsewhere.id), "available": False}
+        assert message_data(stray, reply_visible=True)["reply_to"]["available"] is False
+
+    def test_history_loads_only_shown_user_fields(self, client, maya, arjun, room):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        reply(room, maya, visible_text(room, arjun, "q"), "a")
+        client.force_login(maya)
+        with CaptureQueriesContext(connection) as ctx:
+            data = client.get(reverse("chat:history", args=[room.id])).json()
+        history_sql = [q["sql"] for q in ctx.captured_queries if "reply_to" in q["sql"]]
+        assert history_sql and not any("password" in q for q in history_sql)
+        assert data["messages"][1]["reply_to"]["excerpt"] == "q"
+        assert data["messages"][1]["name"] == "maya"
+
+    def test_one_reply_constraint(self):
+        names = [c.name for c in Message._meta.constraints]
+        assert names == ["message_reply_valid"]
+
+
+@pytest.mark.django_db(transaction=True)
+class TestReplyReviewSockets:
+    async def test_errors_say_which_frame_they_answer(self, maya, arjun, room):
+        original = await database_sync_to_async(visible_text)(room, arjun, "q")
+        socket = make_communicator(room.id, maya)
+        await socket.connect()
+        cases = [
+            ({"type": "save_message", "message": "x", "reply_to": ""}, "save_message"),
+            ({"type": "save_message", "message": " "}, "save_message"),
+            (
+                {"type": "edit_message", "id": str(original.id), "message": "x"},
+                "edit_message",
+            ),
+            ({"type": "delete_message", "id": str(original.id)}, "delete_message"),
+        ]
+        for payload, frame_for in cases:
+            await socket.send_json_to(payload)
+            frame = await socket.receive_json_from()
+            assert (frame["type"], frame["for"]) == ("error", frame_for)
+        await socket.send_json_to({"type": "nope"})
+        assert "for" not in await socket.receive_json_from()
+        await socket.disconnect()
+
+    async def test_editing_an_original_keeps_its_shape(self, maya, arjun, room):
+        def build():
+            original = visible_text(room, maya, "q")
+            reply(room, arjun, original, "a")
+            return original
+
+        original = await database_sync_to_async(build)()
+        socket = make_communicator(room.id, maya)
+        await socket.connect()
+        await socket.send_json_to(
+            {"type": "edit_message", "id": str(original.id), "message": "q2"}
+        )
+        frame = await socket.receive_json_from()
+        assert set(frame) == {
+            "type",
+            "id",
+            "message",
+            "user",
+            "name",
+            "initials",
+            "created_at",
+            "edited",
+            "deleted",
+            "kind",
+            "reply_to",
+        }
+        assert (frame["type"], frame["message"], frame["edited"]) == (
+            "message_updated",
+            "q2",
+            True,
+        )
+        assert frame["reply_to"] is None
+        await socket.disconnect()
+
+
+@pytest.mark.django_db
+class TestReplyDemoDeleted:
+    def test_ops_reply_quotes_a_deleted_message(self, client, settings):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        settings.DEBUG = True
+        call_command("seed_demo", stdout=StringIO())
+        ops = Room.objects.get(name="Ops")
+        client.force_login(User.objects.get(username="maya"))
+        data = client.get(reverse("chat:history", args=[ops.id])).json()
+        quotes = [m["reply_to"] for m in data["messages"] if m["reply_to"]]
+        deleted = [q for q in quotes if q["available"] and q["deleted"]]
+        assert len(deleted) == 1 and "excerpt" not in deleted[0]
+        assert deleted[0]["user"] == "sofia"

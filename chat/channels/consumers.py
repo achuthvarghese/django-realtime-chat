@@ -24,6 +24,10 @@ CANT_REPLY = "You can't reply to that message"
 logger = logging.getLogger(__name__)
 
 
+class CantReply(Exception):
+    """The frame's `reply_to` names a message the sender can't reply to."""
+
+
 class WSChatType(str, Enum):
     CLEAR_ROOM = "clear_room"
     CHAT_RESPONSE = "chat_response"
@@ -55,6 +59,9 @@ class ChatConsumer(WebsocketConsumer):
     room = None
     room_group_name = None
     last_typing = 0.0
+    # The type of the client frame being handled; error frames echo it as
+    # "for" so the client can tell which request failed.
+    current_frame = None
 
     def connect(self):
         self.user = self.scope.get("user")
@@ -119,7 +126,11 @@ class ChatConsumer(WebsocketConsumer):
         if handler is None:
             self.send_error("Invalid type")
             return
-        handler(payload)
+        self.current_frame = payload["type"]
+        try:
+            handler(payload)
+        finally:
+            self.current_frame = None
 
     # Handlers
 
@@ -169,7 +180,9 @@ class ChatConsumer(WebsocketConsumer):
         if message.reply_to_id is not None and not message.is_deleted:
             sees_original = set(
                 Message.visible_for.through.objects.filter(
-                    message_id=message.reply_to_id, user_id__in=visible_to
+                    message_id=message.reply_to_id,
+                    message__room_id=message.room_id,  # never quote across rooms
+                    user_id__in=visible_to,
                 ).values_list("user_id", flat=True)
             )
         else:
@@ -230,51 +243,56 @@ class ChatConsumer(WebsocketConsumer):
         self.broadcast_update(message)
 
     def reply_target(self, payload):
-        """(ok, original): the message named by `reply_to`, or None when the
-        frame isn't a reply. ok is False (after sending the sender an error)
-        when it names something they can't reply to."""
+        """The message named by `reply_to` (locked to this room, a text
+        message the sender can see and that isn't deleted), or None when the
+        frame isn't a reply. Raises CantReply for anything else."""
         value = payload.get("reply_to")
         if value is None:
-            return True, None
-        original = None
+            return None
         try:
             original_id = uuid.UUID(value) if isinstance(value, str) else None
         except ValueError:
             original_id = None
-        if original_id is not None:
-            original = (
-                Message.objects.filter(
-                    id=original_id,
-                    room=self.room,
-                    kind=Message.Kinds.TEXT,
-                    deleted_at__isnull=True,
-                    visible_for=self.user,
-                )
-                .select_related("user")
-                .first()
+        if original_id is None:
+            raise CantReply
+        original = (
+            Message.objects.filter(
+                id=original_id,
+                room=self.room,
+                kind=Message.Kinds.TEXT,
+                deleted_at__isnull=True,
+                visible_for=self.user,
             )
+            .select_related("user")
+            .first()
+        )
         if original is None:
-            self.send_error(CANT_REPLY)
-            return False, None
-        return True, original
+            raise CantReply
+        return original
 
     def handle_save_message(self, payload):
         content = self.clean_content(payload)
         if content is None:
             return
-        ok, original = self.reply_target(payload)
-        if not ok:
-            return
 
         members = list(self.room.members.all())
+        original = None
         try:
+            # Check the target and insert together; if the original is
+            # removed from the database in between, the foreign key fails at
+            # commit and nothing is saved.
             with transaction.atomic():
+                original = self.reply_target(payload)
                 message = Message.objects.create(
                     content=content, room=self.room, user=self.user, reply_to=original
                 )
                 message.visible_for.add(*members)
+        except CantReply:
+            self.send_error(CANT_REPLY)
+            return
         except IntegrityError:
-            # The original was removed from the database in between.
+            if original is None:
+                raise
             logger.info("Reply target vanished in room %s", self.room.id)
             self.send_error(CANT_REPLY)
             return
@@ -369,14 +387,15 @@ class ChatConsumer(WebsocketConsumer):
         self.send(text_data=json.dumps(data, default=str))
 
     def send_error(self, message, code=400):
-        self.send_json(
-            {
-                "type": WSChatType.ERROR.value,
-                "code": code,
-                "message": message,
-                "ts": timezone.now().isoformat(),
-            }
-        )
+        frame = {
+            "type": WSChatType.ERROR.value,
+            "code": code,
+            "message": message,
+            "ts": timezone.now().isoformat(),
+        }
+        if self.current_frame is not None:
+            frame["for"] = self.current_frame
+        self.send_json(frame)
 
     def reject(self, code, message, close_code):
         """Accept briefly so the client receives the reason, then close."""

@@ -226,7 +226,9 @@ def reply_data(message, visible):
     if message.reply_to_id is None or message.is_deleted:
         return None
     original = message.reply_to
-    if original is None or not visible:
+    # Replies only quote messages from the same room (checked on save; this
+    # guards against anything that slipped past).
+    if original is None or not visible or original.room_id != message.room_id:
         return {"id": str(message.reply_to_id), "available": False}
     data = {
         "id": str(original.id),

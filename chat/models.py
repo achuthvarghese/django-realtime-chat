@@ -40,12 +40,11 @@ class Message(models.Model):
         ordering = ["created_at"]
         indexes = [models.Index(fields=["room", "created_at"])]
         constraints = [
+            # Only text messages reply, and never to themselves.
             models.CheckConstraint(
-                condition=Q(reply_to__isnull=True) | Q(kind="text"),
-                name="message_reply_only_text",
-            ),
-            models.CheckConstraint(
-                condition=~Q(reply_to=F("id")), name="message_reply_not_self"
+                condition=Q(reply_to__isnull=True)
+                | (Q(kind="text") & ~Q(reply_to=F("id"))),
+                name="message_reply_valid",
             ),
         ]
 
