@@ -13,12 +13,12 @@
             </button>
         </div>
 
-        {% if rooms %}
-        <div class="chat-side__search">
+        {% if messages and not room %}<div class="chat-notices chat-notices--side">{% include "core/partials/notices.html" %}</div>{% endif %}
+
+        <div class="chat-side__search"{% if not rooms %} hidden{% endif %}>
             <label class="visually-hidden" for="room-search">Find a chat</label>
             <input class="input" type="search" id="room-search" placeholder="Find a chat" autocomplete="off">
         </div>
-        {% endif %}
 
         <p class="section-label chat-side__label">Chats</p>
         <ul class="room-list" id="room-list">
@@ -73,7 +73,7 @@
     </nav>
 
     <main id="main" class="chat-main">
-        {% if messages %}<div class="chat-notices">{% include "core/partials/notices.html" %}</div>{% endif %}
+        {% if messages %}<div class="chat-notices{% if not room %} chat-notices--main{% endif %}">{% include "core/partials/notices.html" %}</div>{% endif %}
         {% if room %}
         <header class="chat-head">
             <a class="chat-head__back btn btn--ghost btn--icon" href="{% url 'chat:chat' %}" aria-label="Back to chats">←</a>
@@ -139,6 +139,19 @@
         {{ history|json_script:"history-meta" }}
         {{ room_summary.member_usernames|json_script:"room-members" }}
         {{ room_summary.id|json_script:"room-id" }}
+
+        {# Shown by chat.js when the room goes away while open; text is filled in as text. #}
+        <template id="gone-template">
+            <div class="chat-gone">
+                <span class="chat-gone__icon" aria-hidden="true">
+                    <svg data-gone-icon="removed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/></svg>
+                    <svg data-gone-icon="deleted" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </span>
+                <h1 class="chat-gone__heading" tabindex="-1" data-gone-heading></h1>
+                <p class="muted" data-gone-text></p>
+                <div><a class="btn btn--primary chat-gone__back" href="{% url 'chat:chat' %}">Back to chats</a></div>
+            </div>
+        </template>
         {% else %}
         <div class="chat-welcome">
             <div class="transcript chat-welcome__spine" aria-hidden="true">
