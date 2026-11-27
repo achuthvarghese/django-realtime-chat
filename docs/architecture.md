@@ -199,7 +199,7 @@ each with a system-font fallback. See [design-system.md](./design-system.md).
 - History is paged and room lists are built with a fixed number of queries,
   so page cost does not grow with message count. Unread counts use one
   grouped query per page load and one count per inbox notification.
-- The `react` rate limit lives in the Django cache, which is in-memory and
-  per process by default. With more than one process, configure a shared
-  cache (for example Redis) so each user has one window (see
+- The `react` rate limit lives in the Django cache. With `REDIS_URL` set the
+  cache is Redis, shared by every process, so each user has one window;
+  without it the cache is in-memory per process (see
   [setup.md](./setup.md#production-notes)).

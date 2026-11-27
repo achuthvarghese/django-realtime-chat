@@ -61,21 +61,11 @@ root is loaded automatically; real environment variables take precedence.
 - Presence is stored in the database (`chat.Connection`), so all processes
   must share one database.
 - The reaction rate limit (10 `react` frames per user in 5 seconds) is kept
-  in the Django cache. Relay doesn't set `CACHES`, so Django's default
-  `LocMemCache` is used: it lives in each process's memory, so with several
-  Daphne processes each one keeps its own window and a user can send up to 10
-  per process. `REDIS_URL` only changes the channel layer, not the cache. For
-  one shared window, add a shared cache in `settings.py`, for example Django's
-  Redis backend:
-
-  ```python
-  CACHES = {
-      "default": {
-          "BACKEND": "django.core.cache.backends.redis.RedisCache",
-          "LOCATION": REDIS_URL,
-      }
-  }
-  ```
+  in the Django cache. When `REDIS_URL` is set, `settings.py` uses Redis for
+  both the channel layer and the cache (`django.core.cache.backends.redis.RedisCache`),
+  so every Daphne process shares one window per user. Without `REDIS_URL`,
+  Django's default `LocMemCache` is used: it lives in each process's memory,
+  which is fine for a single process (development, tests).
 - SQLite waits up to 20 seconds for a write lock and starts transactions in
   `IMMEDIATE` mode (`OPTIONS = {"timeout": 20, "transaction_mode":
   "IMMEDIATE"}` in `settings.py`), instead of failing with "database is

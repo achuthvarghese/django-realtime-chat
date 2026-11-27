@@ -3442,3 +3442,30 @@ class TestReactRateLimitWindow:
         assert rate_limited(1, now=104.9)
         # The first ten are now 5 s old.
         assert not rate_limited(1, now=105.0)
+
+
+class TestRedisSettings:
+    """With REDIS_URL set, the cache is Redis too, so per-user limits
+    (reactions) are shared across processes."""
+
+    def test_redis_url_sets_cache_and_channel_layer(self, monkeypatch):
+        import importlib
+
+        import realtime_chat.settings as base
+
+        monkeypatch.setenv("DJANGO_DEBUG", "true")
+        monkeypatch.setenv("REDIS_URL", "redis://redis.example:6379/0")
+        try:
+            importlib.reload(base)
+            assert base.CACHES["default"]["BACKEND"].endswith("RedisCache")
+            assert base.CACHES["default"]["LOCATION"] == "redis://redis.example:6379/0"
+            assert base.CHANNEL_LAYERS["default"]["BACKEND"].startswith(
+                "channels_redis"
+            )
+            monkeypatch.delenv("REDIS_URL")
+            del base.CACHES  # reload keeps old module attributes
+            importlib.reload(base)
+            assert not hasattr(base, "CACHES")
+        finally:
+            monkeypatch.delenv("REDIS_URL", raising=False)
+            importlib.reload(base)
