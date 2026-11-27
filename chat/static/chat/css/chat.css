@@ -348,7 +348,10 @@
     .chat-side { align-items: center; padding-inline: var(--space-1); }
     .chat-side__top { padding: var(--space-1) 0 var(--space-2); }
     .chat-side__search, .chat-side__label, .room-list__nomatch,
-    .room-link__text, .room-link__time, .chat-side__me-text { display: none; }
+    .room-link__time, .chat-side__me-text { display: none; }
+    /* The rail shows avatars only; the title, preview and unread count stay
+       in the link's accessible name (visually hidden, not display: none). */
+    .room-link__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .room-list { width: 100%; align-items: center; }
     .room-link { grid-template-columns: auto; padding: 6px; }
     .room-link__avatar { width: 36px; height: 36px; font-size: 11px; }
@@ -371,7 +374,7 @@
 
     .chat-side { align-items: stretch; padding: var(--space-3) var(--space-2) var(--space-2); }
     .chat-side__search, .chat-side__label, .room-list__empty { display: block; }
-    .room-link__text { display: flex; }
+    .room-link__text { position: static; width: auto; height: auto; overflow: visible; clip: auto; white-space: normal; }
     .room-link__time { display: block; }
     .room-list { align-items: stretch; }
     .room-link { grid-template-columns: auto minmax(0, 1fr) auto; padding: 8px var(--space-2); }
@@ -392,6 +395,19 @@
 .chat-side__new { gap: 4px; }
 .chat-side__new > span:first-child { font-size: 16px; line-height: 1; }
 .chat-notices { padding: var(--space-2) var(--space-3) 0; }
+.chat-side__search[hidden] { display: none; }
+/* With no room open, a notice (e.g. "That chat isn't available") shows above
+   the welcome pane; on phones that pane is hidden, so it shows in the list. */
+.chat-notices--side { display: none; padding: 0 var(--space-1); }
+/* On the dark column, the notice uses the column's colours. */
+.chat-notices--side .notice {
+    background: var(--chrome-raised);
+    color: var(--chrome-strong);
+    border-color: color-mix(in srgb, var(--chrome-fg) 18%, transparent);
+}
+@media (max-width: 599px) {
+    .chat-notices--side { display: block; }
+}
 
 .new-chat {
     width: min(94vw, 460px);
@@ -461,12 +477,13 @@
 
 @media (max-width: 1023px) {
     .chat-side__top { flex-direction: column; }
-    .chat-side__new-label { display: none; }
+    /* Visually hidden, so "New chat" stays the button's name in the rail. */
+    .chat-side__new-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .chat-side__new { width: 36px; padding: 0; }
 }
 @media (max-width: 599px) {
     .chat-side__top { flex-direction: row; }
-    .chat-side__new-label { display: inline; }
+    .chat-side__new-label { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
     .chat-side__new { width: auto; padding: 0 var(--space-3); }
 }
 
@@ -551,11 +568,34 @@
 .presence-label.is-online { color: var(--success); font-weight: 600; }
 .typing { color: var(--accent); font-weight: 600; }
 .typing[hidden] { display: none; }
-/* A room that just arrived slides in. */
-.room-list__new { animation: room-in 320ms ease-out; }
-@keyframes room-in { from { opacity: 0; transform: translateX(-10px); } }
+/* A room that just arrived: the row grows into place (so the rows below
+   move down smoothly), its content fades in, then an accent tint fades out.
+   inbox.js removes the class when the tint is done. */
+.room-list__new { display: grid; grid-template-rows: 1fr; animation: room-grow 200ms cubic-bezier(.2, 0, 0, 1) both; }
+/* A filtered-out new row stays hidden (display: grid would show it). */
+.room-list__new[hidden] { display: none; }
+.room-list__new > .room-link {
+    min-height: 0;
+    overflow: hidden;
+    animation: room-fade 180ms 60ms ease-out both, room-flash 1600ms 200ms ease-out both;
+}
+@keyframes room-grow { from { grid-template-rows: 0fr; } }
+@keyframes room-fade { from { opacity: 0; } }
+@keyframes room-flash {
+    from { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+    to { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+    /* No growing or fading in; a short tint alone marks the new row
+       (relay.css cuts every animation to almost nothing, so set it here). */
+    .room-list__new { animation: none; }
+    .room-list__new > .room-link { animation: room-flash 1200ms ease-out both !important; }
+}
 
-/* The open room went away (removed, left elsewhere, or deleted). */
+/* The open room went away (removed, left elsewhere, or deleted): a muted
+   header keeps the chat's name, and the pane explains. */
+.chat-head--gone .avatar { opacity: 0.45; }
+.chat-head--gone .chat-head__title { color: var(--muted); font-family: var(--font-display); font-weight: 700; line-height: 1.15; }
 .chat-gone {
     margin: auto;
     width: min(100% - 2 * var(--space-4), 420px);
@@ -564,7 +604,20 @@
     gap: var(--space-3);
     text-align: left;
 }
-.chat-gone h1 { font-size: var(--text-xl); }
+.chat-gone__icon {
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-md);
+    background: var(--hover);
+    color: var(--muted);
+}
+.chat-gone__heading { font-size: var(--text-xl); overflow-wrap: anywhere; }
+.chat-gone__heading:focus, .chat-gone__heading:focus-visible { outline: none; box-shadow: none; }
+@media (pointer: coarse), (max-width: 599px) {
+    .chat-gone__back { min-height: 44px; }
+}
 
 @media (max-width: 1023px) {
     .room-link { position: relative; }

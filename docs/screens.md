@@ -6,9 +6,10 @@
 | `/account/login/` | `account:login` | Signed out | Sign in. Accepts a same-site `?next=` |
 | `/account/signup/` | `account:signup` | Signed out | Create account; signs the new user in |
 | `/account/logout/` | `account:logout` | Signed in | POST only; returns to sign in |
-| `/chat/` | `chat:chat` | Signed in | Room list; `?room=<uuid>` opens a room |
+| `/chat/` | `chat:chat` | Signed in | Room list; `?room=<uuid>` opens a room. A room you can't open (not a member, deleted, unknown or a bad id) redirects to `/chat/` with the notice "That chat isn’t available. You may have been removed, or it was deleted." |
 | `/chat/people/?q=` | `chat:people` | Signed in | JSON people search for New chat |
 | `/chat/rooms/<uuid>/messages/` | `chat:history` | Room members | JSON page of older messages: `?before=<message id>&limit=1..100` |
+| `/chat/rooms/summaries/` | `chat:summaries` | Signed in | JSON `{"rooms": [...]}`: every room-list row, most recent first. The list resyncs with it when the inbox socket reconnects |
 | `/chat/rooms/<uuid>/summary/` | `chat:summary` | Room members | JSON room-list row (the `room` object of the inbox `room_added` frame) |
 | `/chat/rooms/<uuid>/details/` | `chat:details` | Room members | HTML for the Details panel |
 | `/chat/rooms/<uuid>/group/<action>/` | `chat:group_action` | Room members | POST; `action` is `add` (`members`), `rename` (`name`), `make-admin`, `remove-admin`, `remove` (`username`), `leave` or `delete`. JSON with `Accept: application/json`, otherwise a redirect with a notice |
@@ -76,7 +77,7 @@ Styles `account/static/account/css/auth.css`, script
 | Width | Room list | Open room |
 | --- | --- | --- |
 | 1024px and up | Names, last-message preview and time | Beside the list |
-| 600 to 1023px | Icon rail of initials; name on hover | Beside the rail |
+| 600 to 1023px | Icon rail of initials; name on hover. Screen readers still hear each room's name, preview and unread count, and the New chat button's name | Beside the rail |
 | Under 600px | Full screen when no room is open | Full screen with a back arrow |
 
 ### Room list
@@ -84,18 +85,23 @@ Styles `account/static/account/css/auth.css`, script
 - Most recently active first. Each row shows the other person's name (private
   rooms) or the room name (groups), the last message you can still see
   (prefixed "You:" when it was yours) and its time: clock time today,
-  "Yesterday", or a short date.
+  "Yesterday", or a short date. Previews are cut to 60 characters. Times
+  update at local midnight and when you come back to the tab.
 - Group rooms have round avatars; private rooms square, with a dot that turns
   green while the other person is online.
 - Rooms with unread messages show a count badge and bold text; the browser
   tab title shows the total, for example "(3) Chats · Relay". New messages in
   other rooms update the preview and move the room to the top live.
 - The list changes live, without a reload: a chat or group someone starts
-  with you slides in at the top, a renamed group updates its title, and a
-  group you're removed from (or that's deleted) disappears. If you have that
-  room open, the conversation is replaced by "You're no longer in this chat"
-  (or "This chat was deleted") with a **Back to chats** button.
-- "Find a chat" filters the list as you type.
+  with you grows into place at the top and briefly flashes the accent colour,
+  a renamed group updates its title, and a group you're removed from (or
+  that's deleted) disappears. Edits, deletes and clearing your history update
+  the row's preview. If you have that room open, it shows the
+  [gone pane](#when-the-open-room-goes-away).
+- If the connection drops, the list fetches every row again when it
+  reconnects, so it catches up on anything it missed.
+- "Find a chat" filters the list as you type, and keeps filtering as rows
+  arrive, change or go. It's hidden while you have no chats.
 - The footer row (your avatar, name and @username, with a chevron) is the
   **account menu** button: it opens Settings and Sign out above it, and the
   chevron flips while it's open. Escape or a click elsewhere closes it. On the
@@ -136,10 +142,43 @@ Styles `account/static/account/css/auth.css`, script
   then every 15 seconds. After reconnecting it offers a Reload, since
   messages sent in between are not replayed. Being signed out sends you to
   sign in. If you're removed from a group, or it's deleted, while it's open,
-  the composer is disabled, a notice says "You're no longer in this chat." or
-  "This chat was deleted.", and you're taken back to the list.
+  the page shows the gone pane below and stays on it.
 
-With no room open, the pane shows a short welcome with a New chat button.
+#### When the open room goes away
+
+When you're removed from the open group, leave it in another tab, or it's
+deleted, the room is replaced by a pane that names the chat:
+
+| | Removed or left | Deleted |
+| --- | --- | --- |
+| Header | Muted avatar and title, "Not a member" instead of the member count | Muted avatar and title, "Deleted" |
+| Heading | "You’re no longer in <name>" | "<name> was deleted" |
+| Text | "You were removed or left, so you can’t read or send messages here any more. Ask a member to add you back." | "An admin deleted it, so its messages are gone for everyone." |
+| Tab title | "No longer in <name> · Relay" | "<name> was deleted · Relay" |
+
+- The Details button goes and the Details panel closes; on phones the back
+  arrow stays. A **Back to chats** button returns to `/chat/` (at least 44px
+  tall on touch screens and phones).
+- Focus moves to the heading, which is the page's only `h1`. The room title
+  in the header becomes a plain paragraph.
+- The unread count prefix in the tab title, for example "(2)", still works.
+- Which copy you see comes from the room socket: the page reconnects it and
+  the server's close code (`4403` or `4404`) picks the text. If there's no
+  answer within 3 seconds (for example, you're offline), it shows the
+  "no longer in" copy. See
+  [websocket-protocol.md](./websocket-protocol.md#when-the-open-room-goes-away).
+
+#### With no room open
+
+The pane shows a short welcome with a New chat button: "Pick a chat" and
+"Choose a conversation from the list, or start a new one." when you have
+chats, or "Welcome, <your name>" and "You’re not in any chats yet. Message
+someone or start a group." when you don't. The text switches as the first
+room arrives or the last one goes.
+
+Notices, such as "That chat isn’t available…" or "You left <group>.", show
+above the welcome on desktop and tablet. On phones, where that pane is
+hidden, they show at the top of the room list instead.
 
 ### Group details
 
@@ -156,7 +195,7 @@ thing first (a menu or dialog, then the panel).
 | Member menu (⋯) | Admins | **Make admin** / **Remove admin**, **Remove from group** (asks first) |
 | Your own menu (⋯) | Admins | **Step down as admin** when other admins exist; otherwise a note says to make someone else admin first |
 | Clear history (for you) | Everyone | Same as before, now here instead of the header |
-| Leave group | Everyone in a group | Asks first; warns the only admin that the longest-standing member will become admin |
+| Leave group | Everyone in a group | Asks first; warns the only admin that the longest-standing member will become admin. Returns to the list with "You left <group>." |
 | Delete group | Admins | Asks first; deletes the group and its messages for everyone |
 
 #### Group permissions

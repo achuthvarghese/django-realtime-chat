@@ -3,6 +3,70 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 9c: live-room fixes
+
+Fixes to the live room list from Phase 9b, plus one privacy fix. This is the
+first phase built by the agent team: `backend-dev`, `frontend-dev` and
+`docs-writer` worked in parallel on their own branches against a shared
+contract, and `security-auditor`, `performance-profiler`, `ui-ux-designer`,
+`code-reviewer` and `user-tester` reviewed the result.
+
+### Added
+- `GET /chat/rooms/summaries/` (`chat:summaries`): every room-list row as
+  JSON, most recent first. The list resyncs with it each time the inbox
+  socket reconnects, so frames missed while offline are caught up.
+- Inbox frame `room_refresh`: after an edit or delete, the room-list rows of
+  people who can see the message refetch their preview.
+- The gone pane names the chat ("You’re no longer in <name>" / "<name> was
+  deleted"), keeps a muted header with "Not a member" or "Deleted", focuses
+  the heading and sets the tab title.
+- Room-list times update at local midnight and when you return to the tab.
+- On phones, notices with no room open show at the top of the room list.
+
+### Changed
+- `room_changed` is one partial room object (`id`, `title`, `initials`,
+  `member_count`, `member_usernames`) for every member, and is also sent to
+  the remaining members when people are added, removed or leave.
+- `room_added` summaries are built with a fixed number of queries however
+  many people get them (adding 40 people to a 10,000-message room: 4.7 s to
+  0.24 s).
+- `/chat/?room=<id>` for a room you can't open redirects to `/chat/` with
+  "That chat isn’t available. You may have been removed, or it was deleted."
+  instead of a 404. Other endpoints keep their 404s.
+- Group room events (group events, revokes, `room_updated`, `room.deleted`)
+  are sent only after the change commits, in order.
+- When the open room disappears from the list, the page reconnects its room
+  socket and the close code (`4403` or `4404`) picks the copy; with no answer
+  in 3 seconds it shows the "no longer in" copy.
+- New room-list rows grow into place and flash the accent colour; with
+  reduced motion only a short tint shows.
+- Initials use only letters and digits ("@lee" gives "LE", "!!!" gives "?"),
+  the same in Python and JavaScript.
+- Leaving a group from the Details panel shows "You left <group>.".
+- The tablet rail keeps each room's name, preview and unread count, and the
+  New chat label, for screen readers.
+- SQLite waits up to 20 seconds for a write lock.
+
+### Fixed
+- Edits, deletes and group events no longer reach sockets of people who
+  can't see the message: people who cleared their history, joined later, or
+  were just removed (`visible_to` on room events). `room_updated` goes only to
+  current members.
+- A room socket joins the room group before checking membership, so a
+  removal at connect time can't leave it receiving events. A refused socket
+  ignores frames and queued events.
+- You can no longer edit or delete your own message after clearing it from
+  your history.
+- One failed inbox send no longer breaks the request; failures are logged.
+- A room deleted while you were offline no longer says you were removed.
+- Room rows built live show times and previews exactly like server rows,
+  never bring back a room you were removed from, and keep "Find a chat"
+  filtering.
+- The preview of the open room follows deletes, edits and cleared history.
+- A locked SQLite database while marking a room read no longer closes the
+  socket.
+- Removed between the chat page's two queries no longer raises an error.
+
 ## Claude Code agents
 
 ### Added

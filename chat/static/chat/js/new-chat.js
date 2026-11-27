@@ -107,6 +107,7 @@
                         })
                     );
                 } catch (error) {
+                    console.warn("Relay: people search failed (new chat).", error);
                     showMessage(list, "Search isn't available right now. Try again.");
                 }
             }, 200);

@@ -1,18 +1,22 @@
 import json
+import logging
 import time
 import uuid
 from enum import Enum
 
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
+from django.db import OperationalError
 from django.utils import timezone
 
-from chat import presence
+from chat import live_rooms, presence
 from chat.models import Message, Room
 from chat.presenters import display_name, message_data
 from chat.realtime import inbox_group, room_group
 
 MAX_MESSAGE_LENGTH = 4000
+
+logger = logging.getLogger(__name__)
 
 
 class WSChatType(str, Enum):
@@ -57,14 +61,19 @@ class ChatConsumer(WebsocketConsumer):
         if self.room is None:
             self.reject(404, "Room not found", CloseCode.NOT_FOUND)
             return
+
+        # Join the group before checking membership: if the user is removed
+        # in between, the revoke event reaches this socket. Checking first
+        # would leave a window where the revoke is missed for good.
+        group_name = room_group(self.room.id)
+        async_to_sync(self.channel_layer.group_add)(group_name, self.channel_name)
         if not self.room.members.filter(pk=self.user.pk).exists():
+            async_to_sync(self.channel_layer.group_discard)(
+                group_name, self.channel_name
+            )
             self.reject(403, "You are not a member of this room", CloseCode.FORBIDDEN)
             return
-
-        self.room_group_name = room_group(self.room.id)
-        async_to_sync(self.channel_layer.group_add)(
-            self.room_group_name, self.channel_name
-        )
+        self.room_group_name = group_name
         self.accept()
 
     def disconnect(self, close_code):
@@ -74,6 +83,10 @@ class ChatConsumer(WebsocketConsumer):
             )
 
     def receive(self, text_data=None, bytes_data=None):
+        if self.room_group_name is None:
+            # Refused in connect() (unknown room or not a member) and closing:
+            # ignore frames the client sent before it saw the close.
+            return
         try:
             payload = json.loads(text_data or "")
         except (TypeError, ValueError):
@@ -130,6 +143,7 @@ class ChatConsumer(WebsocketConsumer):
                 user=self.user,
                 deleted_at__isnull=True,
                 kind=Message.Kinds.TEXT,
+                visible_for=self.user,
             )
             .select_related("user")
             .first()
@@ -141,6 +155,16 @@ class ChatConsumer(WebsocketConsumer):
         return message
 
     def broadcast_update(self, message):
+        """Send the edit or delete only to people who can see the message
+        (not those who cleared it or joined after it), and ask the same
+        people's room lists to refresh this room's preview."""
+        # Current members who can still see it: not those who cleared it,
+        # joined after it, or left (even if their socket missed the revoke).
+        visible_to = list(
+            message.visible_for.filter(memberships__room=self.room).values_list(
+                "pk", flat=True
+            )
+        )
         async_to_sync(self.channel_layer.group_send)(
             self.room_group_name,
             {
@@ -149,8 +173,10 @@ class ChatConsumer(WebsocketConsumer):
                     "type": WSChatType.MESSAGE_UPDATED.value,
                     **message_data(message),
                 },
+                "visible_to": visible_to,
             },
         )
+        live_rooms.room_refresh(self.room.id, visible_to)
 
     def handle_edit_message(self, payload):
         content = self.clean_content(payload)
@@ -194,6 +220,7 @@ class ChatConsumer(WebsocketConsumer):
                     "type": WSChatType.SAVE_MESSAGE.value,
                     **message_data(message),
                 },
+                "visible_to": [m.pk for m in members],
             },
         )
         self.notify_inboxes(message, members)
@@ -208,7 +235,17 @@ class ChatConsumer(WebsocketConsumer):
             )
 
     def handle_read(self, payload):
-        presence.mark_read(self.user, self.room)
+        # A busy database (SQLite locked) shouldn't close the socket: the
+        # next read frame or page load marks the room read anyway.
+        try:
+            presence.mark_read(self.user, self.room)
+        except OperationalError as error:
+            logger.warning(
+                "Couldn't mark room %s read for user %s (%s)",
+                self.room.id,
+                self.user.pk,
+                type(error).__name__,
+            )
 
     def handle_typing(self, payload):
         # At most one typing event per second per socket.
@@ -243,14 +280,25 @@ class ChatConsumer(WebsocketConsumer):
     # Channel layer events
 
     def chat_response(self, event):
+        # Events about one message carry the pks of the people who may see it
+        # (never sent on to the client); everything else goes to every socket.
+        if self.room_group_name is None:
+            return  # refused in connect(); events queued before the discard
+        visible_to = event.get("visible_to")
+        if visible_to is not None and self.user.pk not in visible_to:
+            return
         self.send_json(event["data"])
 
     def membership_revoked(self, event):
         """Sent when someone is removed or leaves; only their sockets close."""
+        if self.room_group_name is None:
+            return  # already refused and closing
         if event["user_id"] == self.user.pk:
             self.reject_open(403, "You're no longer in this chat", CloseCode.FORBIDDEN)
 
     def room_deleted(self, event):
+        if self.room_group_name is None:
+            return  # already refused and closing
         self.reject_open(404, "This chat was deleted", CloseCode.NOT_FOUND)
 
     # Helpers
@@ -362,6 +410,10 @@ class InboxConsumer(WebsocketConsumer):
 
     def inbox_room_removed(self, event):
         self.send(text_data=json.dumps({"type": "room_removed", "room": event["room"]}))
+
+    def inbox_room_refresh(self, event):
+        """A message in the room was edited or deleted: refetch its row."""
+        self.send(text_data=json.dumps({"type": "room_refresh", "room": event["room"]}))
 
     def inbox_message(self, event):
         data = event["data"]

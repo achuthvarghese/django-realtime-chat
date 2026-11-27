@@ -23,6 +23,7 @@
             wireAddPeople();
             document.dispatchEvent(new CustomEvent("relay:details-loaded"));
         } catch (error) {
+            console.warn("Relay: couldn't load the Details panel.", error);
             const note = document.createElement("p");
             note.className = "details__loading muted";
             note.textContent = "Couldn't load details. Close and try again.";
@@ -96,16 +97,26 @@
                 headers: { Accept: "application/json", "X-CSRFToken": csrf() },
                 body: new FormData(form),
             });
-            const result = await response.json();
-            if (!result.ok) throw new Error(result.error || "That didn't work.");
+            let result;
+            try {
+                result = await response.json();
+            } catch (error) {
+                throw new Error(`HTTP ${response.status}, not JSON`);
+            }
+            if (!result.ok) {
+                notify(result.error || "That didn't work. Try again.");
+                if (button) button.disabled = false;
+                return;
+            }
             if (result.redirect) {
                 window.location.assign(result.redirect);
                 return;
             }
             await load();
         } catch (error) {
+            console.warn("Relay: a group action failed.", error);
             if (button) button.disabled = false;
-            notify(error.message);
+            notify("That didn't work. Check your connection and try again.");
         }
     });
 
@@ -173,7 +184,11 @@
             if (!query) return results.replaceChildren();
             timer = setTimeout(async () => {
                 try {
-                    const response = await fetch(`/chat/people/?q=${encodeURIComponent(query)}`, { credentials: "same-origin" });
+                    const response = await fetch(`/chat/people/?q=${encodeURIComponent(query)}`, {
+                        credentials: "same-origin",
+                        headers: { Accept: "application/json" },
+                    });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     const people = (await response.json()).results.filter((p) => !members.has(p.username));
                     if (!people.length) {
                         const li = document.createElement("li");
@@ -214,6 +229,7 @@
                         })
                     );
                 } catch (error) {
+                    console.warn("Relay: people search failed (add people).", error);
                     notify("Search isn't available right now.");
                 }
             }, 200);

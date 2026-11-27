@@ -94,33 +94,46 @@ def require_admin(room, user):
 # Events
 
 
+# Room socket events are queued with on_commit (see realtime.py): sent once
+# the change is saved, never on rollback, in the order queued.
+
+
 def system_message(room, actor, text):
     """Record a group event and send it to everyone in the room."""
     message = Message.objects.create(
         content=text, room=room, user=actor, kind=Message.Kinds.SYSTEM
     )
-    message.visible_for.add(*room.members.all())
-    realtime.broadcast_frame(room.id, {"type": "save_message", **message_data(message)})
+    members = list(room.members.all())
+    message.visible_for.add(*members)
+    realtime.broadcast_frame_after_commit(
+        room.id,
+        {"type": "save_message", **message_data(message)},
+        visible_to=[m.pk for m in members],
+    )
     return message
 
 
 def announce_room_changed(room):
     """Tell open sockets to refresh the header and details panel."""
     room.refresh_from_db()
-    realtime.broadcast_frame(
+    member_pks = list(room.members.values_list("pk", flat=True))
+    realtime.broadcast_frame_after_commit(
         room.id,
         {
             "type": "room_updated",
             "room": str(room.id),
             "name": room.name,
-            "member_count": room.members.count(),
+            "member_count": len(member_pks),
         },
+        visible_to=member_pks,
     )
 
 
 def revoke_access(room, user):
     """Close the user's sockets for this room (they're no longer a member)."""
-    realtime.send_to_room(room.id, {"type": "membership.revoked", "user_id": user.pk})
+    realtime.send_to_room_after_commit(
+        room.id, {"type": "membership.revoked", "user_id": user.pk}
+    )
 
 
 # Changes
@@ -156,6 +169,7 @@ def add_members(room, actor, usernames):
     system_message(room, actor, f"{display_name(actor)} added {name_list(users)}")
     announce_room_changed(room)
     live_rooms.room_added(room, users)
+    live_rooms.room_changed(room, skip=[u.pk for u in users])
     return users
 
 
@@ -173,6 +187,7 @@ def remove_member(room, actor, target):
     revoke_access(room, target)
     announce_room_changed(room)
     live_rooms.room_removed(room.id, [target.pk])
+    live_rooms.room_changed(room)
 
 
 @transaction.atomic
@@ -229,7 +244,7 @@ def leave(room, user):
     if not remaining.exists():
         room_id = room.id
         room.delete()
-        realtime.send_to_room(room_id, {"type": "room.deleted"})
+        realtime.send_to_room_after_commit(room_id, {"type": "room.deleted"})
         live_rooms.room_removed(room_id, [user.pk])
         return False
     system_message(room, user, f"{display_name(user)} left")
@@ -243,6 +258,7 @@ def leave(room, user):
     revoke_access(room, user)
     announce_room_changed(room)
     live_rooms.room_removed(room.id, [user.pk])
+    live_rooms.room_changed(room)
     return True
 
 
@@ -253,5 +269,5 @@ def delete_group(room, actor):
     room_id = room.id
     member_pks = list(room.members.values_list("pk", flat=True))
     room.delete()
-    realtime.send_to_room(room_id, {"type": "room.deleted"})
+    realtime.send_to_room_after_commit(room_id, {"type": "room.deleted"})
     live_rooms.room_removed(room_id, member_pks)

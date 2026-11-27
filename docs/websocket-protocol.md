@@ -31,10 +31,21 @@ the Django session cookie identifies the user.
 | Signed in but not a member | Accepted, sends an `error` with `code: 403`, closes with `4403` |
 | Member | Accepted and joined to the room's group |
 
+The consumer joins the room's group **before** it checks membership. If you
+are removed between the two steps, the revoke event still reaches the socket;
+checking first would leave a window where it is missed. When the check fails,
+the socket leaves the group again and is refused. A refused socket ignores any
+frames the client sends before it sees the close, and any room frames queued
+for it before it left the group.
+
 Membership is also checked on **every frame**, and when a member is removed,
 leaves, or the group is deleted, their open sockets get an `error` (`403` or
-`404`) and close with `4403` or `4404`. The client redirects to the login page
-on `4401`; on `4403` or `4404` it shows why and returns to the room list.
+`404`) and close with `4403` or `4404`.
+
+The client redirects to the login page on `4401`. On `4403` it shows the
+"You’re no longer in <name>" pane, and on `4404` the "<name> was deleted"
+pane (see [screens.md](./screens.md#when-the-open-room-goes-away)). The page stays on that pane;
+it doesn't return to the list by itself.
 
 ## Client to server
 
@@ -100,7 +111,28 @@ members keep their history.
 
 ## Server to client
 
-### `save_message` (to every member connected to the room)
+### Who gets room frames
+
+Frames about messages go only to sockets whose user may see them. The server
+attaches a list of user ids to the channel layer event (`visible_to`); each
+socket drops the frame if its user isn't in the list. The list is never sent
+to the client.
+
+| Frame | Goes to |
+| --- | --- |
+| `save_message` (yours) | People who were members when it was sent |
+| `save_message` (group event) | People who were members when it happened, so a removed member doesn't see "Maya removed Lee" |
+| `message_updated` | Current members who can still see the message: not people who cleared their history or joined after it |
+| `room_updated` | Current members |
+| `typing` | Every socket in the room |
+| `clear_room`, `error` | The requesting socket only |
+
+Group changes (`chat/groups.py`) send their room events only after the
+database change commits, in the order they were queued, and never if it rolls
+back. Removing someone sends the group event, then closes their sockets, then
+sends `room_updated`. A failed send is logged and skipped.
+
+### `save_message` (to members, see above)
 
 ```json
 {
@@ -137,7 +169,7 @@ history from the same shape (`chat/presenters.py: message_data`).
 Clients ignore their own and show "Maya Rao is typing…" for 4 seconds or
 until that person's message arrives.
 
-### `room_updated` (to every socket in the room)
+### `room_updated` (to current members)
 
 ```json
 {"type": "room_updated", "room": "<room uuid>", "name": "Design crew", "member_count": 4}
@@ -147,11 +179,16 @@ Sent after any group change (members added or removed, admins changed,
 renamed). Clients update the header and sidebar and reload the Details panel
 if it's open.
 
-### `message_updated` (to every member connected to the room)
+### `message_updated` (to people who can see the message)
 
 Sent after an edit or delete, with the same fields as `save_message`. A deleted
 message has `"deleted": true` and an empty `message`; an edited one has
-`"edited": true`.
+`"edited": true`. The same people also get a `room_refresh` frame on their
+inbox socket (see below).
+
+You can only edit or delete your own messages that you can still see. After
+you clear your history, your older messages can't be edited or deleted by
+you (the server answers `403`).
 
 ### `clear_room` (to the requesting socket only)
 
@@ -218,12 +255,19 @@ room already open.
 }
 ```
 
-**`room_added`**, **`room_changed`**, **`room_removed`**: keep the room list
-live. `room_added` goes to each person when a direct chat or group is created
-with them in it or they're added to a group; `room_changed` goes to every
-member when a group is renamed. Both carry that person's own view of the room
-(a direct chat is titled with the other person's name), and are sent only
-after the database change commits.
+**`room_added`**, **`room_changed`**, **`room_removed`**, **`room_refresh`**:
+keep the room list live. All four are sent only after the database change
+commits, and none if it rolls back.
+
+| Frame | Sent to | When |
+| --- | --- | --- |
+| `room_added` | People who gain a room | A direct chat or group is created with them in it, or they're added to a group |
+| `room_changed` | Members at commit time, except people just added | A group is renamed, or people are added, removed or leave |
+| `room_removed` | People who lose a room | They're removed or leave (their other tabs), or the group is deleted |
+| `room_refresh` | Current members who can see the message | A message is edited or deleted |
+
+`room_added` carries that person's own view of the room (a direct chat is
+titled with the other person's name):
 
 ```json
 {
@@ -236,18 +280,73 @@ after the database change commits.
 }
 ```
 
-`room_removed` goes to a person who was removed or left, and to every member
-when a group is deleted. If that room is open, its room socket closes too
-(`4403` or `4404`) and the page shows "You're no longer in this chat" or "This
-chat was deleted".
+`room_changed` is one partial room object, the same for every member, and is
+only sent for groups. It has only these keys; the page applies them and never
+touches the preview, time or unread count from it. When the member list
+changes, the page asks for a fresh `presence_snapshot` (a `ping`).
+
+```json
+{
+  "type": "room_changed",
+  "room": {
+    "id": "<room uuid>", "title": "Launch prep", "initials": "LP",
+    "member_count": 3, "member_usernames": ["arjun", "maya", "sam"]
+  }
+}
+```
+
+People who are added get `room_added`, not `room_changed`. The person who is
+removed or leaves gets only `room_removed`. When the last member leaves, the
+group is deleted and no `room_changed` is sent.
 
 ```json
 {"type": "room_removed", "room": "<room uuid>"}
 ```
 
-If a `room_activity` frame names a room the page doesn't list (a `room_added`
-frame was missed while reconnecting), the page fetches the row from
-`GET /chat/rooms/<uuid>/summary/`, which returns the same `room` object.
+`room_refresh` means the room's preview may have changed (for example, its
+last message was deleted). The page refetches that row from
+`GET /chat/rooms/<uuid>/summary/`.
+
+```json
+{"type": "room_refresh", "room": "<room uuid>"}
+```
+
+After a `room_added` frame the page sends a `ping`, so the next
+`presence_snapshot` includes the new room's members.
+
+### When the open room goes away
+
+If `room_removed` names the room you have open, or a resync no longer lists
+it, the page reconnects that room's socket instead of guessing why:
+
+1. A refusal with `4403` shows the "You’re no longer in <name>" pane; `4404`
+   shows "<name> was deleted".
+2. If the socket stays open for 1 second, you're still a member (for example,
+   you were added back), and the page fetches the room's row again.
+3. If neither happens within 3 seconds (for example, you're offline), the page
+   shows the "no longer in" pane.
+
+### Missed frames and resync
+
+If a `room_activity` or `room_changed` frame names a room the page doesn't
+list (a `room_added` frame was missed), the page fetches the row from
+`GET /chat/rooms/<uuid>/summary/`, which returns the same `room` object as
+`room_added`.
+
+Every time the inbox socket opens, the page fetches the whole list from
+`GET /chat/rooms/summaries/` and makes the page match it: missing rooms are
+added, rooms not in the list are removed, and titles, previews and unread
+counts are updated. This includes the first connect after page load: frames
+sent between the server rendering the page and the socket joining its group
+would otherwise be lost.
+
+```json
+{"rooms": [{"id": "<room uuid>", "title": "Launch prep", "…": "…"}]}
+```
+
+The rooms are the same objects as `room_added`, most recent first. A row that
+a live frame changed after the fetch started keeps the live version, and a
+room removed after the fetch started isn't added back.
 
 Presence and activity use the database and the channel layer, so they work
 across server processes when `REDIS_URL` is set. Connections left behind by

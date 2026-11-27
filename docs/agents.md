@@ -62,9 +62,10 @@ and still lands as **one pull request**:
    (`dev-replies-backend`, `dev-replies-frontend`, `dev-replies-devops`)
    in its own git worktree, so parallel edits never collide.
 3. **Build in parallel.** Builders work only in their own area, follow the
-   contract, message each other (SendMessage) when they need something, and
-   log decisions, contract changes and open questions in the notes file.
-   Questions for you come back through the lead.
+   contract, and log decisions, contract changes and open questions in the
+   notes file. Builders have no SendMessage tool, so they can't message each
+   other: the lead reads the notes file and relays messages and contract
+   changes between them. Questions for you come back through the lead.
 4. **Merge.** The lead merges the builder branches into the phase branch,
    resolves any conflicts and runs the full checks.
 5. **Review.** `code-reviewer`, `user-tester` and (for visible changes)

@@ -17,7 +17,6 @@
     const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
     const fullFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" });
     const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" });
-    const shortDateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
     const dayKey = (date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
     function daysAgo(date) {
@@ -31,33 +30,47 @@
         return dayFormat.format(date);
     }
 
-    // Room list: local times and search
-
-    for (const time of document.querySelectorAll("time[data-relative]")) {
-        const date = new Date(time.getAttribute("datetime"));
-        if (Number.isNaN(date.getTime())) continue;
-        const ago = daysAgo(date);
-        time.textContent = ago === 0 ? timeFormat.format(date) : ago === 1 ? "Yesterday" : shortDateFormat.format(date);
-        time.title = fullFormat.format(date);
-    }
+    // Room list search. inbox.js owns the rows and fires relay:rooms-changed
+    // whenever it adds, removes or changes one, so the filter is re-applied.
 
     const search = document.getElementById("room-search");
     if (search) {
+        const searchBox = search.closest(".chat-side__search");
         const noMatch = document.getElementById("room-nomatch");
-        search.addEventListener("input", () => {
+        const applyFilter = () => {
             const query = search.value.trim().toLowerCase();
+            const links = document.querySelectorAll("#room-list .room-link");
             let shown = 0;
-            for (const link of document.querySelectorAll("#room-list .room-link")) {
-                const match = link.dataset.title.includes(query);
+            for (const link of links) {
+                const match = (link.dataset.title || "").includes(query);
                 link.parentElement.hidden = !match;
                 if (match) shown += 1;
             }
-            noMatch.hidden = shown > 0;
+            noMatch.hidden = shown > 0 || links.length === 0;
+            // No rooms, nothing to search (the list shows its empty note).
+            if (searchBox) searchBox.hidden = links.length === 0 && query === "";
+        };
+        search.addEventListener("input", applyFilter);
+        document.addEventListener("relay:rooms-changed", applyFilter);
+        applyFilter();
+    }
+
+    // The welcome pane (no room open) says "Pick a chat" or "Welcome" to
+    // match the list as rooms arrive or go.
+    const welcomeParts = document.querySelectorAll("[data-welcome-title], [data-welcome-text]");
+    if (welcomeParts.length) {
+        document.addEventListener("relay:rooms-changed", () => {
+            const any = !!document.querySelector("#room-list .room-link");
+            for (const part of welcomeParts) {
+                const text = any ? part.dataset.rooms : part.dataset.empty;
+                if (part.textContent !== text) part.textContent = text;
+            }
         });
     }
 
     const roomId = readJSON("room-id");
     if (!roomId) return;
+    let gone = false; // the room went away while open (see showGone)
 
     // Transcript
     //
@@ -252,6 +265,7 @@
             renderAll();
             scroller.scrollTop = scroller.scrollHeight - fromBottom;
         } catch (error) {
+            console.warn("Relay: couldn't load earlier messages.", error);
             loadingOlder = false;
             updateHistoryStatus();
             showToast("Couldn't load earlier messages. Scroll up to try again.");
@@ -273,16 +287,15 @@
         scrollToEnd();
     })();
 
+    // The room list row for this room (inbox.js owns the list).
+    function refreshRow() {
+        document.dispatchEvent(new CustomEvent("relay:room-refresh", { detail: { room: roomId } }));
+    }
+
     function updatePreview(data, moveToTop = true) {
-        const link = document.querySelector(`.room-link[data-room-id="${CSS.escape(roomId)}"]`);
-        if (!link) return;
-        const preview = link.querySelector(".room-link__preview");
-        if (preview) preview.textContent = (data.user === me ? "You: " : "") + data.message;
-        const time = link.querySelector(".room-link__time");
-        if (time && moveToTop) time.textContent = timeFormat.format(new Date(data.created_at));
-        if (!moveToTop) return;
-        const item = link.parentElement;
-        item.parentElement.prepend(item);
+        document.dispatchEvent(
+            new CustomEvent("relay:room-message", { detail: { room: roomId, message: data, moveToTop } })
+        );
     }
 
     // Toast for errors and connection notes
@@ -322,13 +335,33 @@
     let socket = null;
     let attempts = 0;
     let everConnected = false;
+    let reconnectTimer = null;
+    let checkTimer = null; // set while checking whether you're still a member
+    let rechecking = false; // the socket was closed on purpose to check
+    const STILL_HERE_MS = 1000;
 
     function connect() {
+        if (gone) return;
         setStatus(attempts === 0 && !everConnected ? "connecting" : "offline");
         socket = new WebSocket(socketUrl);
 
         socket.addEventListener("open", () => {
-            if (everConnected) {
+            if (checkTimer) {
+                // The server accepts for a moment before refusing (4403 or
+                // 4404), so only an open socket that stays open means you're
+                // still a member (e.g. added back).
+                // Send nothing until then.
+                clearTimeout(checkTimer);
+                checkTimer = setTimeout(() => {
+                    checkTimer = null;
+                    if (socket.readyState !== WebSocket.OPEN) return; // closed meanwhile: reconnecting
+                    attempts = 0;
+                    setStatus("live");
+                    markRead();
+                    document.dispatchEvent(new CustomEvent("relay:room-still-here", { detail: { room: roomId } }));
+                }, STILL_HERE_MS);
+                return;
+            } else if (everConnected) {
                 showToast("Reconnected. Messages sent while you were away may be missing.", {
                     persist: true,
                     action: { label: "Reload", run: () => window.location.reload() },
@@ -345,6 +378,7 @@
             try {
                 data = JSON.parse(event.data);
             } catch (error) {
+                console.warn("Relay: ignored a room frame that wasn't JSON.", error);
                 return;
             }
             if (data.type === "save_message") {
@@ -364,11 +398,14 @@
                 if (messages.length && messages[messages.length - 1].id === data.id) {
                     updatePreview({ ...data, message: data.deleted ? "Message deleted" : data.message }, false);
                 }
+                // The server's row may differ (e.g. a deleted last message); refetch it.
+                refreshRow();
             } else if (data.type === "clear_room" && data.for === me) {
                 messages.length = 0;
                 hasMore = false;
                 renderAll();
                 showToast("History cleared for you.");
+                refreshRow();
             } else if (data.type === "room_updated") {
                 applyRoomUpdate(data);
             } else if (data.type === "error") {
@@ -377,13 +414,20 @@
         });
 
         socket.addEventListener("close", (event) => {
+            if (gone) return;
             // 4401 signed out, 4403 not a member, 4404 unknown room
             if (event.code === 4401) return window.location.assign("/account/login/");
             if (event.code === 4403 || event.code === 4404) return showGone(event.code === 4404);
+            clearTimeout(reconnectTimer);
+            if (rechecking) {
+                rechecking = false;
+                connect();
+                return;
+            }
             setStatus("offline");
             attempts += 1;
             const delay = Math.min(15000, 1000 * 2 ** Math.min(attempts - 1, 4));
-            setTimeout(connect, delay);
+            reconnectTimer = setTimeout(connect, delay);
         });
     }
     connect();
@@ -423,63 +467,114 @@
         renderTyping();
     }
 
-    // The room went away while open: explain in the pane, with a way back.
+    // The room went away while open: keep a muted header so you know which
+    // chat it was, explain in the pane, and offer a way back.
     function showGone(deleted) {
+        if (gone) return;
+        gone = true;
+        clearTimeout(checkTimer);
+        clearTimeout(reconnectTimer);
+        socket?.close();
+        for (const t of typers.values()) clearTimeout(t.timer);
+        typers.clear();
+        clearTimeout(toastTimer);
+        document.querySelectorAll(".chat-main dialog[open]").forEach((d) => d.close());
+
         const main = document.querySelector(".chat-main");
-        const box = document.createElement("div");
-        box.className = "chat-gone";
-        box.setAttribute("role", "status");
-        const heading = document.createElement("h1");
-        heading.textContent = deleted ? "This chat was deleted" : "You're no longer in this chat";
-        const text = document.createElement("p");
-        text.className = "muted";
-        text.textContent = deleted
+        const head = main.querySelector(".chat-head");
+        const name = head.querySelector(".chat-head__title").textContent.trim();
+
+        // Header: muted, no Details button, "Not a member" or "Deleted".
+        // The pane's heading is now the page's h1, so the title becomes a p.
+        head.classList.add("chat-head--gone");
+        head.querySelector(".chat-head__details")?.remove();
+        const oldTitle = head.querySelector(".chat-head__title");
+        const title = document.createElement("p");
+        title.className = oldTitle.className;
+        title.textContent = name;
+        oldTitle.replaceWith(title);
+        const meta = head.querySelector(".chat-head__meta");
+        const state = document.createElement("span");
+        state.textContent = deleted ? "Deleted" : "Not a member";
+        meta.replaceChildren(state);
+
+        const pane = document.getElementById("gone-template").content.firstElementChild.cloneNode(true);
+        pane.querySelector(`[data-gone-icon="${deleted ? "removed" : "deleted"}"]`).remove();
+        const heading = pane.querySelector("[data-gone-heading]");
+        heading.textContent = deleted ? `${name} was deleted` : `You\u2019re no longer in ${name}`;
+        pane.querySelector("[data-gone-text]").textContent = deleted
             ? "An admin deleted it, so its messages are gone for everyone."
-            : "You were removed or left, so you can't read or send messages here any more.";
-        const back = document.createElement("a");
-        back.className = "btn btn--primary";
-        back.href = "/chat/";
-        back.textContent = "Back to chats";
-        const actions = document.createElement("div");
-        actions.append(back);
-        box.append(heading, text, actions);
-        main.replaceChildren(box);
+            : "You were removed or left, so you can\u2019t read or send messages here any more. Ask a member to add you back.";
+
+        for (const child of [...main.children]) {
+            if (child !== head && !child.classList.contains("chat-notices")) child.remove();
+        }
+        main.append(pane);
+
         document.getElementById("details")?.setAttribute("hidden", "");
         document.querySelector(".chat")?.classList.remove("chat--details-open");
-        // inbox.js owns the room list (and its empty state).
+        // inbox.js owns the room list (and its empty state) and the tab title.
         document.dispatchEvent(new CustomEvent("relay:room-removed", { detail: { room: roomId } }));
-        back.focus();
+        document.dispatchEvent(
+            new CustomEvent("relay:base-title", {
+                detail: { title: `${deleted ? `${name} was deleted` : `No longer in ${name}`} \u00b7 Relay` },
+            })
+        );
+        heading.focus();
     }
+    // inbox.js heard the room left your list (room_removed, or missing after
+    // a resync). Reconnect now: the server refuses with 4403 (not a member)
+    // or 4404 (deleted), which picks the right copy. If neither answer comes
+    // within 3 seconds (e.g. offline), say you're no longer in it.
+    const CHECK_TIMEOUT_MS = 3000;
+    document.addEventListener("relay:room-check", (event) => {
+        if (event.detail.room !== roomId || gone || checkTimer) return;
+        checkTimer = setTimeout(() => {
+            checkTimer = null;
+            showGone(false);
+        }, CHECK_TIMEOUT_MS);
+        clearTimeout(reconnectTimer);
+        attempts = 0;
+        if (socket && socket.readyState === WebSocket.CLOSED) {
+            connect();
+        } else if (socket) {
+            rechecking = true;
+            socket.close();
+        }
+    });
 
-    // Group changes: new name or member count in the header and sidebar.
-    // Same rule as chat/presenters.py: first letters of two words, else the
-    // first two characters.
+    // Group changes: new name or member count in the header. inbox.js
+    // updates the room list row.
+    // Same rule as initials() in chat/presenters.py: the first letter or
+    // digit of the first two words, else the first two letters or digits
+    // of the only word, else "?".
+    // The characters Python's str.split() splits on (JavaScript's \s differs).
+    const PY_WHITESPACE = /[\t\n\v\f\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/u;
     function initialsOf(name) {
-        const words = name.replace(/@/g, "").split(/\s+/).filter(Boolean);
+        const words = (name || "")
+            .split(PY_WHITESPACE)
+            .map((word) => Array.from(word.replace(/[^\p{L}\p{N}]/gu, "")))
+            .filter((chars) => chars.length);
         if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-        return (words[0] || "?").slice(0, 2).toUpperCase();
+        return words.length ? words[0].slice(0, 2).join("").toUpperCase() : "?";
     }
 
     function applyRoomUpdate(data) {
+        if (gone) return;
         const title = document.querySelector(".chat-head__title");
         const isGroup = title && !title.dataset.private;
+        const initials = data.name ? initialsOf(data.name) : undefined;
         if (isGroup && data.name) {
             title.textContent = data.name;
             const headAvatar = document.querySelector(".chat-head .avatar");
-            if (headAvatar) headAvatar.textContent = initialsOf(data.name);
+            if (headAvatar) headAvatar.textContent = initials;
             input.placeholder = `Message ${data.name}`;
             document.querySelector('label[for="message"]').textContent = `Message ${data.name}`;
+            document.dispatchEvent(new CustomEvent("relay:base-title", { detail: { title: `${data.name} \u00b7 Relay` } }));
         }
         const count = document.querySelector("[data-member-count]");
         if (count) count.textContent = `${data.member_count} member${data.member_count === 1 ? "" : "s"}`;
-        const link = document.querySelector(`.room-link[data-room-id="${CSS.escape(roomId)}"]`);
-        if (link && data.name && !link.dataset.username) {
-            link.querySelector(".room-link__title").textContent = data.name;
-            link.querySelector(".room-link__avatar").textContent = initialsOf(data.name);
-            link.dataset.title = data.name.toLowerCase();
-            link.title = data.name;
-        }
-        document.dispatchEvent(new CustomEvent("relay:room-updated", { detail: data }));
+        document.dispatchEvent(new CustomEvent("relay:room-updated", { detail: { ...data, initials } }));
     }
 
     function send(payload) {

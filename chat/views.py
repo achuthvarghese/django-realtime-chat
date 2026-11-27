@@ -11,7 +11,14 @@ from django.views.decorators.http import require_GET, require_POST
 
 from chat import groups, presence
 from chat.models import Message
-from chat.presenters import display_name, initials, message_data, rooms_for
+from chat.presenters import (
+    display_name,
+    initials,
+    message_data,
+    room_summaries,
+    room_summary,
+    rooms_for,
+)
 from chat.services import (
     MAX_GROUP_NAME,
     RoomError,
@@ -43,11 +50,17 @@ def room_url(room):
     return f"{reverse('chat:chat')}?room={room.id}"
 
 
+# Shown for a room id the user can't open, whether it never existed, was
+# deleted, or they were removed: the same words, so nothing leaks.
+ROOM_UNAVAILABLE = (
+    "That chat isn’t available. You may have been removed, or it was deleted."
+)
+
+
 @login_required
 def chat(request):
-    rooms = rooms_for(request.user)
     room = None
-    room_summary = None
+    summary = None
     room_messages = []
     has_more = False
 
@@ -56,19 +69,26 @@ def chat(request):
         try:
             room = request.user.rooms.get(id=uuid.UUID(room_id))
         except (ValueError, request.user.rooms.model.DoesNotExist):
-            # Unknown ids and rooms the user is not a member of look the same.
-            raise Http404("Room not found")
+            # Unknown, deleted and forbidden rooms look the same.
+            messages.info(request, ROOM_UNAVAILABLE)
+            return redirect("chat:chat")
         presence.mark_read(request.user, room)
-        room_summary = next(r for r in rooms if r["id"] == str(room.id))
-        room_summary["unread"] = 0
+
+    rooms = rooms_for(request.user)
+    if room is not None:
+        summary = next((r for r in rooms if r["id"] == str(room.id)), None)
+        if summary is None:
+            # Removed (or the room deleted) between the two queries.
+            messages.info(request, ROOM_UNAVAILABLE)
+            return redirect("chat:chat")
         room_messages, has_more = history_page(room, request.user)
 
     me = display_name(request.user)
     context = {
-        "title": room_summary["title"] if room_summary else "Chats",
+        "title": summary["title"] if summary else "Chats",
         "rooms": rooms,
         "room": room,
-        "room_summary": room_summary,
+        "room_summary": summary,
         "room_messages": room_messages,
         "history": {"has_more": has_more, "page_size": PAGE_SIZE},
         "me": {"username": request.user.username, "name": me, "initials": initials(me)},
@@ -178,13 +198,19 @@ def room_details(request, room_id):
     return render(request, "chat/partials/details.html", context)
 
 
-def _group_response(request, room, error=None, gone=False, notice=None):
-    """JSON for the panel's scripts; redirects with a notice otherwise."""
+def _group_response(
+    request, room, error=None, gone=False, notice=None, notice_for_json=False
+):
+    """JSON for the panel's scripts; redirects with a notice otherwise.
+    `notice_for_json` also queues the notice for JSON callers, who follow
+    the returned redirect and see it on the next page."""
     wants_json = "application/json" in request.headers.get("Accept", "")
     target = reverse("chat:chat") if gone else room_url(room)
     if wants_json:
         if error:
             return JsonResponse({"ok": False, "error": error}, status=400)
+        if notice and notice_for_json:
+            messages.success(request, notice)
         return JsonResponse({"ok": True, "redirect": target if gone else None})
     if error:
         messages.error(request, error)
@@ -212,7 +238,13 @@ def group_action(request, room_id, action):
         elif action == "leave":
             name = room.name
             groups.leave(room, user)
-            return _group_response(request, room, gone=True, notice=f"You left {name}.")
+            return _group_response(
+                request,
+                room,
+                gone=True,
+                notice=f"You left {name}.",
+                notice_for_json=True,
+            )
         elif action == "delete":
             name = room.name
             groups.delete_group(room, user)
@@ -228,9 +260,15 @@ def group_action(request, room_id, action):
 @require_GET
 def room_summary_view(request, room_id):
     """One sidebar row as JSON (used when the list hears of a room it lacks)."""
-    from chat.presenters import room_summary
-
     summary = room_summary(request.user, room_id)
     if summary is None:
         raise Http404("Room not found")
     return JsonResponse(summary)
+
+
+@login_required
+@require_GET
+def room_summaries_view(request):
+    """Every sidebar row as JSON, most recent first. The list resyncs with it
+    after its socket reconnects."""
+    return JsonResponse({"rooms": room_summaries(request.user)})
