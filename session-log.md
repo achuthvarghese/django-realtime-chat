@@ -38,6 +38,7 @@
 | #20 | dev-live-rooms | Phase 9b: live rooms |
 | #21 | dev-agents | Claude Code agents (11), CLAUDE.md orchestrator playbook |
 | #22 | dev-live-rooms-fixes | Phase 9c: live-room fixes (first agent-team phase) |
+| #23 | dev-agent-sessions | Builders run as sub sessions; git author read from history |
 
 ## Key decisions
 
