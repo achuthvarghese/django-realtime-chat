@@ -658,7 +658,7 @@ class TestUnreadCounts:
 
         from chat.presence import unread_count
 
-        deleted, cleared, kept = make_messages(room, arjun, 3)
+        deleted, cleared, _kept = make_messages(room, arjun, 3)
         Message.objects.filter(pk=deleted.pk).update(deleted_at=timezone.now())
         cleared.visible_for.remove(maya)
         assert unread_count(maya, room) == 1
@@ -1303,6 +1303,9 @@ class TestLiveRoomList:
         assert (await next_frame_of_type(lee_inbox, "room_added"))["room"][
             "title"
         ] == "Team"
+        added = await next_frame_of_type(arjun_inbox, "room_changed")
+        assert sorted(added["room"]["member_usernames"]) == ["arjun", "lee", "maya"]
+        assert added["room"]["member_count"] == 3
 
         await database_sync_to_async(groups.rename)(group, maya, "Crew")
         changed = await next_frame_of_type(arjun_inbox, "room_changed")
@@ -1449,7 +1452,9 @@ class TestLiveRoomQueries:
                 )
             )
         assert counts[0] == counts[1]
-        assert len(inbox_sends) == 41
+        frames = [event["frame"] for _, event in inbox_sends]
+        assert frames.count("room_added") == 41
+        assert frames.count("room_changed") == 4  # 2 existing members x 2 groups
 
     def test_rename(self, maya, inbox_sends, django_capture_on_commit_callbacks):
         from chat import groups
@@ -1624,15 +1629,33 @@ class TestLiveRoomFailures:
         assert callbacks == []
         assert inbox_sends == []
 
-    def test_failed_group_change_sends_nothing(
-        self, group, arjun, inbox_sends, django_capture_on_commit_callbacks
+    def test_group_change_failing_after_queuing_sends_nothing(
+        self, group, maya, lee, inbox_sends, django_capture_on_commit_callbacks
     ):
+        """add_members queues room_added (inbox) and the system message and
+        room_updated (room) before the last step fails: none of them go out."""
+        from unittest import mock
+
         from chat import groups
 
-        with django_capture_on_commit_callbacks(execute=True):
-            with pytest.raises(groups.GroupError):
-                groups.rename(group, arjun, "Not allowed")
-        assert inbox_sends == []
+        new = User.objects.create_user("kai", password="pw")
+        room_sends = []
+        with (
+            mock.patch(
+                "chat.realtime.send_to_room",
+                side_effect=lambda r, e: room_sends.append(e),
+            ),
+            mock.patch(
+                "chat.groups.live_rooms.room_changed",
+                side_effect=groups.GroupError("too_many"),
+            ),
+        ):
+            with django_capture_on_commit_callbacks(execute=True) as callbacks:
+                with pytest.raises(groups.GroupError):
+                    groups.add_members(group, maya, ["kai"])
+        assert callbacks == []
+        assert inbox_sends == [] and room_sends == []
+        assert not group.members.filter(pk=new.pk).exists()
 
 
 @pytest.mark.django_db
@@ -1975,3 +1998,222 @@ class TestRoomEventsAfterCommit:
             group.members.values_list("pk", flat=True)
         )
         assert lee.pk not in updated["visible_to"]
+
+
+# Review round 1 (P9c): set-based summaries, room_changed on membership
+# changes, logging, races
+
+
+def timed_message(room, user, text, at, kind=Message.Kinds.TEXT, visible=None):
+    message = Message.objects.create(content=text, room=room, user=user, kind=kind)
+    Message.objects.filter(pk=message.pk).update(created_at=at)
+    message.visible_for.add(*(visible if visible is not None else room.members.all()))
+    return message
+
+
+@pytest.mark.django_db
+class TestRoomSummariesForUsersRich:
+    def test_equal_to_room_summary_with_history(self, maya, arjun, lee):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from chat.models import ReadState
+        from chat.presenters import room_summaries_for_users, room_summary
+        from chat.services import create_group_room
+
+        outsider = User.objects.create_user("zed", password="pw")
+        g = create_group_room(maya, "Team", ["arjun", "lee"])
+        now = timezone.now()
+        timed_message(g, arjun, "a1", now - timedelta(minutes=5))
+        timed_message(g, maya, "m1", now - timedelta(minutes=4))
+        # arjun cleared this one
+        timed_message(g, lee, "l1", now - timedelta(minutes=3), visible=[lee, maya])
+        deleted = timed_message(g, arjun, "gone", now - timedelta(minutes=2))
+        Message.objects.filter(pk=deleted.pk).update(deleted_at=now)
+        timed_message(
+            g, arjun, "sys", now - timedelta(minutes=1), kind=Message.Kinds.SYSTEM
+        )
+        ReadState.objects.create(
+            user=lee, room=g, last_read_at=now - timedelta(minutes=4, seconds=30)
+        )
+        ReadState.objects.create(user=arjun, room=g, last_read_at=now)
+
+        got = room_summaries_for_users(g.id, [maya, arjun, lee, outsider])
+        assert outsider.pk not in got
+        for user in (maya, arjun, lee):
+            assert got[user.pk] == room_summary(user, g.id), user.username
+        assert (got[maya.pk]["last_content"], got[maya.pk]["unread"]) == ("l1", 2)
+        assert (got[arjun.pk]["last_content"], got[arjun.pk]["unread"]) == ("m1", 0)
+        assert (got[lee.pk]["last_content"], got[lee.pk]["unread"]) == ("l1", 1)
+
+        direct = Room.objects.create(name="x", type=Room.RoomTypes.PRIVATE)
+        direct.members.add(maya, arjun)
+        timed_message(direct, maya, "hi", now)
+        got = room_summaries_for_users(direct.id, [maya, arjun])
+        for user in (maya, arjun):
+            assert got[user.pk] == room_summary(user, direct.id)
+
+    def test_same_time_messages_pick_only_what_you_can_see(self, maya, arjun, room):
+        from django.utils import timezone
+
+        from chat.presenters import room_summaries_for_users, room_summary
+
+        now = timezone.now()
+        timed_message(room, maya, "for both", now, visible=[maya, arjun])
+        timed_message(room, arjun, "arjun only", now, visible=[arjun])
+        got = room_summaries_for_users(room.id, [maya, arjun])
+        assert got[maya.pk]["last_content"] == "for both"
+        for user in (maya, arjun):
+            assert got[user.pk] == room_summary(user, room.id)
+
+    def test_queries_do_not_grow_with_history(self, maya, arjun, lee):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from chat import presence
+        from chat.presenters import room_summaries_for_users
+        from chat.services import create_group_room
+
+        people = make_users("p", 10)
+        g = create_group_room(maya, "Team", ["arjun", "lee"])
+        presence.mark_read(lee, g)
+        counts = []
+        for total in (5, 200):
+            make_messages(g, arjun, total - Message.objects.filter(room=g).count())
+            from chat.models import Membership
+
+            Membership.objects.bulk_create(
+                [Membership(room=g, user=u) for u in people if not u.rooms.exists()]
+            )
+            with CaptureQueriesContext(connection) as ctx:
+                got = room_summaries_for_users(g.id, [maya, arjun, lee, *people])
+            assert len(got) == 13
+            counts.append(len(ctx.captured_queries))
+        assert counts[0] == counts[1]
+
+
+@pytest.mark.django_db
+class TestRoomChangedOnMembership:
+    @staticmethod
+    def frame_type(event):
+        return event.get("frame") or event["type"].removeprefix("inbox.")
+
+    def frames(self, sends, frame):
+        return [(pk, e["room"]) for pk, e in sends if self.frame_type(e) == frame]
+
+    def test_add_tells_existing_members_only(
+        self, group, maya, arjun, lee, inbox_sends, django_capture_on_commit_callbacks
+    ):
+        from chat import groups
+
+        kai = User.objects.create_user("kai", password="pw")
+        with django_capture_on_commit_callbacks(execute=True):
+            groups.add_members(group, arjun, ["kai"])
+        changed = self.frames(inbox_sends, "room_changed")
+        assert sorted(pk for pk, _ in changed) == sorted([maya.pk, arjun.pk, lee.pk])
+        room = changed[0][1]
+        assert set(room) == {
+            "id",
+            "title",
+            "initials",
+            "member_count",
+            "member_usernames",
+        }
+        assert sorted(room["member_usernames"]) == ["arjun", "kai", "lee", "maya"]
+        assert room["member_count"] == 4
+        assert [pk for pk, _ in self.frames(inbox_sends, "room_added")] == [kai.pk]
+
+    def test_remove_tells_remaining_members(
+        self, group, maya, arjun, lee, inbox_sends, django_capture_on_commit_callbacks
+    ):
+        from chat import groups
+
+        with django_capture_on_commit_callbacks(execute=True):
+            groups.remove_member(group, maya, lee)
+        changed = self.frames(inbox_sends, "room_changed")
+        assert sorted(pk for pk, _ in changed) == sorted([maya.pk, arjun.pk])
+        assert sorted(changed[0][1]["member_usernames"]) == ["arjun", "maya"]
+        assert [pk for pk, _ in self.frames(inbox_sends, "room_removed")] == [lee.pk]
+
+    def test_leave_tells_remaining_members(
+        self, group, maya, arjun, lee, inbox_sends, django_capture_on_commit_callbacks
+    ):
+        from chat import groups
+
+        with django_capture_on_commit_callbacks(execute=True):
+            groups.leave(group, arjun)
+        changed = self.frames(inbox_sends, "room_changed")
+        assert sorted(pk for pk, _ in changed) == sorted([maya.pk, lee.pk])
+        assert changed[0][1]["member_count"] == 2
+
+    def test_last_member_leaving_sends_no_room_changed(
+        self, maya, arjun, inbox_sends, django_capture_on_commit_callbacks
+    ):
+        from chat import groups
+        from chat.services import create_group_room
+
+        g = create_group_room(maya, "Team", ["arjun"])
+        groups.leave(g, arjun)
+        with django_capture_on_commit_callbacks(execute=True):
+            groups.leave(g, maya)
+        assert [self.frame_type(e) for _, e in inbox_sends] == ["room_removed"]
+
+
+@pytest.mark.django_db
+class TestLiveRoomLogging:
+    def test_one_warning_per_action_with_count(
+        self, group, maya, arjun, lee, caplog, django_capture_on_commit_callbacks
+    ):
+        import logging
+        from unittest import mock
+
+        from chat import groups
+
+        with mock.patch(
+            "chat.live_rooms.realtime.send_to_inbox", side_effect=RuntimeError
+        ):
+            with caplog.at_level(logging.WARNING, logger="chat.live_rooms"):
+                with django_capture_on_commit_callbacks(execute=True):
+                    groups.rename(group, maya, "Crew")
+        [record] = caplog.records
+        text = record.getMessage()
+        assert "room_changed" in text and "3 of 3" in text
+        assert "Crew" not in text and "maya" not in text
+
+    def test_build_failure_logs_traceback(
+        self, maya, arjun, caplog, inbox_sends, django_capture_on_commit_callbacks
+    ):
+        import logging
+        from unittest import mock
+
+        from chat.services import create_group_room
+
+        with mock.patch(
+            "chat.live_rooms.room_summaries_for_users", side_effect=RuntimeError
+        ):
+            with caplog.at_level(logging.WARNING, logger="chat.live_rooms"):
+                with django_capture_on_commit_callbacks(execute=True):
+                    g = create_group_room(maya, "Team", ["arjun"])
+        [record] = caplog.records
+        assert record.exc_info is not None
+        assert str(g.id) in record.getMessage()
+
+
+@pytest.mark.django_db
+class TestChatPageRace:
+    def test_removed_between_queries_redirects(self, client, maya, room):
+        from unittest import mock
+
+        from chat.views import ROOM_UNAVAILABLE
+
+        client.force_login(maya)
+        with mock.patch("chat.views.rooms_for", return_value=[]):
+            response = client.get(reverse("chat:chat"), {"room": room.id})
+        assert response.status_code == 302
+        assert response.url == reverse("chat:chat")
+        from django.contrib.messages import get_messages
+
+        assert [m.message for m in get_messages(response.wsgi_request)] == [
+            ROOM_UNAVAILABLE
+        ]

@@ -169,6 +169,7 @@ def add_members(room, actor, usernames):
     system_message(room, actor, f"{display_name(actor)} added {name_list(users)}")
     announce_room_changed(room)
     live_rooms.room_added(room, users)
+    live_rooms.room_changed(room, skip=[u.pk for u in users])
     return users
 
 
@@ -186,6 +187,7 @@ def remove_member(room, actor, target):
     revoke_access(room, target)
     announce_room_changed(room)
     live_rooms.room_removed(room.id, [target.pk])
+    live_rooms.room_changed(room)
 
 
 @transaction.atomic
@@ -256,6 +258,7 @@ def leave(room, user):
     revoke_access(room, user)
     announce_room_changed(room)
     live_rooms.room_removed(room.id, [user.pk])
+    live_rooms.room_changed(room)
     return True
 
 

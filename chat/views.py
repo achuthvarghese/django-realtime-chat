@@ -76,7 +76,11 @@ def chat(request):
 
     rooms = rooms_for(request.user)
     if room is not None:
-        summary = next(r for r in rooms if r["id"] == str(room.id))
+        summary = next((r for r in rooms if r["id"] == str(room.id)), None)
+        if summary is None:
+            # Removed (or the room deleted) between the two queries.
+            messages.info(request, ROOM_UNAVAILABLE)
+            return redirect("chat:chat")
         room_messages, has_more = history_page(room, request.user)
 
     me = display_name(request.user)
