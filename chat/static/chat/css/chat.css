@@ -495,7 +495,10 @@
     position: absolute;
     top: -10px;
     right: var(--space-3);
-    display: none;
+    /* Hidden but still in the tab order, so the keyboard can reach it. */
+    display: inline-flex;
+    opacity: 0;
+    pointer-events: none;
     gap: 2px;
     padding: 2px;
     border: 1px solid var(--line);
@@ -505,10 +508,10 @@
     z-index: 2;
 }
 .msg:hover .msg__actions,
-.msg:focus-within .msg__actions { display: inline-flex; }
+.msg:focus-within .msg__actions { opacity: 1; pointer-events: auto; }
 .msg__actions[hidden] { display: none !important; }
 /* A message focused by a jump doesn't open its bar; Tab into it does. */
-.msg:focus:not(:hover) .msg__actions { display: none; }
+.msg:focus:not(:hover) .msg__actions { opacity: 0; pointer-events: none; }
 .msg__action {
     padding: 2px 8px;
     border: 0;
@@ -526,9 +529,9 @@
     /* Touch screens: no hover, so tapping a message selects it and shows its
        actions on a line below; tapping it again or another message
        deselects it. */
-    .msg:hover .msg__actions { display: none; }
+    .msg:not(.is-selected):hover:not(:focus-within) .msg__actions { opacity: 0; pointer-events: none; }
     .msg.is-selected { background: color-mix(in srgb, var(--hover) 80%, transparent); }
-    .msg.is-selected .msg__actions { display: flex; width: fit-content; position: static; margin-top: var(--space-1); box-shadow: none; }
+    .msg.is-selected .msg__actions { display: flex; width: fit-content; position: static; margin-top: var(--space-1); box-shadow: none; opacity: 1; pointer-events: auto; }
 }
 
 .msg__text--deleted { color: var(--muted); font-style: italic; }
