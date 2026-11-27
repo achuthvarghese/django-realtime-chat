@@ -125,11 +125,14 @@ Styles `account/static/account/css/auth.css`, script
   unless you have scrolled up to read. A reply always starts a new group.
 - **Action bar**: every text message (not group events, not deleted ones)
   has a small bar of actions at its top right, shown on hover or when you
-  Tab into it. **Reply** is on everyone's messages, including your own; **Edit**
-  and **Delete** only on yours. Each button is named for its message ("Reply
-  to Maya Rao", "Edit your message") and described by the message's time. On
-  touch screens, tap any text message to select it and show its bar on a line
-  below; tap it again or another message to hide it.
+  Tab into it, grouped as React · Reply | Edit · Delete. **React** and
+  **Reply** are on everyone's messages, including your own; **Edit** and
+  **Delete** only on yours, after a thin separator. Each button is named for
+  its message ("React to Maya Rao", "Reply to Maya Rao", "Edit your
+  message") and described by the message's time. On touch screens, tap any
+  text message to select it and show its bar on a line below (it wraps when
+  it doesn't fit); tap it again or another message to hide it. Only the
+  selected row shows a bar on touch screens.
 - **Edit and delete**: Edit opens an inline box: Enter saves, Esc
   cancels. Delete asks for confirmation and leaves "Message deleted" for
   everyone. Edited messages show "(edited)". Changes reach everyone live, and
@@ -138,7 +141,8 @@ Styles `account/static/account/css/auth.css`, script
   the newest message (or the one you last moved to); ↑ and ↓ move between
   messages, Home and End go to the first and last loaded. ↑ on the oldest
   loaded message loads the page before it. From a focused message, Tab moves
-  into its quote and action buttons, then on out of the transcript.
+  into its quote, reaction chips and action buttons, then on out of the
+  transcript.
 - **Composer**: grows with the text up to about six lines. Enter sends,
   Shift+Enter adds a line, ↑ in an empty composer edits your last message. Send is disabled while disconnected; the text stays
   in the box.
@@ -165,8 +169,8 @@ Styles `account/static/account/css/auth.css`, script
   the bottom of the transcript, it stays there as the bar opens and closes.
 - **Sending** sends the reply and closes the bar. Esc in the composer or the
   bar, or ×, cancels the reply ("Reply cancelled"). Escape closes the
-  innermost thing first: an open dialog or menu, then the reply, then the
-  Details panel. If the message you're replying to is deleted, the bar closes
+  innermost thing first: an open dialog, menu, reaction picker or chip
+  tooltip, then the reply, then the Details panel. If the message you're replying to is deleted, the bar closes
   with "The message you were replying to was deleted."
 - If the server refuses the reply (the message was deleted or hidden
   meanwhile), the toast says "You can't reply to that message" and your text
@@ -190,6 +194,46 @@ Styles `account/static/account/css/auth.css`, script
   message." when the start of the conversation was reached). Deleted
   originals can still be jumped to.
 - The room list's preview of a reply is the reply's own text, never the quote.
+
+#### Reactions
+
+- **Chips**: a text message with reactions shows a row of chips under its
+  text, one per emoji, in the fixed order 👍 ❤️ 😂 😮 😢 🎉. Each chip shows
+  the emoji and how many people reacted. Chips you reacted with are
+  highlighted (a darker accent edge, a tinted fill and a bolder count).
+  Click a chip to add or remove your reaction. Changes from others appear
+  live, for everyone who can see the message.
+- **Who reacted**: hovering a chip with a mouse, or focusing it with the
+  keyboard, shows a tooltip with the names, for example "Maya Rao, Lee Chen
+  and you". After ten names it ends "… and 4 others". On touch screens,
+  selecting the row shows a muted line under the chips instead:
+  "👍 Lee Chen and you · 🎉 Arjun Kumar, Lee Chen and you".
+- **React** (first in the action bar) opens a small picker with the six
+  emoji. It opens above the bar, or below it when the bar is near the top of
+  the view. ← and → move between the emoji (Home and End go to the first and
+  last), Enter or a click picks one and closes the picker, and focus goes back
+  to React. Picking an emoji you already reacted with removes it. Escape (in
+  the picker or on React), a click elsewhere, or moving focus away from the
+  picker and React closes it. Tab from the picker moves on to Reply.
+- **Touch screens**: chips are 32px tall with a 44px tap area, at least 44px
+  wide, with 12px between wrapped lines. Tapping a chip toggles your reaction
+  and doesn't select or deselect the row. React in a selected row's bar
+  opens the picker on its own line inside the bar, with 44px emoji.
+- **Screen readers**: each chip is a toggle button named like "Thumbs up, 3
+  reactions, including you" and described by its names. Only your own
+  changes are announced, once the server confirms them: "Reacted with
+  Thumbs up" or "Removed Thumbs up". Other people's reactions are silent.
+- **Errors**: your change shows at once and is taken back if the server
+  refuses it. The toast shows the server's message ("You can't react to that
+  message", "Slow down" after more than 10 reactions in 5 seconds, or "Try
+  again"), and screen readers hear "Couldn’t react with Thumbs up" (or
+  "Couldn’t remove Thumbs up"). Unconfirmed changes are also taken back if
+  the connection drops. While disconnected, a click shows "Not connected yet.
+  Try again in a moment."
+- Reactions don't change the room list, previews or unread counts. Group
+  events and deleted messages have no reactions; deleting a message removes
+  its reactions. A reaction that adds or removes a line of chips keeps the
+  messages you're reading in place.
 
 #### When the open room goes away
 

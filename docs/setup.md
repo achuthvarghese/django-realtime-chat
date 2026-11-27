@@ -60,11 +60,28 @@ root is loaded automatically; real environment variables take precedence.
   and unread updates depend on it in the same way.
 - Presence is stored in the database (`chat.Connection`), so all processes
   must share one database.
+- The reaction rate limit (10 `react` frames per user in 5 seconds) is kept
+  in the Django cache. Relay doesn't set `CACHES`, so Django's default
+  `LocMemCache` is used: it lives in each process's memory, so with several
+  Daphne processes each one keeps its own window and a user can send up to 10
+  per process. `REDIS_URL` only changes the channel layer, not the cache. For
+  one shared window, add a shared cache in `settings.py`, for example Django's
+  Redis backend:
+
+  ```python
+  CACHES = {
+      "default": {
+          "BACKEND": "django.core.cache.backends.redis.RedisCache",
+          "LOCATION": REDIS_URL,
+      }
+  }
+  ```
 - SQLite waits up to 20 seconds for a write lock and starts transactions in
   `IMMEDIATE` mode (`OPTIONS = {"timeout": 20, "transaction_mode":
   "IMMEDIATE"}` in `settings.py`), instead of failing with "database is
   locked" when sockets and requests write together. If marking a room read still hits a
-  locked database, the server logs a warning and keeps the socket open.
+  locked database, the server logs a warning and keeps the socket open; a
+  reaction that hits one gets a `503` "Try again" error instead.
 
 ## Upgrading
 
@@ -77,3 +94,9 @@ Run `python manage.py migrate` after pulling. Data migrations to know about:
 `chat/0005_message_reply_to` adds `Message.reply_to` and its check
 constraint. It changes no data, but on SQLite adding the constraint rebuilds
 the message table once, so on a large database it takes a moment.
+
+`chat/0006_reaction` creates the `chat_reaction` table for
+[reactions](./data-model.md#chatreaction). It changes no data, but on SQLite
+Django checks every foreign key in the database after the migration, which
+takes about 1 second per 100,000 messages. Plan for that pause on a large
+database.

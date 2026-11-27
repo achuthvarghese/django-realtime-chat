@@ -3,6 +3,62 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 10b: reactions
+
+React to a text message with one of six emoji. The message shows a chip per
+emoji with its count; clicking a chip adds or removes your reaction, and
+changes appear live for everyone who can see the message.
+
+### Added
+- `chat.Reaction`: one person's emoji on one text message (`message`,
+  `user`, `emoji`, `created_at`), with the fixed set `ReactionEmoji`
+  (`thumbs_up`, `heart`, `laugh`, `wow`, `sad`, `party`). Constraints
+  `unique_reaction` (one of each emoji per person) and
+  `reaction_emoji_valid`. Migration `chat/0006_reaction`. Reactions are in
+  the Django admin.
+- `react` socket frame (`id`, `emoji`, `on`). It is idempotent: a no-op
+  changes nothing and sends the current state to the sender's socket only.
+  A refused frame gets the fixed error "You can't react to that message"
+  (`400`); more than 10 `react` frames per user in 5 seconds get "Slow down"
+  (`429`); a busy database gets "Try again" (`503`). All carry
+  `"for": "react"`.
+- `reactions_updated` frame with the message's whole `reactions` list, sent
+  after each change to current members who can still see the message.
+- Every message object has a `reactions` list (emoji, count and the people
+  who reacted, in reaction order). Deleted, system and new messages, and
+  inbox `room_activity` frames, carry `"reactions": []`.
+- `chat/reactions.py`: checks and saves reactions, the per-user rate limit
+  (kept in the Django cache) and who gets `reactions_updated`.
+- Reaction chips under the text, highlighted when they're yours, with a
+  tooltip of who reacted on hover and keyboard focus. On touch screens a
+  selected row shows the names on a line under the chips.
+- **React** in the action bar opens a picker with the six emoji (← and →
+  move, Enter picks, Escape closes and returns to React). Picking one you
+  already have removes it.
+- Screen readers hear your own changes once the server confirms them
+  ("Reacted with Thumbs up", "Removed Thumbs up", or "Couldn’t react with
+  Thumbs up"); other people's reactions are silent.
+- Eleven demo reactions on four messages in Design team, Maya ↔ Arjun and
+  Book club (the Book club ones are on the message Priya cleared, so she
+  never sees them). `REACTIONS` in `core/demo_data.py`.
+
+### Changed
+- The action bar is grouped React · Reply | Edit · Delete, with a separator
+  before your own message's Edit and Delete. It wraps on phones.
+- History pages take two queries: one for the messages, one for all their
+  reactions.
+- `message_updated` carries the message's reactions; a deleted message has
+  `"reactions": []`.
+- Deleting a message removes its reactions in the same transaction.
+- On touch screens only the selected row shows its action bar, and hover
+  tints no longer stick after a tap.
+- Escape closes an open reaction picker or chip tooltip before the reply and
+  the Details panel.
+
+### Fixed
+- `TestReplyMigration` left the test database at `chat/0005`; it now
+  migrates back to the latest schema.
+
 ## Phase 10a: replies
 
 Reply to a specific message. The reply shows a live quote of the original,

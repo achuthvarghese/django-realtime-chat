@@ -17,6 +17,9 @@ when the speaker changes.
 - **Replies**: reply to any message; the reply shows a live quote of the
   original, and clicking the quote jumps to it. People who can't see the
   original only see "Original message unavailable".
+- **Reactions**: react to any text message with one of six emoji
+  (👍 ❤️ 😂 😮 😢 🎉). Chips show the count and who reacted, and update live
+  for everyone who can see the message.
 - **Infinite scroll** through history, 50 messages at a time.
 - **Presence, typing and unread**: online dots, "… is typing…", per-room unread
   badges and a count in the tab title.
