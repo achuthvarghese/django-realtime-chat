@@ -1,0 +1,693 @@
+<title>Realtime Chat Rework Plan</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=IBM+Plex+Mono:wght@400;600&family=Nunito:wght@500;700;800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;600&family=Outfit:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: single reading column; findings table, phase list, then a 2-col grid of style mockups */
+:root{
+  --bg:#f6f7f9; --surface:#ffffff; --fg:#1b2430; --muted:#5d6878; --line:#dde2e9;
+  --accent:#0f766e; --crit:#b42318; --high:#b54708; --med:#475467;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"Inter",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11161c; --surface:#18202a; --fg:#e6ebf1; --muted:#9aa6b5; --line:#2a3542;
+  --accent:#2dd4bf; --crit:#f97066; --high:#fdb022; --med:#98a2b3; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161c; --surface:#18202a; --fg:#e6ebf1; --muted:#9aa6b5; --line:#2a3542;
+  --accent:#2dd4bf; --crit:#f97066; --high:#fdb022; --med:#98a2b3; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-block:32px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:40px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:2rem} h2{font-size:1.35rem;margin-bottom:12px} h3{font-size:1.05rem}
+p{margin:0;max-width:68ch}
+.lede{color:var(--muted);margin-top:8px}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+code{font-family:var(--mono);font-size:.85em}
+.sev{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.sev.c{color:var(--crit)} .sev.h{color:var(--high)} .sev.m{color:var(--med)}
+.phases{display:grid;gap:10px;list-style:none;margin:0;padding:0}
+.phases li{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px}
+.phases .n{font-family:var(--mono);color:var(--accent);font-weight:600;grid-row:span 3}
+.phases .pr{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.phases ul{margin:4px 0 0;padding-left:18px;color:var(--muted)}
+.styles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:20px}
+.style{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:12px;min-width:0}
+.style header{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.tag{font-family:var(--mono);font-size:.75rem;color:var(--accent)}
+.style p{color:var(--muted);font-size:.9rem}
+.mock{display:grid;grid-template-columns:150px 1fr;border-radius:10px;overflow:hidden;min-height:250px;font-size:12px}
+@media (max-width:520px){.mock{grid-template-columns:1fr}.mock .login{display:none}}
+.login{display:flex;flex-direction:column;gap:6px;padding:14px;justify-content:center}
+.login .t{font-weight:700;font-size:14px}
+.login .in{height:24px;border-radius:5px}
+.login .btn{height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.chat{display:grid;grid-template-columns:90px 1fr;min-width:0}
+.side{padding:8px 6px;display:flex;flex-direction:column;gap:4px}
+.side .r{padding:5px 6px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room{display:flex;flex-direction:column;min-width:0}
+.room .top{padding:8px 10px;font-weight:700}
+.room .msgs{flex:1;display:flex;flex-direction:column;gap:5px;padding:8px 10px}
+.b{max-width:80%;padding:5px 8px;width:fit-content}
+.b.me{align-self:flex-end}
+.room .comp{margin:8px 10px;height:24px;border-radius:5px}
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.swatches span{width:22px;height:22px;border-radius:5px;border:1px solid var(--line)}
+/* V1 Calm Workspace */
+.v1{background:#fff;color:#1f2933;font-family:Inter,sans-serif;border:1px solid #e4e7eb}
+.v1 .login{background:#f5f7fa;border-right:1px solid #e4e7eb}.v1 .in{background:#fff;border:1px solid #cbd2d9}.v1 .btn{background:#0f766e;color:#fff}
+.v1 .side{background:#1f2933;color:#cbd2d9}.v1 .side .r.a{background:#0f766e;color:#fff}
+.v1 .top{border-bottom:1px solid #e4e7eb}.v1 .b{background:#f0f4f8;border-radius:6px}.v1 .b.me{background:#ccfbf1}.v1 .comp{border:1px solid #cbd2d9}
+/* V2 Bubble Messenger */
+.v2{background:#e8eef3;color:#102a43;font-family:Nunito,sans-serif}
+.v2 .login{background:#fff}.v2 .in{background:#eef2f6;border-radius:99px}.v2 .btn{background:#2563eb;color:#fff;border-radius:99px}
+.v2 .side{background:#fff}.v2 .side .r{border-radius:99px}.v2 .side .r.a{background:#dbeafe;color:#1d4ed8}
+.v2 .room{background:#e8eef3 radial-gradient(#cbd5e1 1px,transparent 1px) 0 0/12px 12px}.v2 .top{background:#fff}
+.v2 .b{background:#fff;border-radius:14px 14px 14px 4px}.v2 .b.me{background:#2563eb;color:#fff;border-radius:14px 14px 4px 14px}.v2 .comp{background:#fff;border-radius:99px}
+/* V3 Terminal */
+.v3{background:#0d1117;color:#c9d1d9;font-family:"IBM Plex Mono",monospace;border:1px solid #30363d}
+.v3 .login{background:#010409;border-right:1px solid #30363d}.v3 .in{background:#0d1117;border:1px solid #30363d;border-radius:2px}.v3 .btn{background:#f2a33a;color:#0d1117;border-radius:2px}
+.v3 .side{background:#010409;border-right:1px solid #30363d}.v3 .side .r.a{color:#f2a33a}.v3 .side .r.a::before{content:"> "}
+.v3 .top{border-bottom:1px solid #30363d;color:#f2a33a}.v3 .b{border-left:2px solid #30363d;padding-left:6px}.v3 .b.me{align-self:flex-start;border-left-color:#f2a33a}.v3 .comp{border:1px solid #30363d;border-radius:2px}
+/* V4 Accessible Bold */
+.v4{background:#fff;color:#0b0b0b;font-family:"Atkinson Hyperlegible",sans-serif;border:2px solid #0b0b0b}
+.v4 .login{background:#ffe14d;border-right:2px solid #0b0b0b}.v4 .in{background:#fff;border:2px solid #0b0b0b;border-radius:0}.v4 .btn{background:#0b0b0b;color:#fff;border-radius:0}
+.v4 .side{background:#fff;border-right:2px solid #0b0b0b}.v4 .side .r{font-weight:700}.v4 .side .r.a{background:#0b0b0b;color:#ffe14d;border-radius:0}
+.v4 .top{border-bottom:2px solid #0b0b0b;font-size:14px}.v4 .b{border:2px solid #0b0b0b;border-radius:0}.v4 .b.me{background:#ffe14d}.v4 .comp{border:2px solid #0b0b0b;border-radius:0}
+.qs{display:grid;gap:8px;padding-left:20px;margin:0}
+
+/* Iteration 2 mockups */
+.big{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);border-radius:12px;overflow:hidden;min-height:330px;font-size:12px}
+@media (max-width:640px){.big{grid-template-columns:1fr}}
+.big .lg{padding:18px;display:flex;flex-direction:column;gap:8px;justify-content:center}
+.big .ch{display:flex;min-width:0}
+.big .main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.done{opacity:.55}
+/* A Command Canvas */
+.ca{background:#f3f6f5;color:#14211f;font-family:Inter,sans-serif;border:1px solid #d9e2df}
+.ca .lg{background:#fff;border-right:1px solid #d9e2df}
+.ca .hero{font-family:"Space Grotesk",sans-serif;font-size:22px;font-weight:700;line-height:1.1}
+.ca .hero em{font-style:normal;color:#0f766e}
+.ca .ul{border-bottom:1.5px solid #9fb3ae;height:22px;font-size:11px;color:#6b7f7a;display:flex;align-items:end;padding-bottom:3px}
+.ca .go{margin-top:6px;background:#14211f;color:#fff;border-radius:8px;padding:7px 10px;font-weight:600;display:flex;justify-content:space-between}
+.ca .list{width:110px;padding:10px 8px;display:flex;flex-direction:column;gap:6px;border-right:1px solid #d9e2df;background:#fff}
+.ca .list .k{font-size:10px;letter-spacing:.08em;color:#6b7f7a;text-transform:uppercase}
+.ca .list .r{display:flex;justify-content:space-between;align-items:center;padding:3px 4px;border-radius:5px}
+.ca .list .r.a{background:#e3f1ee;color:#0f766e;font-weight:600}
+.ca .dot{width:6px;height:6px;border-radius:50%;background:#0f766e}
+.ca .main{background:#f3f6f5 radial-gradient(#d4dedb 1px,transparent 1px) 0 0/14px 14px}
+.ca .hd{padding:10px 14px;font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:14px;display:flex;justify-content:space-between}
+.ca .hd small{font-family:Inter;font-weight:500;color:#6b7f7a;font-size:11px}
+.ca .tr{display:grid;grid-template-columns:52px 1fr 34px;gap:2px 8px;padding:4px 14px;align-items:baseline}
+.ca .who{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#0f766e}
+.ca .who.o{color:#9a5b13}
+.ca .tm{font-family:"IBM Plex Mono",monospace;font-size:10px;color:#8a9a96;text-align:right}
+.ca .cmd{position:absolute;left:14px;right:14px;bottom:12px;background:#fff;border:1px solid #c9d6d2;border-radius:12px;box-shadow:0 8px 24px -10px rgba(20,33,31,.35);padding:7px 10px;display:flex;justify-content:space-between;color:#6b7f7a}
+.kbd{font-family:"IBM Plex Mono",monospace;font-size:10px;border:1px solid #c9d6d2;border-radius:4px;padding:0 4px}
+/* B Timeline Spine */
+.sp{background:#0e1514;color:#d8e6e3;font-family:Inter,sans-serif;border:1px solid #233230}
+.sp .lg{background:#0a100f;border-right:1px solid #233230;align-items:flex-start}
+.sp .ring{width:34px;height:34px;border-radius:50%;border:2px solid #2dd4bf;position:relative}
+.sp .ring::after{content:"";position:absolute;left:50%;top:100%;width:2px;height:16px;background:#2dd4bf}
+.sp .ttl{font-family:"Space Grotesk",sans-serif;font-size:18px;font-weight:700;margin-top:14px}
+.sp .in{width:100%;height:24px;border-radius:6px;background:#15201e;border:1px solid #2a3b38}
+.sp .go{width:100%;height:26px;border-radius:6px;background:#2dd4bf;color:#062320;font-weight:700;display:flex;align-items:center;justify-content:center}
+.sp .tabs{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid #233230;overflow:hidden}
+.sp .tab{padding:3px 9px;border-radius:99px;border:1px solid #2a3b38;white-space:nowrap}
+.sp .tab.a{background:#2dd4bf;color:#062320;border-color:#2dd4bf;font-weight:700}
+.sp .tl{flex:1;position:relative;padding:10px 0}
+.sp .tl::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;background:#233230}
+.sp .row{display:grid;grid-template-columns:1fr 46px 1fr;align-items:center;margin:5px 0}
+.sp .row .t{font-family:"IBM Plex Mono",monospace;font-size:9px;color:#7f948f;text-align:center;background:#0e1514;position:relative}
+.sp .m{padding:5px 8px;border-radius:8px;background:#15201e;border:1px solid #233230;justify-self:end;max-width:95%}
+.sp .row.me .m{grid-column:3;justify-self:start;border-color:#2dd4bf;color:#bff5ec}
+.sp .day{text-align:center;position:relative}
+.sp .day span{background:#0e1514;padding:0 6px;font-size:10px;color:#2dd4bf;letter-spacing:.08em;text-transform:uppercase}
+.sp .cmp{margin:8px 12px 12px;height:28px;border-radius:8px;border:1px solid #2a3b38;background:#15201e}
+/* C Focus Dock */
+.fd{background:linear-gradient(135deg,#e6f4f1,#eef0f7 60%,#f4efe8);color:#172422;font-family:Inter,sans-serif;border:1px solid #d6e1de}
+.fd .lg{align-items:center}
+.fd .card{background:rgba(255,255,255,.75);border:1px solid #fff;border-radius:16px;padding:14px;width:100%;display:flex;flex-direction:column;gap:7px;box-shadow:0 12px 30px -16px rgba(15,118,110,.5)}
+.fd .card b{font-family:"Space Grotesk",sans-serif;font-size:15px}
+.fd .in{height:24px;border-radius:8px;background:#fff;border:1px solid #d6e1de}
+.fd .go{height:26px;border-radius:8px;background:#0f766e;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center}
+.fd .dock{width:46px;padding:10px 0;display:flex;flex-direction:column;align-items:center;gap:8px}
+.fd .av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:11px;color:#fff;position:relative}
+.fd .av.a{outline:2px solid #0f766e;outline-offset:2px}
+.fd .av i{position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#22c55e;border:2px solid #eef3f1}
+.fd .main{margin:8px 8px 8px 0;background:rgba(255,255,255,.7);border-radius:14px;border:1px solid #fff}
+.fd .hd{padding:12px 14px 4px;font-family:"Space Grotesk",sans-serif;font-size:18px;font-weight:700}
+.fd .sub{padding:0 14px 6px;color:#5f716d;font-size:11px}
+.fd .notes{display:flex;flex-direction:column;gap:6px;padding:6px 14px;flex:1}
+.fd .n{background:#fff;border-radius:10px;padding:6px 9px;border-left:3px solid var(--c);box-shadow:0 2px 6px -3px rgba(0,0,0,.15);max-width:88%}
+.fd .n small{display:block;color:var(--c);font-weight:700;font-size:10px}
+.fd .n.me{align-self:flex-end;background:#0f766e;color:#ecfdf9;border-left:0;border-right:3px solid #5eead4}
+.fd .tools{margin:6px 10px 10px;display:flex;gap:6px;align-items:center;background:#fff;border-radius:10px;padding:5px 8px;border:1px solid #d6e1de;color:#5f716d}
+.fd .chip{font-size:10px;padding:1px 6px;border-radius:99px;background:#e6f4f1;color:#0f766e;font-weight:600}
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.feat div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+.feat ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
+.feat li b{color:var(--fg);font-weight:600}
+
+/* Round 3: A+B Transcript Spine */
+.ts{--g:#f3f6f5;--p:#fff;--t:#14211f;--mu:#6b7f7a;--ln:#d9e2df;--ac:#0f766e;--acs:#e3f1ee;--o:#9a5b13;font-family:Inter,sans-serif;background:var(--g);color:var(--t);border:1px solid var(--ln)}
+.ts.dk{--g:#0e1514;--p:#0a100f;--t:#d8e6e3;--mu:#7f948f;--ln:#233230;--ac:#2dd4bf;--acs:#12302b;--o:#f2a33a}
+.ts .lg{background:var(--p);border-right:1px solid var(--ln)}
+.ts .mark{display:flex;align-items:center;gap:6px;color:var(--ac);font-weight:700;font-family:"Space Grotesk",sans-serif}
+.ts .mark i{width:12px;height:12px;border-radius:50%;border:2px solid var(--ac)}
+.ts .hero{font-family:"Space Grotesk",sans-serif;font-size:22px;font-weight:700;line-height:1.1;margin:6px 0}
+.ts .hero em{font-style:normal;color:var(--ac)}
+.ts .ul{border-bottom:1.5px solid var(--ln);height:22px;font-size:11px;color:var(--mu);display:flex;align-items:end;padding-bottom:3px}
+.ts .go{margin-top:6px;background:var(--ac);color:var(--p);border-radius:8px;padding:7px 10px;font-weight:700;display:flex;justify-content:space-between}
+.ts .list{width:112px;padding:10px 8px;display:flex;flex-direction:column;gap:6px;border-right:1px solid var(--ln);background:var(--p)}
+.ts .list .k{font-size:10px;letter-spacing:.08em;color:var(--mu);text-transform:uppercase}
+.ts .list .r{display:flex;justify-content:space-between;align-items:center;padding:3px 5px;border-radius:5px}
+.ts .list .r.a{background:var(--acs);color:var(--ac);font-weight:600}
+.ts .cnt{font-family:"IBM Plex Mono",monospace;font-size:9px;background:var(--ac);color:var(--p);border-radius:99px;padding:0 5px}
+.ts .hd{padding:10px 14px;font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--ln)}
+.ts .hd small{font-family:Inter;font-weight:500;color:var(--mu);font-size:11px}
+.ts .sl{position:relative;padding:8px 14px 56px;display:flex;flex-direction:column;gap:5px}
+.ts .sl::before{content:"";position:absolute;left:58px;top:0;bottom:0;width:2px;background:var(--ln)}
+.ts .e{display:grid;grid-template-columns:34px 14px 1fr;gap:6px;align-items:baseline;position:relative}
+.ts .e .tm{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--mu);text-align:right}
+.ts .e .nd{width:8px;height:8px;border-radius:50%;border:2px solid var(--o);background:var(--g);align-self:center;justify-self:center;position:relative;z-index:1}
+.ts .e.me .nd{border-color:var(--ac);background:var(--ac)}
+.ts .e b{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--o);margin-right:6px}
+.ts .e.me b{color:var(--ac)}
+.ts .gap{margin-left:40px;font-size:10px;color:var(--mu);font-style:italic;padding-left:14px}
+.ts .day{margin-left:40px;font-size:10px;color:var(--ac);letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding-left:14px}
+.ts .cmd{position:absolute;left:14px;right:14px;bottom:12px;background:var(--p);border:1px solid var(--ln);border-radius:12px;box-shadow:0 8px 24px -12px rgba(0,0,0,.4);padding:7px 10px;display:flex;justify-content:space-between;color:var(--mu)}
+.ts .kbd{border-color:var(--ln)}
+
+/* Round 4 */
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:14px}
+@media (max-width:760px){.pair{grid-template-columns:1fr}}
+.fr{border-radius:12px;overflow:hidden;border:1px solid var(--line);display:flex;flex-direction:column;min-width:0;font-size:12px}
+.bar{height:24px;display:flex;align-items:center;gap:5px;padding:0 10px;font-family:var(--mono);font-size:10px;background:var(--bg);color:var(--muted);border-bottom:1px solid var(--line)}
+.bar i{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.bar span{margin-left:8px}
+.scr{flex:1;min-height:300px;display:flex;position:relative;min-width:0}
+.cap{font-size:.78rem;color:var(--muted);margin-top:6px}
+/* R4-1 Signal */
+.s1{font-family:Manrope,sans-serif}
+.s1.lgn{background:#16181d;color:#e9eaee;display:grid;grid-template-columns:1.1fr 1fr;align-items:center;gap:14px;padding:22px}
+.s1 .wm{font-family:Sora,sans-serif;font-weight:800;font-size:32px;letter-spacing:-.03em}
+.s1 .wm i{display:inline-block;width:10px;height:10px;background:#ff5a36;border-radius:50%;margin-left:2px}
+.s1 .tg{color:#9a9ca6;margin:4px 0 12px}
+.s1 .ev{display:grid;grid-template-columns:30px 10px 1fr;gap:6px;align-items:center;font-size:11px;color:#c3c5cc}
+.s1 .ev .t{font-family:"JetBrains Mono",monospace;font-size:9px;color:#6d7080}
+.s1 .ev .d{width:8px;height:8px;border-radius:2px;background:#ff5a36}
+.s1 .ev .d.m{background:#2ec4a6}
+.s1 .frm{display:flex;flex-direction:column;gap:8px;background:#1e2128;border:1px solid #2b2f38;border-radius:14px;padding:14px}
+.s1 .frm b{font-family:Sora,sans-serif;font-size:14px}
+.s1 .lb{font-size:10px;color:#9a9ca6;margin-bottom:-4px}
+.s1 .in{height:26px;border-radius:8px;background:#16181d;border:1px solid #2b2f38}
+.s1 .btn{height:28px;border-radius:8px;background:#ff5a36;color:#16181d;font-weight:700;display:flex;align-items:center;justify-content:center}
+.s1 .alt{font-size:10px;color:#9a9ca6;text-align:center}.s1 .alt u{color:#ff8a6e;text-decoration:none}
+.s1.cht{background:#f7f7f9;color:#16181d}
+.s1 .sd{width:118px;background:#16181d;color:#c3c5cc;padding:12px 8px;display:flex;flex-direction:column;gap:6px}
+.s1 .sd .wm2{font-family:Sora,sans-serif;font-weight:800;color:#fff;font-size:14px;margin-bottom:6px}
+.s1 .sd .r{display:flex;justify-content:space-between;padding:4px 6px;border-radius:6px}
+.s1 .sd .r.a{background:#2b2f38;color:#fff}
+.s1 .sd .c{font-family:"JetBrains Mono",monospace;font-size:9px;background:#ff5a36;color:#16181d;border-radius:4px;padding:0 4px;font-weight:600}
+.s1 .mn{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.s1 .hd{padding:11px 16px;font-family:Sora,sans-serif;font-weight:700;font-size:14px;border-bottom:1px solid #e4e5ea;display:flex;justify-content:space-between}
+.s1 .hd small{font-family:Manrope;font-weight:600;color:#ff5a36;font-size:10px}
+.s1 .sl{position:relative;padding:10px 16px 60px;display:flex;flex-direction:column;gap:8px}
+.s1 .sl::before{content:"";position:absolute;left:62px;top:0;bottom:0;width:2px;background:#e4e5ea}
+.s1 .e{display:grid;grid-template-columns:30px 20px 1fr;gap:8px;align-items:start;position:relative}
+.s1 .e .t{font-family:"JetBrains Mono",monospace;font-size:9px;color:#8b8e9b;text-align:right;padding-top:4px}
+.s1 .e .n{width:20px;height:20px;border-radius:6px;background:#ff5a36;color:#fff;font-size:9px;font-weight:700;display:grid;place-items:center;z-index:1}
+.s1 .e.me .n{background:#2ec4a6}
+.s1 .e b{display:block;font-family:Sora,sans-serif;font-size:11px}
+.s1 .day{margin-left:46px;font-family:"JetBrains Mono",monospace;font-size:9px;color:#8b8e9b;background:#f7f7f9;width:fit-content;padding:2px 6px;border:1px solid #e4e5ea;border-radius:99px;z-index:1;position:relative}
+.s1 .cmd{position:absolute;left:16px;right:16px;bottom:12px;background:#fff;border:1px solid #e4e5ea;border-radius:12px;padding:8px 10px;display:flex;justify-content:space-between;color:#8b8e9b;box-shadow:0 10px 24px -14px rgba(22,24,29,.5)}
+.s1 .k{font-family:"JetBrains Mono",monospace;font-size:9px;border:1px solid #e4e5ea;border-radius:4px;padding:0 4px}
+/* R4-2 Fieldnotes */
+.s2{font-family:"Instrument Sans",sans-serif}
+.s2.lgn{background:#12372a;color:#eef1ec;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px}
+.s2 .wm{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:30px;color:#c6f432;letter-spacing:-.02em}
+.s2 .card{background:#eef1ec;color:#12372a;border-radius:16px;padding:14px;width:min(100%,250px);display:flex;flex-direction:column;gap:8px}
+.s2 .tabs{display:grid;grid-template-columns:1fr 1fr;background:#dfe5dc;border-radius:99px;padding:3px;font-weight:600;text-align:center}
+.s2 .tabs span{padding:3px;border-radius:99px}.s2 .tabs .a{background:#12372a;color:#c6f432}
+.s2 .steps{font-size:10px;color:#5b7268;display:flex;gap:8px}.s2 .steps b{color:#12372a}
+.s2 .in{height:26px;border-radius:10px;background:#fff;border:1px solid #cfd8cc}
+.s2 .btn{height:28px;border-radius:10px;background:#c6f432;color:#12372a;font-weight:700;display:flex;align-items:center;justify-content:center}
+.s2.cht{background:#eef1ec;color:#12372a;flex-direction:column}
+.s2 .top{background:#12372a;display:flex;gap:6px;padding:9px 12px;align-items:center;overflow:hidden}
+.s2 .top .wm2{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;color:#c6f432;margin-right:8px;font-size:14px}
+.s2 .tb{padding:3px 10px;border-radius:99px;color:#cfe0d6;border:1px solid #2c5545;white-space:nowrap}
+.s2 .tb.a{background:#c6f432;color:#12372a;border-color:#c6f432;font-weight:600}
+.s2 .tb sup{color:#c6f432;font-weight:700}
+.s2 .sl{flex:1;position:relative;padding:12px}
+.s2 .sl::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;background:#cfd8cc}
+.s2 .row{display:grid;grid-template-columns:1fr 48px 1fr;align-items:center;margin:6px 0}
+.s2 .t{font-size:9px;text-align:center;background:#eef1ec;position:relative;font-weight:600;color:#5b7268}
+.s2 .m{justify-self:end;background:#fff;border-radius:12px 12px 4px 12px;padding:6px 9px;max-width:95%;box-shadow:0 1px 0 #cfd8cc}
+.s2 .m b{display:block;font-family:"Bricolage Grotesque",sans-serif;font-size:10px;color:#2f7d5b}
+.s2 .row.me .m{grid-column:3;justify-self:start;background:#12372a;color:#eef1ec;border-radius:12px 12px 12px 4px}
+.s2 .dy{text-align:center;position:relative}.s2 .dy span{background:#c6f432;color:#12372a;font-weight:700;font-size:9px;padding:2px 8px;border-radius:99px;letter-spacing:.06em;text-transform:uppercase}
+.s2 .cp{margin:0 12px 12px;display:flex;gap:6px}
+.s2 .cp div{flex:1;height:30px;border-radius:12px;background:#fff;border:1px solid #cfd8cc;color:#5b7268;display:flex;align-items:center;padding:0 10px}
+.s2 .cp span{width:30px;height:30px;border-radius:12px;background:#c6f432;display:grid;place-items:center;font-weight:800}
+/* R4-3 Blueprint */
+.s3{font-family:Outfit,sans-serif;background:#0b2545 linear-gradient(#ffffff0d 1px,transparent 1px) 0 0/16px 16px,#0b2545 linear-gradient(90deg,#ffffff0d 1px,transparent 1px) 0 0/16px 16px;background-color:#0b2545;color:#dbe9f6}
+.s3.lgn{align-items:center;justify-content:center;gap:20px;padding:20px;flex-wrap:wrap}
+.s3 .sch{display:flex;flex-direction:column;align-items:center;gap:0}
+.s3 .sch i{width:14px;height:14px;border:2px solid #4cc9f0;border-radius:50%}
+.s3 .sch s{width:2px;height:22px;background:#4cc9f0;opacity:.6}
+.s3 .card{border:1px solid #4cc9f0;border-radius:4px;padding:14px;background:#0b2545e6;width:min(100%,230px);display:flex;flex-direction:column;gap:8px}
+.s3 .card .wm{font-weight:700;font-size:18px}
+.s3 .mono{font-family:"JetBrains Mono",monospace;font-size:9.5px;color:#7fb2d6}
+.s3 .tabs{display:flex;gap:12px;font-family:"JetBrains Mono",monospace;font-size:10px}.s3 .tabs .a{color:#4cc9f0;border-bottom:1px solid #4cc9f0}
+.s3 .in{height:26px;border:1px dashed #3d6a91;border-radius:2px}
+.s3 .btn{height:28px;background:#4cc9f0;color:#0b2545;font-weight:700;border-radius:2px;display:flex;align-items:center;justify-content:center}
+.s3 .rl{width:112px;border-right:1px solid #1f4268;padding:12px 8px;display:flex;flex-direction:column;gap:6px;font-family:"JetBrains Mono",monospace;font-size:10px;background:#0b2545cc}
+.s3 .rl .r{display:flex;justify-content:space-between;padding:3px 5px}.s3 .rl .r.a{color:#4cc9f0;border-left:2px solid #4cc9f0}
+.s3 .mn{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.s3 .hd{padding:10px 14px;border-bottom:1px solid #1f4268;font-weight:700;font-size:14px;display:flex;justify-content:space-between}
+.s3 .sl{position:relative;padding:10px 14px 58px;display:flex;flex-direction:column;gap:8px}
+.s3 .sl::before{content:"";position:absolute;left:24px;top:0;bottom:0;width:1px;background:#4cc9f0;opacity:.5}
+.s3 .e{display:grid;grid-template-columns:22px 1fr;align-items:center}
+.s3 .e .n{width:9px;height:9px;border:2px solid #4cc9f0;border-radius:50%;background:#0b2545;justify-self:center;position:relative;z-index:1}
+.s3 .e.me .n{background:#4cc9f0}
+.s3 .e .bx{position:relative;margin-left:14px;border:1px solid #1f4268;border-radius:3px;padding:5px 8px;background:#0e2d52}
+.s3 .e .bx::before{content:"";position:absolute;left:-15px;top:50%;width:14px;border-top:1px dashed #4cc9f0}
+.s3 .e.me .bx{border-color:#4cc9f0}
+.s3 .cmd{position:absolute;left:14px;right:14px;bottom:12px;border:1px solid #4cc9f0;border-radius:3px;padding:7px 10px;font-family:"JetBrains Mono",monospace;font-size:10px;color:#7fb2d6;background:#0b2545;display:flex;justify-content:space-between}
+
+/* Round 5: Signal compact + palettes */
+.r5{--sb:#16181d;--sbf:#c3c5cc;--sba:#2b2f38;--sbh:#fff;--ac:#ff5a36;--acf:#16181d;--me:#2ec4a6;
+  --bg5:#f7f7f9;--fg5:#16181d;--mu5:#7d8090;--ln5:#e4e5ea;--pn5:#fff}
+.r5[data-pal="midnight"]{--sb:#121a2b;--sbf:#b9c2d6;--sba:#22304d;--ac:#f5a524;--acf:#121a2b;--me:#7c9cff}
+.r5[data-pal="slate"]{--sb:#1c2430;--sbf:#c0c8d4;--sba:#2c3747;--ac:#3d7bff;--acf:#fff;--me:#22c3a6}
+.r5[data-pal="plum"]{--sb:#2a1630;--sbf:#d9c5dd;--sba:#432549;--ac:#ff4f8b;--acf:#2a1630;--me:#ffb547}
+.r5[data-pal="moss"]{--sb:#17241e;--sbf:#bfd0c6;--sba:#26392f;--ac:#ff7a2f;--acf:#17241e;--me:#7bd88f}
+.r5[data-pal="paper"]{--sb:#eceef2;--sbf:#444955;--sba:#dde0e7;--sbh:#16181d;--ac:#e5484d;--acf:#fff;--me:#2f6fde}
+.r5[data-mode="dark"]{--bg5:#1b1e24;--fg5:#e9eaee;--mu5:#8b8e9b;--ln5:#2b2f38;--pn5:#23262d}
+.ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.ctl button{font:inherit;font-size:.82rem;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:99px;padding:5px 11px 5px 7px;display:flex;gap:6px;align-items:center;cursor:pointer}
+.ctl button[aria-pressed="true"]{border-color:var(--fg);font-weight:600}
+.ctl button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ctl .sw{display:inline-flex}.ctl .sw b{width:12px;height:12px;border-radius:3px;margin-right:-3px;border:1px solid #0002}
+.ctl .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.devs{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.dev{min-width:0;max-width:100%}
+.dev.d{flex:1 1 100%}.dev.t{flex:0 1 600px}.dev.ph{flex:0 0 320px}
+.dev .fr{height:100%}
+.app{container-type:inline-size;font-family:Manrope,sans-serif;font-size:12px;background:var(--bg5);color:var(--fg5);display:flex;height:340px;min-width:0}
+.ph .app{height:460px}
+.app .sd{width:150px;flex:none;background:var(--sb);color:var(--sbf);padding:10px 8px;display:flex;flex-direction:column;gap:2px}
+.app .wm{font-family:Sora,sans-serif;font-weight:800;color:var(--sbh);font-size:14px;padding:0 6px 8px;display:flex;align-items:center;gap:3px}
+.app .wm i{width:6px;height:6px;border-radius:50%;background:var(--ac)}
+.app .sk{font-size:9px;letter-spacing:.08em;text-transform:uppercase;opacity:.6;padding:6px 6px 2px}
+.app .r{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:6px;white-space:nowrap}
+.app .r.a{background:var(--sba);color:var(--sbh);font-weight:600}
+.app .r .av{width:16px;height:16px;border-radius:4px;flex:none;display:grid;place-items:center;font-size:8px;font-weight:700;background:var(--sba);color:var(--sbh)}
+.app .r.a .av{background:var(--ac);color:var(--acf)}
+.app .r .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
+.app .c{font-family:"JetBrains Mono",monospace;font-size:9px;background:var(--ac);color:var(--acf);border-radius:4px;padding:0 4px;font-weight:600}
+.app .mn{flex:1;display:flex;flex-direction:column;min-width:0}
+.app .hd{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--ln5)}
+.app .hd b{font-family:Sora,sans-serif;font-size:13px}
+.app .hd .st{font-size:10px;color:var(--mu5);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app .hd .ty{color:var(--ac);font-weight:600}
+.app .bk{display:none;font-size:14px;color:var(--ac)}
+.app .ic{width:22px;height:22px;border-radius:6px;border:1px solid var(--ln5);display:grid;place-items:center;color:var(--mu5);font-size:11px}
+.app .ls{flex:1;overflow:hidden;position:relative;padding:6px 0}
+.app .ls::before{content:"";position:absolute;left:52px;top:0;bottom:0;width:1px;background:var(--ln5)}
+.app .day{position:relative;margin:4px 0 4px 40px;font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--mu5);background:var(--bg5);border:1px solid var(--ln5);border-radius:99px;padding:0 6px;width:fit-content}
+.app .g{display:grid;grid-template-columns:34px 18px minmax(0,1fr);column-gap:8px;padding:0 14px 0 4px;line-height:1.45}
+.app .g:hover{background:color-mix(in srgb,var(--ln5) 40%,transparent)}
+.app .t{font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--mu5);text-align:right;padding-top:1px;opacity:.75}
+.app .n{width:18px;height:18px;border-radius:5px;background:var(--ac);color:var(--acf);font-size:8px;font-weight:700;display:grid;place-items:center;position:relative;z-index:1;margin-top:1px}
+.app .g.me .n{background:var(--me);color:#111}
+.app .x{min-width:0}
+.app .x b{font-family:Sora,sans-serif;font-size:11px;margin-right:6px}
+.app .x .h{font-family:"JetBrains Mono",monospace;font-size:9px;color:var(--mu5);display:none;margin-right:6px}
+.app .g.cont .t{opacity:0}.app .g.cont:hover .t{opacity:.75}
+.app .gh{margin-top:6px}
+.app .cmd{margin:6px 12px 10px;background:var(--pn5);border:1px solid var(--ln5);border-radius:10px;padding:7px 10px;display:flex;align-items:center;gap:8px;color:var(--mu5)}
+.app .cmd span{flex:1}
+.app .k{font-family:"JetBrains Mono",monospace;font-size:9px;border:1px solid var(--ln5);border-radius:4px;padding:0 4px}
+.app .snd{background:var(--ac);color:var(--acf);border-radius:6px;padding:1px 7px;font-weight:700}
+@container (max-width:640px){
+  .app .sd{width:48px;align-items:center;padding:10px 4px}
+  .app .sd .wm{padding:0 0 8px}.app .sd .wm span,.app .sd .sk,.app .r .nm{display:none}
+  .app .r{position:relative;padding:4px}.app .r .av{width:24px;height:24px;font-size:9px}
+  .app .r .c{position:absolute;top:-2px;right:-4px;font-size:8px}
+}
+@container (max-width:420px){
+  .app .sd{display:none}.app .bk{display:block}.app .k{display:none}
+  .app .ls::before{left:18px}
+  .app .g{grid-template-columns:18px minmax(0,1fr);padding:0 12px 0 10px}
+  .app .g .t{display:none}
+  .app .x .h{display:inline}
+  .app .day{margin-left:6px}
+}
+.lg5{container-type:inline-size;background:var(--sb);color:var(--sbf);font-family:Manrope,sans-serif;font-size:12px;height:340px;display:grid;grid-template-columns:1.1fr 1fr;align-items:center;gap:16px;padding:20px}
+.ph .lg5{height:460px}
+.lg5 .wmL{font-family:Sora,sans-serif;font-weight:800;font-size:30px;color:var(--sbh);letter-spacing:-.03em}
+.lg5 .wmL i{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ac);margin-left:2px}
+.lg5 .tg{margin:4px 0 12px;opacity:.8}
+.lg5 .ev{display:grid;grid-template-columns:30px 8px 1fr;gap:6px;align-items:center;font-size:11px;margin-top:4px}
+.lg5 .ev s{width:8px;height:8px;border-radius:2px;background:var(--ac)}.lg5 .ev s.m{background:var(--me)}
+.lg5 .ev span{font-family:"JetBrains Mono",monospace;font-size:9px;opacity:.6}
+.lg5 .frm{display:flex;flex-direction:column;gap:7px;background:var(--sba);border-radius:14px;padding:14px}
+.lg5 .frm b{font-family:Sora,sans-serif;font-size:14px;color:var(--sbh)}
+.lg5 .lb{font-size:10px;opacity:.75;margin-bottom:-3px}
+.lg5 .in{height:28px;border-radius:8px;background:var(--sb);border:1px solid color-mix(in srgb,var(--sbf) 25%,transparent)}
+.lg5 .btn{height:30px;border-radius:8px;background:var(--ac);color:var(--acf);font-weight:700;display:flex;align-items:center;justify-content:center}
+.lg5 .alt{font-size:10px;text-align:center}.lg5 .alt u{color:var(--ac);text-decoration:none}
+@media (max-width:760px){.lg5{grid-template-columns:1fr}.lg5 .feed{display:none}}
+.ph .lg5{grid-template-columns:1fr;align-content:center}.ph .lg5 .feed .ev{display:none}.ph .lg5 .tg{margin-bottom:0}
+.dens{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:.88rem;color:var(--muted)}
+.dens b{color:var(--fg);font-family:var(--mono)}
+
+/* Round 6 */
+.r6 .fr{background:var(--sb)}
+.hm{background:var(--sb);color:var(--sbf);font-family:Manrope,sans-serif;font-size:12px;container-type:inline-size;padding:14px 22px 22px;display:flex;flex-direction:column;gap:18px}
+.hm nav{display:flex;align-items:center;gap:14px}
+.hm .wmL,.au .wmL{font-family:Sora,sans-serif;font-weight:800;color:var(--sbh);font-size:16px;letter-spacing:-.02em}
+.hm .wmL i,.au .wmL i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ac);margin-left:2px}
+.hm nav .grow{flex:1}
+.btn6{border-radius:8px;padding:6px 12px;font-weight:700;white-space:nowrap;display:inline-block}
+.btn6.p{background:var(--ac);color:var(--acf)}.btn6.g{border:1px solid color-mix(in srgb,var(--sbf) 35%,transparent);color:var(--sbh)}
+.hm .hero{display:grid;grid-template-columns:1fr 1.1fr;gap:22px;align-items:center}
+.hm h4{font-family:Sora,sans-serif;font-size:30px;line-height:1.05;color:var(--sbh);margin:0 0 8px;letter-spacing:-.02em;text-wrap:balance}
+.hm h4 em{font-style:normal;color:var(--ac)}
+.hm .sub{opacity:.85;margin-bottom:12px;max-width:40ch}
+.hm .ctas{display:flex;gap:8px;flex-wrap:wrap}
+.demo.app{height:auto;border-radius:12px;overflow:hidden;box-shadow:0 20px 40px -24px #000}
+.demo.app .ls{padding:8px 0}
+.fs{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding-top:12px}
+.fs::before{content:"";position:absolute;left:0;right:0;top:17px;height:2px;background:color-mix(in srgb,var(--sbf) 25%,transparent)}
+.fs div{position:relative;padding-top:14px}
+.fs div::before{content:"";position:absolute;top:0;left:0;width:10px;height:10px;border-radius:3px;background:var(--ac)}
+.fs div:nth-child(2n)::before{background:var(--me)}
+.fs b{display:block;color:var(--sbh);font-family:Sora,sans-serif;font-size:12px}
+.fs span{font-size:11px;opacity:.8}
+.fs em{font-style:normal;font-family:"JetBrains Mono",monospace;font-size:9px;opacity:.6;display:block}
+@container (max-width:560px){
+  .hm .hero{grid-template-columns:1fr}.hm h4{font-size:26px}.hm nav .g{display:none}
+  .fs{grid-template-columns:1fr;padding:0 0 0 18px;gap:12px}.fs::before{left:4px;right:auto;top:0;bottom:0;width:2px;height:auto}
+  .fs div{padding-top:0}.fs div::before{left:-18px;top:2px}
+}
+.auw{container-type:inline-size}
+.au{background:var(--sb);color:var(--sbf);font-family:Manrope,sans-serif;font-size:12px;display:grid;grid-template-columns:1fr 1fr;min-height:380px}
+.au .lf{padding:18px 22px;display:flex;flex-direction:column;gap:14px;border-right:1px solid color-mix(in srgb,var(--sbf) 15%,transparent)}
+.au .tg6{opacity:.75}
+.au .tsp{position:relative;display:flex;flex-direction:column;gap:9px;margin-top:auto}
+.au .tsp::before{content:"";position:absolute;left:41px;top:0;bottom:0;width:2px;background:color-mix(in srgb,var(--sbf) 22%,transparent)}
+.au .tr{display:grid;grid-template-columns:32px 14px 1fr;gap:8px;align-items:center;opacity:.75}
+.au .tr .t{font-family:"JetBrains Mono",monospace;font-size:9px;text-align:right;opacity:.7}
+.au .tr .n{width:10px;height:10px;border-radius:3px;background:var(--ac);justify-self:center;z-index:1}
+.au .tr.me .n{background:var(--me)}
+.au .tr b{color:var(--sbh);margin-right:5px;font-family:Sora,sans-serif;font-size:11px}
+.au .tr.now{opacity:1}.au .tr.now .n{background:transparent;border:2px solid var(--ac);animation:pl 1.4s ease-in-out infinite}
+.au .tr.now .t{color:var(--ac);opacity:1}
+@keyframes pl{50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--ac) 30%,transparent)}}
+@media (prefers-reduced-motion:reduce){.au .tr.now .n{animation:none}}
+.au .rt{padding:22px;display:flex;flex-direction:column;justify-content:center;gap:10px}
+.au h5{font-family:Sora,sans-serif;font-size:18px;color:var(--sbh);margin:0}
+.au .lb{font-size:10px;opacity:.75;margin-bottom:-6px}
+.au .in{height:30px;border-radius:8px;background:var(--sba);border:1px solid color-mix(in srgb,var(--sbf) 18%,transparent)}
+.au .in.f{border-color:var(--ac)}
+.au .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.au .alt{font-size:10px;text-align:center}.au .alt u{color:var(--ac);text-decoration:none}
+.au .rt .btn6{text-align:center;padding:8px}
+.su{position:relative;display:flex;flex-direction:column;gap:12px;padding-left:30px}
+.su::before{content:"";position:absolute;left:7px;top:4px;bottom:4px;width:2px;background:color-mix(in srgb,var(--sbf) 22%,transparent)}
+.su .st{position:relative;display:flex;flex-direction:column;gap:8px}
+.su .st::before{content:"";position:absolute;left:-28px;top:1px;width:12px;height:12px;border-radius:4px;border:2px solid var(--ac);background:var(--sb)}
+.su .st.dn::before{background:var(--ac)}
+.su .st > em{font-style:normal;font-family:"JetBrains Mono",monospace;font-size:9px;opacity:.7;letter-spacing:.06em;text-transform:uppercase}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips span{display:flex;border-radius:6px;overflow:hidden;border:2px solid transparent}
+.chips span.on{border-color:var(--sbh)}
+.chips b{width:12px;height:18px}
+@container (max-width:520px){
+  .au{grid-template-columns:1fr}.au .tg6{display:none}.au .lf{border-right:0;padding-bottom:0}.au .tsp .tr:not(.now){display:none}.au .tsp{margin-top:0}
+  .au .row2{grid-template-columns:1fr}
+}
+.stg{container-type:inline-size}
+.r5[data-mode="dark"] .th{--bg5:#1b1e24;--fg5:#e9eaee;--ln5:#2b2f38;--pn5:#23262d}
+.stg .mn{background:var(--bg5);color:var(--fg5);padding:14px 18px;gap:12px;overflow:hidden}
+.stg h5{font-family:Sora,sans-serif;font-size:16px;margin:0}
+.stg .sec{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mu5);font-weight:700}
+.thg{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.th{border:2px solid var(--ln5);border-radius:10px;overflow:hidden;background:var(--pn5);font-size:10.5px}
+.th.on{border-color:var(--ac)}
+.th .pv{display:flex;height:46px}
+.th .pv .s{width:22px;background:var(--sb)}
+.th .pv .m{flex:1;background:var(--bg5);padding:6px;display:flex;flex-direction:column;gap:4px}
+.th .pv .m i{display:flex;gap:4px;align-items:center}
+.th .pv .m i::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--ac)}
+.th .pv .m i.me::before{background:var(--me)}
+.th .pv .m i::after{content:"";height:3px;border-radius:2px;background:var(--ln5);flex:1}
+.th .nm{padding:5px 7px;display:flex;justify-content:space-between;color:var(--fg5);background:var(--pn5)}
+.th .nm small{color:var(--ac);font-weight:700}
+.seg{display:inline-flex;border:1px solid var(--ln5);border-radius:8px;overflow:hidden;width:fit-content}
+.seg span{padding:4px 12px;border-right:1px solid var(--ln5)}.seg span:last-child{border-right:0}
+.seg span.on{background:var(--ac);color:var(--acf);font-weight:700}
+.opts{display:flex;gap:20px;flex-wrap:wrap}
+.opts > div{display:flex;flex-direction:column;gap:6px}
+.dev.h{flex:1 1 100%}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">django-realtime-chat · review & proposal</div>
+  <h1>Realtime Chat Rework Plan</h1>
+  <p class="lede">Findings from reviewing <code>master</code> (54df6db), a phased plan with one PR per phase, and four UI style directions for the login, signup and chat screens. Nothing has been built yet; this waits for your choices.</p>
+</header>
+
+<section>
+  <h2>Code review findings</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Severity</th><th>Where</th><th>Problem</th></tr></thead>
+    <tbody>
+      <tr><td><span class="sev c">Critical</span></td><td><code>requirements.txt</code></td><td>Channels 3.0.5 imports <code>cgi</code>, removed in Python 3.12+. <code>manage.py check</code> fails outright on Python 3.13. Django 4.1 is out of support.</td></tr>
+      <tr><td><span class="sev c">Critical</span></td><td><code>consumers.py</code></td><td>No authentication or membership check. Any visitor, including anonymous ones, can open <code>/chat/&lt;id&gt;</code>, read the live stream and post messages to any room.</td></tr>
+      <tr><td><span class="sev c">Critical</span></td><td><code>chat.js</code> <code>appendMessage</code></td><td>Stored XSS: message text and usernames go into <code>innerHTML</code>. <code>get_room_title</code> also wraps user names in <code>mark_safe</code>.</td></tr>
+      <tr><td><span class="sev h">High</span></td><td><code>chat/migrations</code></td><td>No migrations committed for <code>Message</code>/<code>Room</code>; the Dockerfile runs <code>makemigrations</code> at build time instead.</td></tr>
+      <tr><td><span class="sev h">High</span></td><td><code>chat.html</code></td><td>Two elements share <code>id="clear-room"</code>. The JS binds the first, the mobile back button, so tapping Back clears the history and the trash icon does nothing.</td></tr>
+      <tr><td><span class="sev h">High</span></td><td><code>chat.js</code></td><td>Hard-coded <code>ws://</code> breaks behind HTTPS. Script crashes when the user has no rooms (search input missing) or opens a room not in their list (<code>activeRoomATag</code> is null).</td></tr>
+      <tr><td><span class="sev h">High</span></td><td><code>views.chat</code></td><td>Loads any room by id without checking membership, leaking its title and member names.</td></tr>
+      <tr><td><span class="sev h">High</span></td><td><code>consumers.receive</code></td><td>Malformed JSON or a missing <code>message</code> key raises and drops the socket; empty messages are saved.</td></tr>
+      <tr><td><span class="sev m">Medium</span></td><td><code>settings.py</code></td><td>Secret key committed, <code>DEBUG=True</code>, empty <code>ALLOWED_HOSTS</code>, no <code>STATIC_ROOT</code>; debug toolbar always installed.</td></tr>
+      <tr><td><span class="sev m">Medium</span></td><td><code>account</code></td><td>Signup ignores <code>cleaned_data</code>, username uniqueness is case-sensitive, no auto-login; login authenticates twice; logout works over GET.</td></tr>
+      <tr><td><span class="sev m">Medium</span></td><td>Product</td><td>No way to start a conversation or create a group from the UI ("Start a new conversation" links to <code>#search</code>). Room search is case-sensitive.</td></tr>
+      <tr><td><span class="sev m">Medium</span></td><td>Tests / CI</td><td>Zero tests. CI runs only black and isort, on <code>actions/*@v3</code>.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Phased plan</h2>
+  <ol class="phases">
+    <li><span class="n">P0</span><h3>Foundation and upgrade</h3><span class="pr">PR 1 · chore/foundation</span>
+      <ul><li>Django 5.2 LTS, Channels 4 + Daphne, Python 3.12; env-based settings (<code>.env.example</code>), debug toolbar dev-only</li><li>Commit chat migrations; fix Dockerfile and compose</li><li>pytest + pytest-django + channels test client; CI runs tests and lint</li></ul></li>
+    <li><span class="n">P1</span><h3>Security and bug fixes</h3><span class="pr">PR 2 · fix/security-bugs</span>
+      <ul><li>WebSocket auth and room membership, JSON validation, empty-message guard</li><li>XSS fixes (textContent, drop mark_safe), wss/ws by protocol, duplicate id, null guards</li><li>View-level membership check; regression tests for each fix</li></ul></li>
+    <li><span class="n">P2</span><h3>Design system and base layout</h3><span class="pr">PR 3 · feat/design-system</span>
+      <ul><li>Shared <code>base.html</code>, Signal tokens with six palettes × light/dark/system and two densities, focus states</li><li>Message partials, flash messages, 404/500/403 pages</li></ul></li>
+    <li><span class="n">P3</span><h3>Home, login and signup</h3><span class="pr">PR 4 · feat/auth-screens</span>
+      <ul><li>New public home page; spine-style login and signup with theme pick</li><li>Inline field errors, show/hide password, password-strength hint, auto-login after signup</li><li>POST logout, case-insensitive usernames, "next" redirect; form and view tests</li></ul></li>
+    <li><span class="n">P4</span><h3>Chat screen rework</h3><span class="pr">PR 5 · feat/chat-screen</span>
+      <ul><li>Responsive two-pane layout, grouped bubbles, day separators, avatars with initials</li><li>Reconnecting socket with status indicator, Enter to send, autosize composer, confirm before clearing</li><li>Drop moment.js for <code>Intl.DateTimeFormat</code></li></ul></li>
+    <li><span class="n">P5</span><h3>New screens</h3><span class="pr">PR 6 · feat/new-screens</span>
+      <ul><li>Start a direct chat (user search), create a group, presence, typing, unread counts, edit/delete, history pagination</li><li>Profile and settings: Appearance (palette, mode, density) saved per user</li></ul></li>
+    <li><span class="n">P6</span><h3>Documentation</h3><span class="pr">PR 7 · docs/overhaul</span>
+      <ul><li>README rewrite with screenshots; new <code>docs/</code>: architecture, setup, testing, UI style guide, WebSocket protocol, contributing</li><li>Each earlier PR also updates the docs it touches</li></ul></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Decisions so far</h2>
+  <p>Base: V1, modern, unlike existing chat apps, combining concept A (transcript, command bar, ⌘K) with B (timeline spine); round 4 picked <b>Signal</b>, with denser threads, more palettes and full responsiveness requested · plain CSS tokens · Phase 5 core features only · phase branches <code>dev-p0</code>… off <code>dev</code>, one PR each to <code>master</code> · login and signup are standalone screens, never shown over the chat.</p>
+</section>
+
+<section>
+  <h2>Round 6: themes, home page and spine-style auth</h2>
+  <p class="lede" style="margin-bottom:14px">The six palettes become a per-user <b>theme setting</b>, Graphite + Coral by default. A new public home page and reworked login and signup screens carry the transcript-spine idea: the login screen ends its transcript with a pulsing "now" node for you, and signup lays its field groups along a spine. The switcher below previews every screen in each palette; inside the app the choice is saved to the user's profile.</p>
+  <div class="ctl" id="ctl6"><button type="button" data-pal="graphite" aria-pressed="true"><span class="sw"><b style="background:#16181d"></b><b style="background:#ff5a36"></b><b style="background:#2ec4a6"></b></span>Graphite + Coral</button><button type="button" data-pal="midnight" aria-pressed="false"><span class="sw"><b style="background:#121a2b"></b><b style="background:#f5a524"></b><b style="background:#7c9cff"></b></span>Midnight + Saffron</button><button type="button" data-pal="slate" aria-pressed="false"><span class="sw"><b style="background:#1c2430"></b><b style="background:#3d7bff"></b><b style="background:#22c3a6"></b></span>Slate + Electric</button><button type="button" data-pal="plum" aria-pressed="false"><span class="sw"><b style="background:#2a1630"></b><b style="background:#ff4f8b"></b><b style="background:#ffb547"></b></span>Plum + Rose</button><button type="button" data-pal="moss" aria-pressed="false"><span class="sw"><b style="background:#17241e"></b><b style="background:#ff7a2f"></b><b style="background:#7bd88f"></b></span>Moss + Tangerine</button><button type="button" data-pal="paper" aria-pressed="false"><span class="sw"><b style="background:#eceef2"></b><b style="background:#e5484d"></b><b style="background:#2f6fde"></b></span>Paper + Red</button><span class="sep"></span><button type="button" data-mode="light" aria-pressed="true">Light pane</button><button type="button" data-mode="dark" aria-pressed="false">Dark pane</button></div>
+  <div class="r5 r6" id="r6" data-pal="graphite" data-mode="light"><div class="devs">
+    <div class="dev h"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/</span></div><div class="hm"><nav><span class="wmL">relay<i></i></span><span class="grow"></span><span class="btn6 g">Sign in</span><span class="btn6 p">Create account</span></nav>
+<div class="hero"><div><h4>Every conversation, <em>on one line</em>.</h4><div class="sub">Real-time rooms and direct chats laid out as a transcript, so you can follow a busy thread at a glance.</div>
+<div class="ctas"><span class="btn6 p">Create account</span><span class="btn6 g">Sign in</span></div></div><div class="app demo"><div class="mn"><div class="hd"><b>Design team</b><span class="st"><span class="ty">Maya is typing…</span></span></div><div class="ls">
+<div class="day">Today</div>
+<div class="g gh"><span class="t">09:38</span><span class="n">AK</span><div class="x"><b>Arjun</b>Pulled the branch</div></div>
+<div class="g cont"><span class="t">09:38</span><span></span><div class="x">Every message is one line on the spine</div></div>
+<div class="g gh me"><span class="t">09:41</span><span class="n">YO</span><div class="x"><b>You</b>Reads like a transcript</div></div>
+<div class="g gh"><span class="t">09:42</span><span class="n">MR</span><div class="x"><b>Maya</b>Pick a theme in settings</div></div>
+</div></div></div></div>
+<div class="fs"><div><em>live</em><b>Real time</b><span>Messages arrive the moment they are sent.</span></div><div><em>rooms</em><b>Direct and group</b><span>Start a chat by username or build a group.</span></div><div><em>presence</em><b>Who is here</b><span>Online dots, typing and unread counts.</span></div><div><em>themes</em><b>Six palettes</b><span>Light, dark or system, in any palette.</span></div></div></div></div><div class="cap">Home page (signed out): headline, live transcript demo, features as a horizontal spine</div></div>
+    <div class="dev ph"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/</span></div><div class="hm"><nav><span class="wmL">relay<i></i></span><span class="grow"></span><span class="btn6 g">Sign in</span><span class="btn6 p">Create account</span></nav>
+<div class="hero"><div><h4>Every conversation, <em>on one line</em>.</h4><div class="sub">Real-time rooms and direct chats laid out as a transcript, so you can follow a busy thread at a glance.</div>
+<div class="ctas"><span class="btn6 p">Create account</span><span class="btn6 g">Sign in</span></div></div><div class="app demo"><div class="mn"><div class="hd"><b>Design team</b><span class="st"><span class="ty">Maya is typing…</span></span></div><div class="ls">
+<div class="day">Today</div>
+<div class="g gh"><span class="t">09:38</span><span class="n">AK</span><div class="x"><b>Arjun</b>Pulled the branch</div></div>
+<div class="g cont"><span class="t">09:38</span><span></span><div class="x">Every message is one line on the spine</div></div>
+<div class="g gh me"><span class="t">09:41</span><span class="n">YO</span><div class="x"><b>You</b>Reads like a transcript</div></div>
+<div class="g gh"><span class="t">09:42</span><span class="n">MR</span><div class="x"><b>Maya</b>Pick a theme in settings</div></div>
+</div></div></div></div>
+<div class="fs"><div><em>live</em><b>Real time</b><span>Messages arrive the moment they are sent.</span></div><div><em>rooms</em><b>Direct and group</b><span>Start a chat by username or build a group.</span></div><div><em>presence</em><b>Who is here</b><span>Online dots, typing and unread counts.</span></div><div><em>themes</em><b>Six palettes</b><span>Light, dark or system, in any palette.</span></div></div></div></div><div class="cap">Home on a phone: the feature spine turns vertical</div></div>
+    <div class="dev t"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/account/login/</span></div><div class="auw"><div class="au"><div class="lf"><span class="wmL">relay<i></i></span><div class="tg6">Every conversation, on one line.</div><div class="tsp"><div class="tr"><span class="t">18:02</span><span class="n"></span><span><b>Maya</b>See everyone tomorrow</span></div>
+<div class="tr me"><span class="t">18:04</span><span class="n"></span><span><b>You</b>Night</span></div>
+<div class="tr"><span class="t">09:38</span><span class="n"></span><span><b>Arjun</b>Morning, branch is up</span></div>
+<div class="tr now"><span class="t">now</span><span class="n"></span><span><b>You</b>signing in…</span></div></div></div>
+<div class="rt"><h5>Pick up where you left off</h5><span class="lb">Username</span><div class="in f"></div><span class="lb">Password</span><div class="in"></div><span class="btn6 p">Sign in</span><div class="alt">New here? <u>Create an account</u></div></div></div></div></div><div class="cap">Login: the left panel's transcript ends with you, signing in</div></div>
+    <div class="dev ph"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/account/login/</span></div><div class="auw"><div class="au"><div class="lf"><span class="wmL">relay<i></i></span><div class="tg6">Every conversation, on one line.</div><div class="tsp"><div class="tr"><span class="t">18:02</span><span class="n"></span><span><b>Maya</b>See everyone tomorrow</span></div>
+<div class="tr me"><span class="t">18:04</span><span class="n"></span><span><b>You</b>Night</span></div>
+<div class="tr"><span class="t">09:38</span><span class="n"></span><span><b>Arjun</b>Morning, branch is up</span></div>
+<div class="tr now"><span class="t">now</span><span class="n"></span><span><b>You</b>signing in…</span></div></div></div>
+<div class="rt"><h5>Pick up where you left off</h5><span class="lb">Username</span><div class="in f"></div><span class="lb">Password</span><div class="in"></div><span class="btn6 p">Sign in</span><div class="alt">New here? <u>Create an account</u></div></div></div></div></div><div class="cap">Phone login: only the “now” node stays above the form</div></div>
+    <div class="dev h"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/account/signup/</span></div><div class="auw"><div class="au"><div class="lf"><span class="wmL">relay<i></i></span><div class="tg6">Every conversation, on one line.</div><div class="tsp"><div class="tr"><span class="t">18:02</span><span class="n"></span><span><b>Maya</b>See everyone tomorrow</span></div>
+<div class="tr me"><span class="t">18:04</span><span class="n"></span><span><b>You</b>Night</span></div>
+<div class="tr"><span class="t">09:38</span><span class="n"></span><span><b>Arjun</b>Morning, branch is up</span></div>
+<div class="tr now"><span class="t">now</span><span class="n"></span><span><b>You</b>joining relay…</span></div></div></div>
+<div class="rt"><h5>Create your account</h5><div class="su">
+<div class="st dn"><em>Account</em><div class="row2"><div class="in"></div><div class="in"></div></div></div>
+<div class="st dn"><em>Name</em><div class="row2"><div class="in"></div><div class="in"></div></div></div>
+<div class="st"><em>Password</em><div class="row2"><div class="in f"></div><div class="in"></div></div></div>
+<div class="st"><em>Theme</em><div class="chips"><span class="on"><b style="background:#16181d"></b><b style="background:#ff5a36"></b><b style="background:#2ec4a6"></b></span><span class=""><b style="background:#121a2b"></b><b style="background:#f5a524"></b><b style="background:#7c9cff"></b></span><span class=""><b style="background:#1c2430"></b><b style="background:#3d7bff"></b><b style="background:#22c3a6"></b></span><span class=""><b style="background:#2a1630"></b><b style="background:#ff4f8b"></b><b style="background:#ffb547"></b></span><span class=""><b style="background:#17241e"></b><b style="background:#ff7a2f"></b><b style="background:#7bd88f"></b></span><span class=""><b style="background:#eceef2"></b><b style="background:#e5484d"></b><b style="background:#2f6fde"></b></span></div></div></div>
+<span class="btn6 p">Create account</span><div class="alt">Have an account? <u>Sign in</u></div></div></div></div></div><div class="cap">Signup: field groups on a spine, filled as each is completed; theme picked at the end</div></div>
+    <div class="dev h"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/settings/appearance/</span></div><div class="app stg" style="height:auto"><div class="sd"><div class="wm"><span>relay</span><i></i></div><div class="sk">Settings</div>
+<div class="r"><span class="av">P</span><span class="nm">Profile</span></div><div class="r a"><span class="av">A</span><span class="nm">Appearance</span></div><div class="r"><span class="av">S</span><span class="nm">Security</span></div></div>
+<div class="mn"><h5>Appearance</h5><span class="sec">Palette</span><div class="thg"><div class="r5 th on" data-pal="graphite"><div class="pv"><span class="s"></span><span class="m"><i></i><i class="me"></i><i></i></span></div><div class="nm">Graphite + Coral<small>Default</small></div></div><div class="r5 th " data-pal="midnight"><div class="pv"><span class="s"></span><span class="m"><i></i><i class="me"></i><i></i></span></div><div class="nm">Midnight + Saffron</div></div><div class="r5 th " data-pal="slate"><div class="pv"><span class="s"></span><span class="m"><i></i><i class="me"></i><i></i></span></div><div class="nm">Slate + Electric</div></div><div class="r5 th " data-pal="plum"><div class="pv"><span class="s"></span><span class="m"><i></i><i class="me"></i><i></i></span></div><div class="nm">Plum + Rose</div></div><div class="r5 th " data-pal="moss"><div class="pv"><span class="s"></span><span class="m"><i></i><i class="me"></i><i></i></span></div><div class="nm">Moss + Tangerine</div></div><div class="r5 th " data-pal="paper"><div class="pv"><span class="s"></span><span class="m"><i></i><i class="me"></i><i></i></span></div><div class="nm">Paper + Red</div></div></div>
+<div class="opts"><div><span class="sec">Mode</span><div class="seg"><span>Light</span><span>Dark</span><span class="on">System</span></div></div>
+<div><span class="sec">Density</span><div class="seg"><span class="on">Compact</span><span>Comfortable</span></div></div></div></div></div></div><div class="cap">Settings › Appearance: palette cards, mode (light, dark, system) and density</div></div>
+  </div></div>
+  <div class="dens"><span>Stored as <b>palette</b>, <b>mode</b>, <b>density</b> on a user preferences model</span><span>Signed-out pages use the device's last choice, else Graphite + Coral</span></div>
+</section>
+<script>
+(()=>{const r=document.getElementById('r6'),c=document.getElementById('ctl6');
+c.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+const k=b.dataset.pal?'pal':'mode';r.dataset[k]=b.dataset[k];
+c.querySelectorAll('button[data-'+k+']').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));});})();
+</script>
+
+<details><summary style="cursor:pointer;color:var(--muted)">Round 5 compact chat (approved layout)</summary>
+<section>
+  <h2>Round 5: Signal, compact and responsive</h2>
+  <p class="lede" style="margin-bottom:14px">Signal's layout with denser threads: one line per message, sender name and avatar only on the first message of a run, times in a gutter (shown on hover for follow-ups). The same screen is shown at desktop, tablet and phone widths. Switch palettes and the main pane's light or dark mode below.</p>
+  <div class="ctl" id="ctl"><button type="button" data-pal="graphite" aria-pressed="true"><span class="sw"><b style="background:#16181d"></b><b style="background:#ff5a36"></b><b style="background:#2ec4a6"></b></span>Graphite + Coral</button><button type="button" data-pal="midnight" aria-pressed="false"><span class="sw"><b style="background:#121a2b"></b><b style="background:#f5a524"></b><b style="background:#7c9cff"></b></span>Midnight + Saffron</button><button type="button" data-pal="slate" aria-pressed="false"><span class="sw"><b style="background:#1c2430"></b><b style="background:#3d7bff"></b><b style="background:#22c3a6"></b></span>Slate + Electric</button><button type="button" data-pal="plum" aria-pressed="false"><span class="sw"><b style="background:#2a1630"></b><b style="background:#ff4f8b"></b><b style="background:#ffb547"></b></span>Plum + Rose</button><button type="button" data-pal="moss" aria-pressed="false"><span class="sw"><b style="background:#17241e"></b><b style="background:#ff7a2f"></b><b style="background:#7bd88f"></b></span>Moss + Tangerine</button><button type="button" data-pal="paper" aria-pressed="false"><span class="sw"><b style="background:#eceef2"></b><b style="background:#e5484d"></b><b style="background:#2f6fde"></b></span>Paper + Red</button><span class="sep"></span><button type="button" data-mode="light" aria-pressed="true">Light pane</button><button type="button" data-mode="dark" aria-pressed="false">Dark pane</button></div>
+  <div class="r5" id="r5" data-pal="graphite" data-mode="light">
+    <div class="devs">
+      <div class="dev d"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/?room=3</span></div><div class="app"><div class="sd"><div class="wm"><span>relay</span><i></i></div><div class="sk">Rooms</div>
+<div class="r a"><span class="av">DT</span><span class="nm">Design team</span></div>
+<div class="r"><span class="av">MR</span><span class="nm">Maya Rao</span><span class="c">2</span></div>
+<div class="r"><span class="av">AK</span><span class="nm">Arjun K.</span></div>
+<div class="r"><span class="av">OP</span><span class="nm">Ops</span><span class="c">5</span></div>
+<div class="r"><span class="av">+</span><span class="nm">New chat</span></div></div>
+<div class="mn"><div class="hd"><span class="bk">&larr;</span><b>Design team</b><span class="st">4 members · <span class="ty">Maya is typing…</span></span><span class="ic">&#9906;</span><span class="ic">&#8942;</span></div>
+<div class="ls"><div class="day">Yesterday</div><div class="g gh"><span class="t">18:02</span><span class="n">MR</span><div class="x"><b>Maya</b><span class="h">18:02</span> Shipping the compact layout tonight</div></div><div class="g cont"><span class="t">18:02</span><span></span><div class="x">Rows are one line now unless the text wraps</div></div><div class="day">Today</div><div class="g gh"><span class="t">09:38</span><span class="n">AK</span><div class="x"><b>Arjun</b><span class="h">09:38</span> Morning. Pulled the branch</div></div><div class="g cont"><span class="t">09:38</span><span></span><div class="x">Tablet view collapses the sidebar into a rail</div></div><div class="g cont"><span class="t">09:39</span><span></span><div class="x">Phone hides it behind the back arrow</div></div><div class="g me gh"><span class="t">09:41</span><span class="n">YO</span><div class="x"><b>You</b><span class="h">09:41</span> Nice. Consecutive messages skip the name and avatar</div></div><div class="g me cont"><span class="t">09:41</span><span></span><div class="x">Times show on hover for those</div></div><div class="g gh"><span class="t">09:42</span><span class="n">MR</span><div class="x"><b>Maya</b><span class="h">09:42</span> Ten messages fit where round 4 showed three</div></div><div class="g cont"><span class="t">09:43</span><span></span><div class="x">Which palette are we picking?</div></div></div>
+<div class="cmd"><span>Message, or / for commands</span><b class="k">&#8984;K</b><b class="snd">&crarr;</b></div></div></div></div><div class="cap">Desktop, 1024 px and up: full room list with names and unread counts</div></div>
+      <div class="dev d"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/account/login/</span></div><div class="lg5"><div class="feed"><div class="wmL">relay<i></i></div><div class="tg">Conversations as they happen.</div>
+<div class="ev"><span>09:41</span><s></s>Maya joined Design team</div><div class="ev"><span>09:43</span><s class="m"></s>You replied</div></div>
+<div class="frm"><b>Sign in</b><span class="lb">Username</span><div class="in"></div><span class="lb">Password</span><div class="in"></div><div class="btn">Sign in</div><div class="alt">New here? <u>Create an account</u></div></div></div></div><div class="cap">Login and signup: a standalone page; on narrow screens the event feed drops away</div></div>
+      <div class="dev t"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/?room=3</span></div><div class="app"><div class="sd"><div class="wm"><span>relay</span><i></i></div><div class="sk">Rooms</div>
+<div class="r a"><span class="av">DT</span><span class="nm">Design team</span></div>
+<div class="r"><span class="av">MR</span><span class="nm">Maya Rao</span><span class="c">2</span></div>
+<div class="r"><span class="av">AK</span><span class="nm">Arjun K.</span></div>
+<div class="r"><span class="av">OP</span><span class="nm">Ops</span><span class="c">5</span></div>
+<div class="r"><span class="av">+</span><span class="nm">New chat</span></div></div>
+<div class="mn"><div class="hd"><span class="bk">&larr;</span><b>Design team</b><span class="st">4 members · <span class="ty">Maya is typing…</span></span><span class="ic">&#9906;</span><span class="ic">&#8942;</span></div>
+<div class="ls"><div class="day">Yesterday</div><div class="g gh"><span class="t">18:02</span><span class="n">MR</span><div class="x"><b>Maya</b><span class="h">18:02</span> Shipping the compact layout tonight</div></div><div class="g cont"><span class="t">18:02</span><span></span><div class="x">Rows are one line now unless the text wraps</div></div><div class="day">Today</div><div class="g gh"><span class="t">09:38</span><span class="n">AK</span><div class="x"><b>Arjun</b><span class="h">09:38</span> Morning. Pulled the branch</div></div><div class="g cont"><span class="t">09:38</span><span></span><div class="x">Tablet view collapses the sidebar into a rail</div></div><div class="g cont"><span class="t">09:39</span><span></span><div class="x">Phone hides it behind the back arrow</div></div><div class="g me gh"><span class="t">09:41</span><span class="n">YO</span><div class="x"><b>You</b><span class="h">09:41</span> Nice. Consecutive messages skip the name and avatar</div></div><div class="g me cont"><span class="t">09:41</span><span></span><div class="x">Times show on hover for those</div></div><div class="g gh"><span class="t">09:42</span><span class="n">MR</span><div class="x"><b>Maya</b><span class="h">09:42</span> Ten messages fit where round 4 showed three</div></div><div class="g cont"><span class="t">09:43</span><span></span><div class="x">Which palette are we picking?</div></div></div>
+<div class="cmd"><span>Message, or / for commands</span><b class="k">&#8984;K</b><b class="snd">&crarr;</b></div></div></div></div><div class="cap">Tablet, 600 to 1023 px: room list becomes an icon rail</div></div>
+      <div class="dev ph"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/?room=3</span></div><div class="app"><div class="sd"><div class="wm"><span>relay</span><i></i></div><div class="sk">Rooms</div>
+<div class="r a"><span class="av">DT</span><span class="nm">Design team</span></div>
+<div class="r"><span class="av">MR</span><span class="nm">Maya Rao</span><span class="c">2</span></div>
+<div class="r"><span class="av">AK</span><span class="nm">Arjun K.</span></div>
+<div class="r"><span class="av">OP</span><span class="nm">Ops</span><span class="c">5</span></div>
+<div class="r"><span class="av">+</span><span class="nm">New chat</span></div></div>
+<div class="mn"><div class="hd"><span class="bk">&larr;</span><b>Design team</b><span class="st">4 members · <span class="ty">Maya is typing…</span></span><span class="ic">&#9906;</span><span class="ic">&#8942;</span></div>
+<div class="ls"><div class="day">Yesterday</div><div class="g gh"><span class="t">18:02</span><span class="n">MR</span><div class="x"><b>Maya</b><span class="h">18:02</span> Shipping the compact layout tonight</div></div><div class="g cont"><span class="t">18:02</span><span></span><div class="x">Rows are one line now unless the text wraps</div></div><div class="day">Today</div><div class="g gh"><span class="t">09:38</span><span class="n">AK</span><div class="x"><b>Arjun</b><span class="h">09:38</span> Morning. Pulled the branch</div></div><div class="g cont"><span class="t">09:38</span><span></span><div class="x">Tablet view collapses the sidebar into a rail</div></div><div class="g cont"><span class="t">09:39</span><span></span><div class="x">Phone hides it behind the back arrow</div></div><div class="g me gh"><span class="t">09:41</span><span class="n">YO</span><div class="x"><b>You</b><span class="h">09:41</span> Nice. Consecutive messages skip the name and avatar</div></div><div class="g me cont"><span class="t">09:41</span><span></span><div class="x">Times show on hover for those</div></div><div class="g gh"><span class="t">09:42</span><span class="n">MR</span><div class="x"><b>Maya</b><span class="h">09:42</span> Ten messages fit where round 4 showed three</div></div><div class="g cont"><span class="t">09:43</span><span></span><div class="x">Which palette are we picking?</div></div></div>
+<div class="cmd"><span>Message, or / for commands</span><b class="k">&#8984;K</b><b class="snd">&crarr;</b></div></div></div></div><div class="cap">Phone, under 600 px: chat full width, back arrow to rooms, time beside the sender</div></div>
+      <div class="dev ph"><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/account/login/</span></div><div class="lg5"><div class="feed"><div class="wmL">relay<i></i></div><div class="tg">Conversations as they happen.</div>
+<div class="ev"><span>09:41</span><s></s>Maya joined Design team</div><div class="ev"><span>09:43</span><s class="m"></s>You replied</div></div>
+<div class="frm"><b>Sign in</b><span class="lb">Username</span><div class="in"></div><span class="lb">Password</span><div class="in"></div><div class="btn">Sign in</div><div class="alt">New here? <u>Create an account</u></div></div></div></div><div class="cap">Phone login</div></div>
+    </div>
+  </div>
+  <div class="dens"><span>Single-line message: <b>~18 px</b> tall (round 4: ~44 px)</span><span>The first message of a run shares its line with the sender name</span></div>
+</section>
+<script>
+(()=>{const r=document.getElementById('r5'),c=document.getElementById('ctl');
+c.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+const k=b.dataset.pal?'pal':'mode';r.dataset[k]=b.dataset[k];
+c.querySelectorAll('button[data-'+k+']').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));});})();
+</script>
+</details>
+
+<details><summary style="cursor:pointer;color:var(--muted)">Round 4 variations (earlier)</summary>
+<section>
+  <h2>Round 4: three variations</h2>
+  <p class="lede" style="margin-bottom:16px">Each variation changes the palette, type pairing, message layout and the login/signup screen. All three will ship with light and dark themes; one is shown here. Signup uses the same screen as login.</p>
+  <div style="display:grid;gap:28px">
+  <article class="style"><header><h3>1 · Signal</h3><span class="tag">graphite + coral · Sora / Manrope</span></header>
+<div class="pair"><div><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/account/login/</span></div><div class="scr s1 lgn"><div><div class="wm">relay<i></i></div><div class="tg">Conversations as they happen.</div>
+<div class="ev"><span class="t">09:41</span><span class="d"></span>Maya joined Design team</div>
+<div class="ev"><span class="t">09:43</span><span class="d m"></span>You replied</div></div>
+<div class="frm"><b>Sign in</b><span class="lb">Username</span><div class="in"></div><span class="lb">Password</span><div class="in"></div><div class="btn">Sign in</div><div class="alt">New here? <u>Create an account</u></div></div></div></div><div class="cap">Login screen, its own page</div></div><div><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/?room=3</span></div><div class="scr s1 cht"><div class="sd"><span class="wm2">relay</span><div class="r a">Design team</div><div class="r">Maya R.<span class="c">2</span></div><div class="r">Arjun K.</div><div class="r">Ops<span class="c">5</span></div></div>
+<div class="mn"><div class="hd">Design team<small>Maya is typing…</small></div><div class="sl"><div class="day">Today</div>
+<div class="e"><span class="t">09:41</span><span class="n">MR</span><span><b>Maya</b>Mockups are up for review</span></div>
+<div class="e"><span class="t">09:42</span><span class="n">AK</span><span><b>Arjun</b>Signal reads well at a glance</span></div>
+<div class="e me"><span class="t">09:43</span><span class="n">YO</span><span><b>You</b>Going with round 4</span></div></div>
+<div class="cmd"><span>Message, or / for commands</span><span class="k">&#8984;K</span></div></div></div></div><div class="cap">Chat screen</div></div></div>
+<p>Dark graphite login with a large wordmark beside a live-looking event feed and a separate form card. Chat keeps A's transcript: initials sit on square nodes along a left spine, time in a mono gutter, coral unread chips, floating command bar. Your messages use a mint node instead of coral.</p></article>
+  <article class="style"><header><h3>2 · Fieldnotes</h3><span class="tag">forest + lime · Bricolage Grotesque / Instrument Sans</span></header>
+<div class="pair"><div><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/account/login/</span></div><div class="scr s2 lgn"><div class="wm">fieldnotes</div><div class="card"><div class="tabs"><span class="a">Sign in</span><span>Create account</span></div>
+<div class="in"></div><div class="in"></div><div class="btn">Continue</div><div class="steps"><span>Sign-up runs in two steps:</span><b>1 Account</b><span>2 Profile</span></div></div></div></div><div class="cap">Login screen, its own page</div></div><div><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/?room=3</span></div><div class="scr s2 cht"><div class="top"><span class="wm2">fieldnotes</span><span class="tb a">Design team</span><span class="tb">Maya <sup>2</sup></span><span class="tb">Arjun</span><span class="tb">Ops <sup>5</sup></span></div>
+<div class="sl"><div class="dy"><span>Today</span></div>
+<div class="row"><div class="m"><b>Maya</b>Mockups are up for review</div><span class="t">09:41</span></div>
+<div class="row me"><span></span><span class="t">09:43</span><div class="m">Going with round 4</div></div>
+<div class="row"><div class="m"><b>Arjun</b>The centre spine is easy to scan</div><span class="t">09:44</span></div></div>
+<div class="cp"><div>Write a note…</div><span>&rarr;</span></div></div></div><div class="cap">Chat screen</div></div></div>
+<p>Full forest-green login with a centred card, a Sign in / Create account toggle and a two-step signup (account, then profile). Chat leans on B: a centre spine with times on it, others on the left, you on the right, room tabs in a top bar, a full-width composer with a send key.</p></article>
+  <article class="style"><header><h3>3 · Blueprint</h3><span class="tag">navy + cyan · Outfit / JetBrains Mono</span></header>
+<div class="pair"><div><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/account/login/</span></div><div class="scr s3 lgn"><div class="sch"><i></i><s></s><i></i><s></s><i></i></div><div class="card"><div class="wm">blueprint chat</div><div class="tabs"><span class="a">sign_in</span><span>sign_up</span></div>
+<span class="mono">username</span><div class="in"></div><span class="mono">password</span><div class="in"></div><div class="btn">Connect</div><span class="mono">ws status: ready</span></div></div></div><div class="cap">Login screen, its own page</div></div><div><div class="fr"><div class="bar"><i></i><i></i><i></i><span>/?room=3</span></div><div class="scr s3 cht"><div class="rl"><span class="mono">ROOMS</span><div class="r a">#design<span>00</span></div><div class="r">@maya<span>02</span></div><div class="r">@arjun<span>00</span></div><div class="r">#ops<span>05</span></div></div>
+<div class="mn"><div class="hd">#design<span class="mono">4 online · live</span></div><div class="sl">
+<div class="e"><span class="n"></span><div class="bx"><span class="mono">maya · 09:41</span><br>Mockups are up for review</div></div>
+<div class="e me"><span class="n"></span><div class="bx"><span class="mono">you · 09:43</span><br>Going with round 4</div></div>
+<div class="e"><span class="n"></span><div class="bx"><span class="mono">arjun · 09:44</span><br>Callouts feel like annotations</div></div></div>
+<div class="cmd"><span>&gt; message_</span><span>&#8984;K</span></div></div></div></div><div class="cap">Chat screen</div></div></div>
+<p>Drafting-grid background throughout. Login is a squared card with sign_in / sign_up tabs beside a small node diagram, and shows socket status. Chat messages are callout boxes joined to spine nodes by dashed leader lines; metadata in mono; command bar styled as a prompt.</p></article>
+  </div>
+</section>
+</details>
+
+<section>
+  <h2>Suggested new features</h2>
+  <div class="feat">
+    <div><h3>Phase 5 · core</h3><ul>
+      <li><b>Start a chat</b> by searching users; <b>create a group</b> and invite members</li>
+      <li><b>Presence</b> (online dot) and <b>typing indicator</b></li>
+      <li><b>Unread counts</b> per room and read state</li>
+      <li><b>Edit and delete</b> own messages</li>
+      <li><b>Profile and settings</b>: display name, avatar colour, theme, password change</li>
+      <li><b>History pagination</b>: load older messages on scroll</li>
+    </ul></div>
+    <div><h3>Phase 7 · next (deferred)</h3><ul>
+      <li><b>Replies and quotes</b> linked to the original message</li>
+      <li><b>Reactions</b> with a small fixed set</li>
+      <li><b>@mentions</b> and browser notifications</li>
+      <li><b>Slash commands</b>: <code>/clear</code>, <code>/invite</code>, <code>/mute</code>, <code>/me</code></li>
+      <li><b>Room switcher</b> on ⌘K and message search</li>
+      <li><b>Markdown-lite</b> formatting and link previews</li>
+    </ul></div>
+    <div><h3>Later · platform (deferred)</h3><ul>
+      <li><b>Image and file attachments</b></li>
+      <li><b>Password reset</b> by email</li>
+      <li><b>Mute and archive</b> conversations; pinned messages</li>
+      <li><b>Rate limiting</b> on the socket; Redis channel layer for production</li>
+      <li><b>Installable PWA</b></li>
+    </ul></div>
+  </div>
+</section>
+</div>

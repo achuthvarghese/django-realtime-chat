@@ -1,0 +1,452 @@
+<title>Relay Groups and Chat Features</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column — decisions, UX review table, then annotated mockups of the chat with P9–P11 features */
+:root{
+  --pg:#f4f5f7;--pg-fg:#16181d;--pg-mu:#5f6372;--pg-ln:#dfe1e7;--pg-card:#fff;--pg-ac:#e8461f;
+  --display:"Sora",system-ui,sans-serif;--body:"Manrope",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,monospace;
+  /* Signal app tokens (Graphite + Coral, light pane) used inside mockups */
+  --chrome:#16181d;--chrome-fg:#c3c5cc;--chrome-strong:#fff;--chrome-raised:#2b2f38;--accent:#ff5a36;--on-accent:#16181d;--mine:#2ec4a6;
+  --bg:#f7f7f9;--surface:#fff;--fg:#16181d;--muted:#6b6f7d;--line:#e4e5ea;--hover:#eef0f3;--success:#12805c;--danger:#d92d20;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--pg:#111318;--pg-fg:#e9eaee;--pg-mu:#9a9eab;--pg-ln:#2a2e36;--pg-card:#1a1d23;--pg-ac:#ff7a5c;color-scheme:dark}}
+:root[data-theme="dark"]{--pg:#111318;--pg-fg:#e9eaee;--pg-mu:#9a9eab;--pg-ln:#2a2e36;--pg-card:#1a1d23;--pg-ac:#ff7a5c;color-scheme:dark}
+body{background:var(--pg);color:var(--pg-fg);font-family:var(--body);font-size:15px;line-height:1.55}
+.wrap{max-width:1120px;margin:0 auto;padding-block:32px 72px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:40px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:2rem}h2{font-size:1.3rem;margin-bottom:12px}h3{font-size:1rem}
+p{margin:0;max-width:70ch}.lede{color:var(--pg-mu);margin-top:6px}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--pg-mu);font-weight:700}
+code{font-family:var(--mono);font-size:.85em}
+.tbl{overflow-x:auto;border:1px solid var(--pg-ln);border-radius:12px;background:var(--pg-card)}
+table{border-collapse:collapse;width:100%;min-width:680px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--pg-ln);vertical-align:top;font-size:.92rem}
+th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--pg-mu)}
+tr:last-child td{border-bottom:0}
+.tag{display:inline-block;font-family:var(--mono);font-size:.72rem;padding:1px 7px;border-radius:99px;border:1px solid var(--pg-ln);color:var(--pg-mu);white-space:nowrap}
+.cap{font-size:.85rem;color:var(--pg-mu);margin-top:8px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px}
+.n{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--pg-ac);color:#fff;font-size:10px;font-weight:800;font-family:var(--body);vertical-align:1px;margin-right:4px}
+
+/* ---- Mockup (fixed Signal look) ---- */
+.app{font-family:var(--body);font-size:12.5px;color:var(--fg);background:var(--bg);border-radius:14px;overflow:hidden;border:1px solid var(--pg-ln);display:grid;grid-template-columns:230px minmax(0,1fr) 270px;height:620px;min-width:0}
+.mock-scroll{overflow-x:auto;border-radius:14px}
+.mock-scroll .app{min-width:960px}
+.side{background:var(--chrome);color:var(--chrome-fg);display:flex;flex-direction:column;gap:4px;padding:12px 8px}
+.wm{font-family:var(--display);font-weight:800;color:#fff;font-size:15px;display:flex;align-items:center;gap:3px}
+.wm::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);margin-top:6px}
+.top{display:flex;justify-content:space-between;align-items:center;padding:0 4px 8px}
+.btn{display:inline-flex;align-items:center;gap:4px;border-radius:8px;padding:4px 9px;font-weight:700;font-size:11px;border:1px solid transparent;white-space:nowrap}
+.btn.p{background:var(--accent);color:var(--on-accent)}.btn.g{border-color:var(--line);color:var(--fg);background:var(--surface)}.btn.d{border-color:#f3b4ae;color:var(--danger);background:var(--surface)}
+.side .btn.g{background:transparent;color:#fff;border-color:#3a3f4a}
+.search{margin:0 2px 6px;border:1px solid #2e333d;border-radius:8px;padding:5px 8px;color:#8b8f9c}
+.lbl{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#8b8f9c;padding:4px 6px}
+.rl{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px;align-items:center;padding:5px 6px;border-radius:7px}
+.rl.on{background:var(--chrome-raised)}
+.rl b{display:block;color:#fff;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rl small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.75}
+.rl.muted{opacity:.55}
+.av{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;font-size:9px;font-weight:800;color:#fff;background:#3a3f4a;position:relative;flex:none}
+.av.g{border-radius:50%}
+.av .dot{position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;border-radius:50%;background:var(--success);border:2px solid var(--chrome)}
+.meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-family:var(--mono);font-size:9px;opacity:.85}
+.badge{font-family:var(--mono);font-size:9px;font-weight:700;background:var(--accent);color:var(--on-accent);border-radius:4px;padding:0 4px}
+.badge.at{background:#fff;color:var(--chrome)}
+.ico{font-size:10px;opacity:.7}
+.slide-new{animation:slide .6s ease-out}
+@keyframes slide{from{transform:translateX(-12px);opacity:0}}
+@media (prefers-reduced-motion:reduce){.slide-new{animation:none}}
+
+.main{display:flex;flex-direction:column;min-width:0;position:relative}
+.hd{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
+.hd .t{flex:1;min-width:0}
+.hd .t b{font-family:var(--display);font-size:13.5px;display:block}
+.hd .t span{font-size:10.5px;color:var(--muted)}
+.hd .live{color:var(--success)}
+.icon-btn{width:28px;height:28px;border-radius:8px;border:1px solid var(--line);display:grid;place-items:center;color:var(--muted);background:var(--surface);font-size:12px}
+.icon-btn.on{border-color:var(--accent);color:var(--accent)}
+.tr{flex:1;overflow:hidden;position:relative;padding:8px 0}
+.tr::before{content:"";position:absolute;left:62px;top:0;bottom:0;width:1px;background:var(--line)}
+.day{position:relative;margin:6px 0 6px 46px;font-family:var(--mono);font-size:9px;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:0 7px;width:fit-content}
+.m{display:grid;grid-template-columns:42px 20px minmax(0,1fr);column-gap:8px;padding:1px 12px 1px 4px;line-height:1.5;position:relative}
+.m + .m:not(.c){margin-top:6px}
+.m .tm{font-family:var(--mono);font-size:9px;color:var(--muted);text-align:right;padding-top:2px}
+.m.c .tm{opacity:0}
+.m .nd{width:20px;height:20px;border-radius:6px;background:var(--accent);color:#fff;font-size:8.5px;font-weight:800;display:grid;place-items:center;position:relative;z-index:1}
+.m.me .nd{background:var(--mine);color:#0f1412}
+.m .nm{font-family:var(--display);font-weight:700;margin-right:6px}
+.m.hl{background:color-mix(in srgb,var(--hover) 90%,transparent)}
+.mention{background:color-mix(in srgb,var(--accent) 16%,transparent);color:#b5371a;border-radius:4px;padding:0 3px;font-weight:700}
+.mention.me{background:var(--accent);color:var(--on-accent)}
+.quote{display:flex;gap:6px;align-items:baseline;margin:1px 0 2px;padding:2px 8px;border-left:2px solid var(--accent);border-radius:0 6px 6px 0;background:color-mix(in srgb,var(--accent) 7%,transparent);font-size:11px;color:var(--muted);width:fit-content;max-width:100%}
+.quote b{color:var(--fg);font-weight:700}
+.reacts{display:flex;gap:4px;margin-top:3px;flex-wrap:wrap}
+.rx{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:0 7px;font-size:11px;display:inline-flex;gap:4px;align-items:center}
+.rx.mine{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 9%,var(--surface))}
+.rx i{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.rx.add{color:var(--muted)}
+.sys{display:grid;grid-template-columns:42px 20px minmax(0,1fr);column-gap:8px;padding:2px 12px 2px 4px;margin:5px 0;color:var(--muted);font-size:11.5px;align-items:center}
+.sys .tm{font-family:var(--mono);font-size:9px;text-align:right}
+.sys .dm{width:8px;height:8px;transform:rotate(45deg);background:var(--bg);border:1.5px solid var(--muted);justify-self:center;position:relative;z-index:1}
+.sys b{color:var(--fg);font-weight:600}
+.divider{position:relative;margin:8px 0 6px;height:0;border-top:1.5px solid var(--accent)}
+.divider span{position:absolute;right:12px;top:-8px;background:var(--bg);color:var(--accent);font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:0 6px}
+.toolbar{position:absolute;right:12px;top:-12px;display:flex;gap:1px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:2px;box-shadow:0 8px 20px -12px rgba(0,0,0,.4);z-index:3}
+.toolbar span{padding:2px 7px;border-radius:5px;font-size:11px}
+.toolbar span.sep{width:1px;padding:0;background:var(--line);margin:2px 2px}
+.toolbar .red{color:var(--danger)}
+.seen{display:flex;justify-content:flex-end;align-items:center;gap:3px;padding:2px 14px 0;font-size:10px;color:var(--muted)}
+.seen .mini{width:14px;height:14px;border-radius:4px;font-size:6.5px;font-weight:800;color:#fff;display:grid;place-items:center;margin-left:-4px;border:1.5px solid var(--bg)}
+.jump{position:absolute;right:16px;bottom:96px;background:var(--fg);color:var(--bg);border-radius:99px;padding:5px 11px;font-weight:700;font-size:11px;box-shadow:0 10px 24px -10px rgba(0,0,0,.5);z-index:4}
+.jump b{color:var(--accent)}
+.comp-wrap{margin:0 10px 10px;position:relative}
+.reply-chip{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-bottom:0;border-radius:10px 10px 0 0;padding:5px 10px;font-size:11px;color:var(--muted);margin:0 10px}
+.reply-chip b{color:var(--fg)}
+.reply-chip .x{margin-left:auto}
+.comp{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:6px 6px 6px 10px}
+.comp .txt{flex:1;color:var(--fg)}
+.comp .ph{color:var(--muted)}
+.kbd{font-family:var(--mono);font-size:9px;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--muted)}
+.pop{position:absolute;left:10px;bottom:46px;width:250px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 30px -14px rgba(0,0,0,.45);padding:4px;z-index:5}
+.pop .row{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:7px}
+.pop .row.sel{background:var(--hover)}
+.pop .row small{color:var(--muted);margin-left:auto;font-family:var(--mono);font-size:9.5px}
+.pop .h{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:4px 7px}
+
+/* Details panel */
+.det{border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-width:0}
+.det .dh{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--line)}
+.det .dh b{font-family:var(--display);font-size:13px}
+.det .sec{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:7px}
+.det .k{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.det .big{display:flex;align-items:center;gap:10px}
+.det .big .av{width:40px;height:40px;font-size:13px;border-radius:50%}
+.det .name{display:flex;align-items:center;gap:6px;font-family:var(--display);font-weight:700;font-size:14px}
+.det .edit{font-family:var(--body);font-size:10.5px;color:var(--accent);font-weight:700}
+.sw{display:flex;gap:5px;flex-wrap:wrap}
+.sw i{width:18px;height:18px;border-radius:50%;display:block}
+.sw i.sel{outline:2px solid var(--fg);outline-offset:2px}
+.mem{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:3px 0}
+.mem .av{background:var(--accent)}
+.mem .av .dot{border-color:var(--surface)}
+.mem small{display:block;color:var(--muted);font-size:10px}
+.admin{font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:4px;padding:0 4px}
+.menu{font-size:13px;color:var(--muted);padding:0 4px}
+.memmenu{position:absolute;right:20px;top:258px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 14px 30px -14px rgba(0,0,0,.45);padding:4px;width:170px;z-index:6;font-size:11.5px}
+.memmenu div{padding:5px 8px;border-radius:6px}
+.memmenu .sel{background:var(--hover)}
+.memmenu .red{color:var(--danger)}
+.memmenu .dis{color:var(--muted)}
+.memmenu .dis small{display:block;font-size:9.5px}
+.det .foot{margin-top:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.det .foot .btn{justify-content:center}
+
+/* Palette + phone + small mocks */
+.mini-wrap{background:var(--bg);border:1px solid var(--pg-ln);border-radius:14px;padding:18px;display:grid;place-items:center;min-height:300px;font-family:var(--body);font-size:12.5px;color:var(--fg)}
+.pal{width:min(100%,420px);background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 24px 50px -24px rgba(0,0,0,.5);overflow:hidden}
+.pal .q{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px}
+.pal .q span{flex:1}
+.pal .h{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:8px 12px 3px;font-weight:700}
+.pal .row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 12px}
+.pal .row.sel{background:var(--hover);box-shadow:inset 2px 0 var(--accent)}
+.pal .row small{color:var(--muted);display:block;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal .row mark{background:color-mix(in srgb,var(--accent) 22%,transparent);color:inherit;border-radius:3px;padding:0 1px}
+.pal .foot{display:flex;gap:12px;padding:7px 12px;border-top:1px solid var(--line);font-size:10px;color:var(--muted)}
+.sheet{width:min(100%,420px);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 24px 50px -24px rgba(0,0,0,.5);display:grid;gap:8px}
+.sheet .r{display:flex;justify-content:space-between;gap:12px;font-size:12px;border-bottom:1px dashed var(--line);padding-bottom:5px}
+.sheet .r:last-child{border:0}
+.phone{width:300px;max-width:100%;background:var(--bg);border:1px solid var(--line);border-radius:22px;overflow:hidden;font-size:12px;position:relative;height:520px;display:flex;flex-direction:column}
+.phone .hd{padding:8px 10px}
+.phone .tr{padding-top:6px}
+.phone .tr::before{left:20px}
+.phone .m{grid-template-columns:20px minmax(0,1fr);padding:1px 10px}
+.phone .m .tm{display:none}
+.phone .sys{grid-template-columns:20px minmax(0,1fr);padding:2px 10px}
+.phone .sys .tm{display:none}
+.phone .day{margin-left:6px}
+.act{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:16px 16px 0 0;box-shadow:0 -12px 30px -12px rgba(0,0,0,.4);padding:8px 12px 14px;display:grid;gap:4px;z-index:5}
+.act .grab{width:34px;height:4px;border-radius:2px;background:var(--line);justify-self:center;margin-bottom:4px}
+.act .emo{display:flex;justify-content:space-between;font-size:18px;padding:4px 2px 8px;border-bottom:1px solid var(--line)}
+.act div.o{padding:6px 2px;font-weight:600}
+.act .red{color:var(--danger)}
+.settings-card{width:min(100%,460px);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px}
+.toggle{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.toggle small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.sw-t{width:34px;height:20px;border-radius:99px;background:var(--accent);position:relative;flex:none}
+.sw-t::after{content:"";position:absolute;right:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.sw-t.off{background:var(--line)}.sw-t.off::after{right:auto;left:2px}
+.list{display:grid;gap:12px;padding-left:0;list-style:none;margin:0}
+.list li{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Relay · P9–P11 · UX plan for review</div>
+  <h1>Groups and chat features</h1>
+  <p class="lede">How group admins, live rooms, replies, reactions, mentions, the command palette and reading aids fit into the Signal chat screen. Numbered markers on the mockup match the UX changes table. Nothing is built yet.</p>
+</header>
+
+<section>
+  <h2>Verified decisions</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>#</th><th>Topic</th><th>Decision</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Add people to a group</td><td>Any member</td></tr>
+      <tr><td>—</td><td>Rename, remove members, delete group</td><td>Admins only. The creator is admin by default; groups can have several admins; admins can make others admin or remove admin rights</td></tr>
+      <tr><td>2</td><td>Last admin leaves</td><td>Longest-standing member becomes admin automatically (system message). The last member leaving deletes the group</td></tr>
+      <tr><td>3</td><td>Last admin demotion</td><td>The only admin cannot remove their own admin rights; they promote someone first, then step down. Members can never change admin rights</td></tr>
+      <tr><td>4</td><td>Existing groups</td><td>Migration makes the earliest-added member the admin</td></tr>
+      <tr><td>5</td><td>Hide direct chats</td><td><span class="tag">later</span> kept on the list</td></tr>
+      <tr><td>6</td><td>Seen by</td><td>On by default; Settings → Privacy toggle hides your receipts (and you then don't see others')</td></tr>
+      <tr><td>7</td><td>Rate limits</td><td><span class="tag">later</span> kept on the list</td></tr>
+      <tr><td>8</td><td>Group colours</td><td>8 preset colours, chosen by admins</td></tr>
+      <tr><td>9–10</td><td>Notifications, search</td><td>HTTPS needed for notifications in production (documented); substring search for now</td></tr>
+      <tr><td>R1</td><td>Theme control</td><td>Signed in: <b>only in Settings → Appearance</b>; the Theme button leaves the chat sidebar. Signed out (home, sign in, create account) keeps the Theme menu, since those pages can't reach Settings</td></tr>
+      <tr><td>R2</td><td>Unmuting</td><td>No "unmute all". Settings lists muted chats with a checkbox each; <b>Unmute selected</b> is enabled only once at least one is ticked. The header bell still unmutes the open chat</td></tr>
+      <tr><td>R3</td><td>Username</td><td>Verified: Django's built-in user model with a unique <code>username</code>; signup collects and validates it, login authenticates by it. Gap: login is case-sensitive while signup treats usernames case-insensitively. Fix proposed as <b>P9-pre</b> below</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>UX changes these features need</h2>
+  <p class="lede" style="margin-bottom:12px">Adding six features to one screen would crowd it. These adjustments keep the one-line transcript intact.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>#</th><th>Area</th><th>Today</th><th>Proposed</th><th>Phase</th></tr></thead>
+    <tbody>
+      <tr><td><span class="n">1</span></td><td>Room header</td><td>Title, status, members, "Clear history" button</td><td>Title and meta, plus three icon buttons: <b>Search</b> (in this room), <b>Mute</b> bell, <b>Details</b> ⓘ. Clear history moves into Details, so the header stops growing</td><td>P9a, P10c, P10d</td></tr>
+      <tr><td><span class="n">2</span></td><td>Details panel</td><td>None</td><td>Right-hand panel on desktop (pane narrows, nothing overlaps); full-screen sheet on phones. Name and colour (admins), members with Admin badge and online dot, Add people, per-member menu, Leave and Delete at the bottom</td><td>P9a, P11d</td></tr>
+      <tr><td><span class="n">3</span></td><td>System messages</td><td>None</td><td>Muted one-line rows on the spine with a small diamond node and no avatar: "Maya added Lee", "Arjun is now an admin". They don't break up sender groups or count as unread</td><td>P9a</td></tr>
+      <tr><td><span class="n">4</span></td><td>Message actions</td><td>Edit and Delete as text buttons</td><td>A compact hover toolbar: quick reactions 👍 ❤️ 😂, Reply, then Edit and Delete for your own. On phones a tap opens a bottom action sheet with the six emoji, Reply, Copy, Edit and Delete instead of inline buttons</td><td>P10a, P10b</td></tr>
+      <tr><td><span class="n">5</span></td><td>Replies</td><td>None</td><td>A one-line quote above the reply (accent rail, sender and snippet); click to jump and flash the original. While replying, a chip above the composer with × to cancel</td><td>P10a</td></tr>
+      <tr><td><span class="n">6</span></td><td>Reactions</td><td>None</td><td>Small pills under the message line; your own are outlined in the accent; hover lists who reacted. Only rows with reactions grow</td><td>P10b</td></tr>
+      <tr><td><span class="n">7</span></td><td>Mentions</td><td>None</td><td>Typing @ opens a member picker above the composer. Mentions show as tinted chips; mentions of you are solid accent. The sidebar shows an "@" badge beside the unread count</td><td>P10c</td></tr>
+      <tr><td><span class="n">8</span></td><td>Muted rooms</td><td>None</td><td>Dimmed in the sidebar with a bell-off icon; unread shows as a grey dot instead of a count; no notifications except @mentions</td><td>P10c</td></tr>
+      <tr><td><span class="n">9</span></td><td>New messages line</td><td>None</td><td>An accent rule labelled "New" where unread begins; the room opens scrolled to it rather than to the bottom</td><td>P11a</td></tr>
+      <tr><td><span class="n">10</span></td><td>Jump to latest</td><td>None</td><td>A floating pill above the composer when scrolled up: "↓ 3 new messages"</td><td>P11a</td></tr>
+      <tr><td><span class="n">11</span></td><td>Seen by</td><td>None</td><td>Tiny stacked initials under your last message: "Seen by Arjun, Lee"; groups collapse to "+2"</td><td>P11b</td></tr>
+      <tr><td><span class="n">12</span></td><td>Live rooms</td><td>"New conversation · Refresh" prompt</td><td>New rooms slide into the list; removed or deleted rooms fade out; if it's the open room, the pane shows "You're no longer in this group" with a link back</td><td>P9b</td></tr>
+      <tr><td><span class="n">13</span></td><td>Command palette</td><td>None</td><td>⌘K/Ctrl+K anywhere: Chats, People and Messages sections, arrow keys plus Enter; "/" in the composer opens the slash-command list in the same popover style as @</td><td>P10d</td></tr>
+      <tr><td><span class="n">14</span></td><td>Shortcuts</td><td>None</td><td><kbd>?</kbd> opens a sheet listing every shortcut; also linked from the sidebar footer</td><td>P11c</td></tr>
+      <tr><td><span class="n">15</span></td><td>Settings</td><td>Profile, Appearance, Password</td><td>New <b>Privacy</b> section (read receipts) and <b>Notifications</b> section (browser permission, notify for mentions and direct messages, muted chats with a checkbox each and <b>Unmute selected</b>; no unmute-all)</td><td>P10c, P11b</td></tr>
+      <tr><td><span class="n">16</span></td><td>Sidebar footer</td><td>Avatar, name, Theme, Sign out</td><td>Just your avatar, name and @username plus a <b>⚙ gear</b> button that opens Settings. Clicking your name opens an <b>account menu</b> popover: Settings, Keyboard shortcuts, Sign out. The Theme button is removed (theme lives in Settings → Appearance)</td><td>P9-pre</td></tr>
+      <tr><td><span class="n">17</span></td><td>Settings layout</td><td>One long page</td><td>Sections with their own navigation and URL: <b>Profile</b>, <b>Appearance</b>, <b>Notifications</b>, <b>Privacy</b>, <b>Password</b>. Left column on desktop, a horizontal tab strip on phones</td><td>P9-pre (sections added as features land)</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Chat screen with everything in place</h2>
+  <p class="lede" style="margin-bottom:12px">Desktop, Graphite + Coral, Details panel open. One frame shows every state at once for review; in use they never all appear together.</p>
+  <div class="mock-scroll">
+  <div class="app" role="img" aria-label="Mockup of the chat screen with the details panel open, showing system messages, replies, reactions, mentions, a new-messages divider, a jump-to-latest pill and the mention picker">
+    <nav class="side">
+      <div class="top"><span class="wm">relay</span><span class="btn p">+ New chat</span></div>
+      <div class="search">Find a chat <span class="kbd" style="border-color:#3a3f4a;float:right">⌘K</span></div>
+      <div class="lbl">Chats</div>
+      <div class="rl on"><span class="av g" style="background:#7c5cff">DT</span><span><b>Design team</b><small>Anika: @Maya can you review?</small></span><span class="meta">09:42<span><span class="badge at">@</span> <span class="badge">3</span></span></span></div>
+      <div class="rl slide-new"><span class="av g" style="background:#0ea5a4">LP</span><span><b>Launch prep</b><small>Lee added you</small></span><span class="meta">09:40<span class="badge">1</span></span></div>
+      <div class="rl"><span class="av">AK<span class="dot"></span></span><span><b>Arjun Kumar</b><small>You: Sure, sending notes</small></span><span class="meta">09:12</span></div>
+      <div class="rl muted"><span class="av g" style="background:#3a3f4a">OP</span><span><b>Ops <span class="ico">🔕</span></b><small>Deploy finished</small></span><span class="meta">08:58<span style="width:6px;height:6px;border-radius:50%;background:#8b8f9c"></span></span></div>
+      <div class="rl"><span class="av g" style="background:#d97706">BC</span><span><b>Book club</b><small>Chapter 7 is so good</small></span><span class="meta">Mon</span></div>
+      <div style="margin-top:auto;display:flex;align-items:center;gap:8px;padding:8px 4px;border-top:1px solid #2b2f38"><span class="n">16</span><span class="av" style="background:var(--mine);color:#0f1412">MR</span><span style="flex:1;color:#fff;font-weight:700;line-height:1.2">Maya Rao ▾<br><small style="font-weight:500;opacity:.7">@maya</small></span><span class="btn g" title="Settings">⚙</span></div>
+    </nav>
+
+    <div class="main">
+      <div class="hd">
+        <span class="av g" style="width:30px;height:30px;background:#7c5cff;font-size:10px">DT</span>
+        <span class="t"><b>Design team</b><span><span class="live">● Live</span> · 4 members · 3 online · <span style="color:var(--accent);font-weight:700">Lee is typing…</span></span></span>
+        <span class="n">1</span>
+        <span class="icon-btn" title="Search in room">⌕</span><span class="icon-btn" title="Mute">🔔</span><span class="icon-btn on" title="Details">ⓘ</span>
+      </div>
+      <div class="tr">
+        <span class="day">Today</span>
+        <div class="sys"><span class="tm">09:02</span><span class="dm"></span><span><span class="n">3</span><b>Maya</b> added <b>Lee Chen</b></span></div>
+        <div class="sys"><span class="tm">09:02</span><span class="dm"></span><span><b>Maya</b> made <b>Arjun</b> an admin</span></div>
+        <div class="m"><span class="tm">09:20</span><span class="nd">AS</span><span><span class="nm">Anika Shah</span>Palette cards are in, six of them</span></div>
+        <div class="m c"><span class="tm">09:20</span><span></span><span>Comfortable density looks great on tablets
+          <span class="reacts"><span class="n" style="margin:0">6</span><span class="rx mine">👍 <i>3</i></span><span class="rx">🎉 <i>1</i></span><span class="rx add">☺+</span></span></span></div>
+        <div class="m me hl"><span class="tm">09:31</span><span class="nd">MR</span><span>
+          <span class="toolbar"><span class="n" style="margin:2px">4</span><span>👍</span><span>❤️</span><span>😂</span><span class="sep"></span><span>Reply</span><span>Edit</span><span class="red">Delete</span></span>
+          <span class="nm">You</span>Agreed, shipping it after lunch</span></div>
+        <div class="seen"><span class="n">11</span>Seen by <span class="mini" style="background:#ff5a36;margin-left:2px">AK</span><span class="mini" style="background:#7c5cff">AS</span><span class="mini" style="background:#0ea5a4">LC</span></div>
+        <div class="divider"><span><span class="n" style="width:14px;height:14px;font-size:8px">9</span>New</span></div>
+        <div class="m"><span class="tm">09:40</span><span class="nd">AK</span><span>
+          <span class="quote"><span class="n" style="width:14px;height:14px;font-size:8px">5</span><b>You</b> Agreed, shipping it after lunch</span>
+          <span class="nm">Arjun Kumar</span>Can we wait for the QA sign-off first?</span></div>
+        <div class="m"><span class="tm">09:42</span><span class="nd">AS</span><span><span class="nm">Anika Shah</span><span class="n">7</span><span class="mention me">@Maya</span> can you review the Details panel? <span class="mention">@Lee</span> too</span></div>
+        <span class="jump"><span class="n" style="background:var(--bg);color:var(--fg)">10</span>↓ <b>3</b> new messages</span>
+      </div>
+      <div class="reply-chip"><span class="n">5</span>Replying to <b>Arjun Kumar</b> · Can we wait for the QA sign-off first?<span class="x">×</span></div>
+      <div class="comp-wrap">
+        <div class="pop"><div class="h">Mention</div><div class="row sel"><span class="av" style="background:#0ea5a4;width:20px;height:20px">LC</span>Lee Chen<small>@lee</small></div><div class="row"><span class="av" style="background:#7c5cff;width:20px;height:20px">AS</span>Anika Shah<small>@anika</small></div></div>
+        <div class="comp" style="border-radius:0 0 12px 12px"><span class="txt">Yes, waiting for <span class="mention">@L</span></span><span class="kbd">/ commands</span><span class="btn p">↵</span></div>
+      </div>
+    </div>
+
+    <aside class="det">
+      <div class="dh"><b><span class="n">2</span>Details</b><span class="menu">×</span></div>
+      <div class="sec">
+        <div class="big"><span class="av g" style="background:#7c5cff">DT</span><span><span class="name">Design team <span class="edit">Rename</span></span><span style="color:var(--muted);font-size:10.5px">Created by Maya · 4 members</span></span></div>
+        <span class="k">Colour</span>
+        <div class="sw"><i class="sel" style="background:#7c5cff"></i><i style="background:#ff5a36"></i><i style="background:#0ea5a4"></i><i style="background:#2f6fde"></i><i style="background:#d97706"></i><i style="background:#16a34a"></i><i style="background:#db2777"></i><i style="background:#64748b"></i></div>
+      </div>
+      <div class="sec" style="position:relative">
+        <span class="k" style="display:flex;justify-content:space-between">Members <span style="color:var(--accent);letter-spacing:0;text-transform:none;font-size:10.5px">+ Add people</span></span>
+        <div class="mem"><span class="av" style="background:var(--mine);color:#0f1412">MR<span class="dot"></span></span><span>Maya Rao (you)<small>@maya</small></span><span class="admin">Admin</span></div>
+        <div class="mem"><span class="av" style="background:#ff5a36">AK<span class="dot"></span></span><span>Arjun Kumar<small>@arjun</small></span><span><span class="admin">Admin</span> <span class="menu">⋯</span></span></div>
+        <div class="mem"><span class="av" style="background:#7c5cff">AS<span class="dot"></span></span><span>Anika Shah<small>@anika</small></span><span class="menu">⋯</span></div>
+        <div class="mem"><span class="av" style="background:#0ea5a4">LC</span><span>Lee Chen<small>@lee · offline</small></span><span class="menu" style="color:var(--fg)">⋯</span></div>
+      </div>
+      <div class="memmenu" style="top:300px"><div class="sel">Make admin</div><div>Message Lee</div><div class="red">Remove from group</div></div>
+      <div class="sec"><span class="k">This chat</span><span>Clear history (for you)</span></div>
+      <div class="foot"><span class="btn g">Leave group</span><span class="btn d">Delete group</span></div>
+    </aside>
+  </div>
+  </div>
+  <p class="cap">⓪ Admin-only controls (Rename, colour, member menu, Delete group) are hidden for regular members, not just disabled. Their panel shows names, badges, Add people and Leave group.</p>
+</section>
+
+<section class="grid2">
+  <div>
+    <h3>Command palette <span class="n">13</span></h3>
+    <div class="mini-wrap" style="margin-top:8px">
+      <div class="pal" role="img" aria-label="Command palette mockup with chats, people and message results for the query 'deploy'">
+        <div class="q">⌕ <span>deploy</span><span class="kbd">esc</span></div>
+        <div class="h">Chats</div>
+        <div class="row sel"><span class="av g" style="background:#3a3f4a">OP</span><span><b>Ops</b><small>Group · 4 members</small></span><span class="kbd">↵</span></div>
+        <div class="h">People</div>
+        <div class="row"><span class="av" style="background:#ff5a36">OH</span><span><b>Omar Haddad</b><small>@omar</small></span><span></span></div>
+        <div class="h">Messages</div>
+        <div class="row"><span class="av" style="background:#ff5a36">OH</span><span><b>Ops · Omar</b><small><mark>Deploy</mark> finished: relay v1.0 is live</small></span><small>08:58</small></div>
+        <div class="row"><span class="av" style="background:#ff5a36">OH</span><span><b>Ops · Omar</b><small><mark>Deploy</mark> window is 14:00 today.</small></span><small>Mon</small></div>
+        <div class="foot"><span>↑↓ move</span><span>↵ open</span><span>/ in composer for commands</span></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <h3>Phone: action sheet and details <span class="n">4</span> <span class="n">2</span></h3>
+    <div class="mini-wrap" style="margin-top:8px">
+      <div class="phone" role="img" aria-label="Phone mockup with a bottom action sheet showing emoji, reply, copy, edit and delete">
+        <div class="hd"><span>←</span><span class="av g" style="width:26px;height:26px;background:#7c5cff;font-size:9px">DT</span><span class="t"><b>Design team</b><span>4 members · 3 online</span></span><span class="icon-btn">ⓘ</span></div>
+        <div class="tr">
+          <span class="day">Today</span>
+          <div class="sys"><span class="tm"></span><span class="dm"></span><span><b>Maya</b> added <b>Lee</b></span></div>
+          <div class="m"><span class="nd">AS</span><span><span class="nm">Anika</span>Palette cards are in<span class="reacts"><span class="rx mine">👍 <i>3</i></span></span></span></div>
+          <div class="m me hl"><span class="nd">MR</span><span><span class="nm">You</span>Agreed, shipping it after lunch</span></div>
+        </div>
+        <div class="act"><span class="grab"></span><div class="emo"><span>👍</span><span>❤️</span><span>😂</span><span>🎉</span><span>😮</span><span>👀</span></div><div class="o">Reply</div><div class="o">Copy text</div><div class="o">Edit</div><div class="o red">Delete</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="grid2">
+  <div>
+    <h3>Settings: Privacy and Notifications <span class="n">15</span></h3>
+    <div class="mini-wrap" style="margin-top:8px">
+      <div class="settings-card">
+        <b style="font-family:var(--display)">Privacy</b>
+        <div class="toggle"><span>Read receipts<small>Show others when you've seen their messages. Turning this off also hides who has seen yours.</small></span><span class="sw-t"></span></div>
+        <b style="font-family:var(--display);margin-top:6px">Notifications</b>
+        <div class="toggle"><span>Browser notifications<small>For mentions and direct messages while Relay is in the background. Your browser will ask for permission.</small></span><span class="sw-t off"></span></div>
+        <div style="display:grid;gap:6px"><span>Muted chats<small style="display:block;color:var(--muted);font-size:11px">Muted chats only notify you when you're mentioned. Tick the ones to unmute.</small></span>
+          <label style="display:flex;gap:8px;align-items:center"><span style="width:14px;height:14px;border-radius:4px;background:var(--accent);display:grid;place-items:center;color:#fff;font-size:10px">✓</span><span class="av g" style="width:20px;height:20px;background:#3a3f4a">OP</span>Ops</label>
+          <label style="display:flex;gap:8px;align-items:center"><span style="width:14px;height:14px;border-radius:4px;border:1.5px solid var(--line)"></span><span class="av g" style="width:20px;height:20px;background:#d97706">BC</span>Book club</label>
+          <label style="display:flex;gap:8px;align-items:center"><span style="width:14px;height:14px;border-radius:4px;border:1.5px solid var(--line)"></span><span class="av" style="width:20px;height:20px;background:#ff5a36">AK</span>Arjun Kumar</label>
+          <span><span class="btn g" style="border-color:var(--accent);color:var(--accent)">Unmute selected (1)</span></span></div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <h3>Keyboard shortcuts <span class="n">14</span></h3>
+    <div class="mini-wrap" style="margin-top:8px">
+      <div class="sheet">
+        <b style="font-family:var(--display)">Keyboard shortcuts</b>
+        <div class="r"><span>Open command palette</span><span class="kbd">⌘K / Ctrl K</span></div>
+        <div class="r"><span>Send · new line</span><span class="kbd">↵ · ⇧↵</span></div>
+        <div class="r"><span>Edit your last message</span><span class="kbd">↑</span></div>
+        <div class="r"><span>Mention · command</span><span class="kbd">@ · /</span></div>
+        <div class="r"><span>Jump to latest</span><span class="kbd">End</span></div>
+        <div class="r"><span>Close panel or dialog</span><span class="kbd">Esc</span></div>
+        <div class="r"><span>Show this sheet</span><span class="kbd">?</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Account: username rules, account menu, settings sections</h2>
+  <div class="grid2">
+    <div>
+      <h3>Username rules (signup)</h3>
+      <div class="tbl" style="margin-top:8px"><table style="min-width:0">
+        <thead><tr><th>Rule</th><th>Valid</th><th>Rejected</th></tr></thead>
+        <tbody>
+          <tr><td>Unique</td><td><code>maya_rao</code></td><td><code>maya_rao</code> if taken</td></tr>
+          <tr><td>Lowercase letters, digits and <code>_</code> only</td><td><code>lee2</code></td><td><code>Lee</code>, <code>lee.chen</code>, <code>lee-chen</code></td></tr>
+          <tr><td><code>_</code> stands in for spaces</td><td><code>anika_shah</code></td><td><code>anika shah</code></td></tr>
+          <tr><td>No two <code>_</code> in a row</td><td><code>a_b_c</code></td><td><code>a__b</code></td></tr>
+          <tr><td>Can't start or end with <code>_</code></td><td><code>sam_2</code></td><td><code>_sam</code>, <code>sam_</code></td></tr>
+          <tr><td>3–30 characters, starts with a letter</td><td><code>lee</code>, <code>maya_rao2</code></td><td><code>al</code>, <code>2fast</code></td></tr>
+          <tr><td>Existing accounts</td><td colspan="2">Renamed by a migration to the new format; clashes get <code>_2</code>, <code>_3</code>…; the migration prints old → new names</td></tr>
+        </tbody>
+      </table></div>
+      <p class="cap">While you type, the field formats for you: capitals become lowercase and spaces become a single <code>_</code>; other characters show an inline error. A hint under the field states the rules. Sign-in accepts any letter case. All rules confirmed.</p>
+    </div>
+    <div>
+      <h3>Account menu <span class="n">16</span></h3>
+      <div class="mini-wrap" style="margin-top:8px;background:var(--chrome);min-height:260px;align-items:end">
+        <div style="width:230px;display:grid;gap:8px">
+          <div style="background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:5px;box-shadow:0 18px 40px -16px rgba(0,0,0,.6);font-size:12.5px" role="img" aria-label="Account menu popover with Settings, Keyboard shortcuts and Sign out">
+            <div style="padding:7px 9px;border-bottom:1px solid var(--line);margin-bottom:4px"><b>Maya Rao</b><br><small style="color:var(--muted)">@maya</small></div>
+            <div style="padding:6px 9px;border-radius:7px;background:var(--hover)">⚙ Settings</div>
+            <div style="padding:6px 9px">⌨ Keyboard shortcuts <span class="kbd" style="float:right">?</span></div>
+            <div style="padding:6px 9px;color:var(--danger);border-top:1px solid var(--line);margin-top:4px">↪ Sign out</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-top:1px solid #2b2f38"><span class="av" style="background:var(--mine);color:#0f1412">MR</span><span style="flex:1;color:#fff;font-weight:700;line-height:1.2">Maya Rao ▾<br><small style="font-weight:500;opacity:.7">@maya</small></span><span class="btn g" style="background:transparent;color:#fff;border-color:#3a3f4a">⚙</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:20px">
+    <h3>Settings with sections <span class="n">17</span></h3>
+    <div class="mock-scroll" style="margin-top:8px">
+      <div style="display:grid;grid-template-columns:200px minmax(0,1fr);min-width:720px;height:330px;border:1px solid var(--pg-ln);border-radius:14px;overflow:hidden;font-family:var(--body);font-size:12.5px" role="img" aria-label="Settings page with a section list on the left and the Profile section open">
+        <div style="background:var(--chrome);color:var(--chrome-fg);padding:12px 8px;display:grid;align-content:start;gap:2px">
+          <span class="wm" style="padding:0 6px 8px">relay</span>
+          <span style="padding:0 6px 8px;font-size:11px">← Back to chats</span>
+          <span style="padding:6px 8px;border-radius:7px;background:var(--chrome-raised);color:#fff;font-weight:700">Profile</span>
+          <span style="padding:6px 8px">Appearance</span>
+          <span style="padding:6px 8px">Notifications</span>
+          <span style="padding:6px 8px">Privacy</span>
+          <span style="padding:6px 8px">Password</span>
+        </div>
+        <div style="background:var(--bg);color:var(--fg);padding:18px 22px;display:grid;align-content:start;gap:10px">
+          <b style="font-family:var(--display);font-size:17px">Profile</b>
+          <div style="display:flex;gap:12px;align-items:center"><span class="av" style="width:44px;height:44px;border-radius:12px;background:var(--mine);color:#0f1412;font-size:14px">MR</span><span><b>Maya Rao</b><br><small style="color:var(--muted)">@maya · usernames can't be changed</small></span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><span><small style="color:var(--muted)">First name</small><span style="display:block;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 9px">Maya</span></span><span><small style="color:var(--muted)">Last name</small><span style="display:block;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 9px">Rao</span></span></div>
+          <span><small style="color:var(--muted)">Email</small><span style="display:block;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:6px 9px">maya@example.com</span></span>
+          <span><span class="btn p">Save profile</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Delivery order</h2>
+  <ol class="list">
+    <li><span class="tag">P9-pre</span><span><b>dev-account-ux</b>: username rules (below) on signup with live formatting, case-insensitive sign-in; sidebar footer with gear button and account menu; Settings split into sections (Profile with read-only @username, Appearance, Password; Notifications and Privacy arrive with P10c and P11b). Separate PR before P9a</span></li>
+    <li><span class="tag">P9a</span><span><b>dev-group-admins</b>: membership model with admin flag and join date, migration (earliest member becomes admin), permission rules 1–4, system messages, Details panel, header icon buttons (Clear history moves into Details), sidebar footer without the Theme button, live disconnect of removed members</span></li>
+    <li><span class="tag">P9b</span><span><b>dev-live-rooms</b>: rooms added, removed and renamed live in the sidebar; "no longer in this group" state</span></li>
+    <li><span class="tag">P10a</span><span><b>dev-replies</b>: reply-to, quote, jump-to-original, composer chip, new hover toolbar, phone action sheet</span></li>
+    <li><span class="tag">P10b</span><span><b>dev-reactions</b>: six emoji, pills, who-reacted, toolbar quick reactions</span></li>
+    <li><span class="tag">P10c</span><span><b>dev-mentions-notifications</b>: @ picker, mention chips, "@" badge, mute bell, browser notifications, Settings → Notifications</span></li>
+    <li><span class="tag">P10d</span><span><b>dev-command-palette</b>: ⌘K palette, in-room search, slash commands</span></li>
+    <li><span class="tag">P11a–d</span><span><b>dev-reading-aids</b>, <b>dev-seen-by</b> (+ Settings → Privacy), <b>dev-shortcuts-help</b>, <b>dev-group-colours</b></span></li>
+  </ol>
+  <p class="lede" style="margin-top:12px">Kept in mind for later: hide direct chats, rate limits, password reset, browser tests in CI, production deploy, hardening.</p>
+</section>
+</div>

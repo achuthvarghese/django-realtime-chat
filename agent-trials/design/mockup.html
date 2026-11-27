@@ -1,0 +1,34 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Gone pane and slide-in</title>
+<style>
+:root{--bg:#f3f3f5;--fg:#16181d;--muted:#5d6170;--card:#fff;--line:#dcdde3}
+:root[data-m=dark]{--bg:#111317;--fg:#e9eaee;--muted:#9a9eab;--card:#1b1e24;--line:#2f333c}
+body{margin:0;padding:24px;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px} h2{font-size:16px;margin:28px 0 10px} p{margin:0;color:var(--muted)}
+.row{display:flex;gap:16px;align-items:flex-start;margin-bottom:14px}
+.lab{width:150px;flex:none;padding-top:4px} .lab b{display:block} .lab span{color:var(--muted);font-size:12px} .lab .rec{color:#fff}
+.f{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card);flex:none;position:relative}
+.f iframe{border:0;transform-origin:0 0;display:block}
+.cap{font-size:11px;color:var(--muted);text-align:center;margin-top:4px}
+.rec{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:99px;background:#12805c;color:#fff;margin-top:4px}
+</style></head><body>
+<script>
+const m = new URLSearchParams(location.search).get('mode') || 'light';
+document.documentElement.dataset.m = m;
+function fr(state, w, h, s, extra='', ch) {
+  const cw = Math.round(w*s), chh = Math.round((ch||h)*s);
+  return `<div><div class="f" style="width:${cw}px;height:${chh}px"><iframe src="frame.html?state=${state}&mode=${m}${extra}" width="${w}" height="${h}" style="transform:scale(${s})"></iframe></div>${ch!==undefined||extra?`<div class="cap">t = ${extra.split('=')[1]}ms</div>`:''}</div>`;
+}
+let html = `<h1>Gone pane and room slide-in (${m})</h1><p>Rendered with the real tokens.css, relay.css and chat.css plus proposed overrides. Desktop 1280×800 and phone 390×844, both at 50%.</p>
+<h2>1. “You’re no longer in this chat” (socket closed 4403)</h2>`;
+const rows = [['current','Current','Header and room name gone; generic heading'],
+  ['a','Option A','Keep a muted header, name the chat, 44px touch button, focus the heading', true],
+  ['b','Option B','Keep loaded messages read-only; notice replaces the composer (4403 only)']];
+for (const [s, l, d, rec] of rows) html += `<div class="row"><div class="lab"><b>${l}</b><span>${d}</span>${rec?'<br><span class="rec">Recommended</span>':''}</div>${fr(s,1280,800,.5)}${fr(s,390,844,.5)}</div>`;
+html += `<h2>2. New room arriving in the list (phone, frozen at time t)</h2>`;
+for (const [s,l,d,rec] of [['slide-current','Current','320ms slide from −10px; rows below jump at t=0'],['slide-new','Proposed','Row height grows 200ms, content fades, accent tint fades over 1.6s', true]]) {
+  html += `<div class="row"><div class="lab"><b>${l}</b><span>${d}</span>${rec?'<br><span class="rec">Recommended</span>':''}</div>`;
+  for (const t of [0, 80, 160, 320, 900]) html += fr(s,390,844,.4,`&t=${t}`,330);
+  html += `</div>`;
+}
+document.body.insertAdjacentHTML('beforeend', html);
+</script></body></html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-palette="graphite" data-mode="light" data-density="compact">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="file:///home/user/django-realtime-chat/core/static/core/css/tokens.css">
+<link rel="stylesheet" href="file:///home/user/django-realtime-chat/core/static/core/css/relay.css">
+<link rel="stylesheet" href="file:///home/user/django-realtime-chat/chat/static/chat/css/chat.css">
+<style>
+/* ---- Proposed: gone pane, option A (context kept) ---- */
+.chat-head--gone .avatar { opacity: .45; }
+.chat-head--gone .chat-head__title { color: var(--muted); }
+.chat-gone--a { text-align: left; }
+.chat-gone--a h1:focus { outline: none; }
+.chat-gone__icon { width: 40px; height: 40px; border-radius: var(--radius-md); display: grid; place-items: center;
+  background: var(--hover); color: var(--muted); }
+@media (pointer: coarse), (max-width: 599px) { .chat-gone .btn { min-height: 44px; } }
+/* ---- Proposed: gone pane, option B (notice replaces composer) ---- */
+.chat-scroll--frozen { opacity: .6; }
+.gone-bar { margin: 0 var(--space-3) var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--line);
+  border-radius: var(--radius-lg); background: var(--surface); display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.gone-bar p { flex: 1 1 220px; font-size: var(--text-sm); }
+.gone-bar strong { display: block; font-size: var(--text-md); }
+@media (max-width: 599px) { .gone-bar { margin: 0 var(--space-2) var(--space-2); } .gone-bar .btn { width: 100%; min-height: 44px; } }
+/* ---- Proposed: slide-in ---- */
+.room-list__new--v2 { display: grid; grid-template-rows: 1fr; animation: room-grow 200ms cubic-bezier(.2,0,0,1) both; }
+.room-list__new--v2 > .room-link { min-height: 0; overflow: hidden;
+  animation: room-fade 180ms 60ms ease-out both, room-flash 1600ms 200ms ease-out both; }
+@keyframes room-grow { from { grid-template-rows: 0fr; } }
+@keyframes room-fade { from { opacity: 0; } }
+@keyframes room-flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
+/* mockup only: freeze animations at a given time */
+.freeze, .freeze * { animation-play-state: paused !important; }
+</style></head>
+<body>
+<script src="parts.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const state = q.get('state') || 'current';
+document.documentElement.dataset.mode = q.get('mode') || 'light';
+const P = window.PARTS;
+const wrap = document.createElement('div');
+document.body.append(wrap);
+const isSlide = state.startsWith('slide');
+wrap.innerHTML = `<div class="chat ${isSlide ? '' : 'chat--room-open'}">${P.side}<main class="chat-main"></main></div>`;
+const main = wrap.querySelector('.chat-main');
+const list = wrap.querySelector('.room-list');
+const first = list.querySelector('li');
+const title = first.querySelector('.room-link__title').textContent.trim();
+const head = P.head;
+if (state === 'current') {
+  first.remove();
+  main.innerHTML = `<div class="chat-gone" role="status"><h1>You're no longer in this chat</h1>
+   <p class="muted">You were removed or left, so you can't read or send messages here any more.</p>
+   <div><a class="btn btn--primary" href="#">Back to chats</a></div></div>`;
+} else if (state === 'a') {
+  first.remove();
+  const h = document.createElement('div'); h.innerHTML = head; const hd = h.firstElementChild;
+  hd.classList.add('chat-head--gone');
+  hd.querySelector('.chat-head__details')?.remove();
+  const t = hd.querySelector('.chat-head__title'); const tp = document.createElement('p'); tp.className = t.className; tp.textContent = t.textContent; t.replaceWith(tp);
+  hd.querySelector('.chat-head__meta').innerHTML = '<span>Not a member</span>';
+  main.append(hd);
+  const g = document.createElement('div'); g.className = 'chat-gone chat-gone--a';
+  g.innerHTML = `<span class="chat-gone__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/></svg></span>
+   <h1 tabindex="-1">You’re no longer in ${title}</h1>
+   <p class="muted">You were removed or left, so you can’t read or send messages here any more. Ask a member to add you back.</p>
+   <div><a class="btn btn--primary" href="#">Back to chats</a></div>`;
+  main.append(g);
+} else if (state === 'b') {
+  first.remove();
+  main.innerHTML = head + P.scroll.replace('class="chat-scroll"', 'class="chat-scroll chat-scroll--frozen" aria-disabled="true"') +
+   `<div class="gone-bar" role="status"><p><strong>You’re no longer in ${title}</strong><span class="muted">You were removed or left. Messages above are what you’d already seen.</span></p><a class="btn btn--primary" href="#">Back to chats</a></div>`;
+  main.querySelector('.chat-head__details')?.remove();
+  main.querySelector('.chat-head__meta').innerHTML = '<span>Not a member</span>';
+  main.querySelector('.chat-scroll').scrollTop = 1e6;
+} else if (isSlide) {
+  main.innerHTML = '<div class="chat-welcome"><h1>Pick a chat</h1></div>';
+  const t = Number(q.get('t') || 0);
+  const li = first.cloneNode(true); li.querySelector('.room-link').removeAttribute('aria-current'); li.querySelector('.room-link__unread').hidden = true;
+  li.querySelector('.room-link__title').textContent = 'Launch crew';
+  li.querySelector('.room-link__avatar').textContent = 'LC';
+  li.querySelector('.room-link__preview').textContent = 'Sam: Added you to the group';
+  li.classList.add(state === 'slide-current' ? 'room-list__new' : 'room-list__new--v2', 'freeze');
+  li.style.setProperty('--t', t);
+  list.prepend(li);
+  for (const el of [li, ...li.querySelectorAll('*')]) {
+    const cs = getComputedStyle(el); if (cs.animationName === 'none') continue;
+    const delays = cs.animationDelay.split(',').map(s => parseFloat(s) * (s.includes('ms') ? 1 : 1000));
+    el.style.animationDelay = delays.map(d => `${d - t}ms`).join(',');
+  }
+}
+</script>
+</body></html>
