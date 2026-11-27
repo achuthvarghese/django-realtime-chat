@@ -9,8 +9,9 @@
 - No co-author lines in commits or PR descriptions.
 - One descriptive branch off `dev` and one PR into `master` per case;
   fast-forward `dev` after each merge. Update all docs, create new ones.
-- Git identity `achuthvarghese` / `acvknr@gmail.com` (resets on session
-  restart; check before committing).
+- Git identity: the repository owner, the same author as the project's
+  existing commits (read it from `git log`; resets on session restart,
+  check before committing). No email address in any file.
 - This `claude-memory` branch keeps session records; never merge it.
   **Update it after every merged PR** with the phase's notes, reports,
   screenshots and mockups, and this log.
@@ -58,6 +59,9 @@
 - **Live rooms (P9b):** the room list updates over the inbox socket
   (`room_added`, `room_changed`, `room_removed`); the "Refresh" prompt was
   removed.
+- **Sub agent vs sub session:** builders (backend, frontend, devops) run
+  as sub sessions with their own container and `send_message`; reviewers,
+  planner, database designer and docs writer stay sub agents.
 - **Agents:** 11 agents in `.claude/agents/` (7 read-only reviewers, 4
   builders). The main session is the orchestrator; builders work in
   worktrees on `dev-<phase>-<role>` branches, and one PR per phase.
