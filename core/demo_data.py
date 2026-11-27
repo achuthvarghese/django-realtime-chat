@@ -77,7 +77,14 @@ SCRIPT = [
     # Ops
     ("ops", "omar", "Deploy window is 14:00 today.", 300),
     ("ops", "sofia", "Database backups verified this morning.", 240),
-    ("ops", "lee", "Rolling out relay v1.0 now", 30),
+    # Replies to a line deleted below, so its quote reads "Message deleted".
+    (
+        "ops",
+        "lee",
+        "Rolling out relay v1.0 now",
+        30,
+        "Database backups verified this morning.",
+    ),
     ("ops", "omar", "Deploy finished: relay v1.0 is live", 8),
     ("ops", "lee", "Smoke tests passed", 6, "Deploy finished: relay v1.0 is live"),
     # Book club
