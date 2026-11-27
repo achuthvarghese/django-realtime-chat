@@ -2445,6 +2445,9 @@ class TestReplyMigration:
         executor = MigrationExecutor(connection)
         executor.migrate([("chat", "0005_message_reply_to")])
         assert "reply_to_id" in columns()
+        # Back to the latest schema so later tests see every table.
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
 
 
 @pytest.mark.django_db
@@ -2885,6 +2888,7 @@ class TestReplyReviewSockets:
             "deleted",
             "kind",
             "reply_to",
+            "reactions",
         }
         assert (frame["type"], frame["message"], frame["edited"]) == (
             "message_updated",
@@ -2911,3 +2915,424 @@ class TestReplyDemoDeleted:
         deleted = [q for q in quotes if q["available"] and q["deleted"]]
         assert len(deleted) == 1 and "excerpt" not in deleted[0]
         assert deleted[0]["user"] == "sofia"
+
+
+# Reactions (P10b)
+
+
+def react(message, user, emoji, at=None):
+    from chat.models import Reaction
+
+    reaction = Reaction.objects.create(message=message, user=user, emoji=emoji)
+    if at is not None:
+        Reaction.objects.filter(pk=reaction.pk).update(created_at=at)
+    return reaction
+
+
+CANT_REACT_FRAME = {
+    "type": "error",
+    "code": 400,
+    "message": "You can't react to that message",
+    "for": "react",
+}
+
+
+def without_ts(frame):
+    return {k: v for k, v in frame.items() if k != "ts"}
+
+
+@pytest.mark.django_db
+class TestReactionModel:
+    def test_one_of_each_emoji_per_person(self, maya, room):
+        from django.db import IntegrityError, transaction
+
+        message = visible_text(room, maya, "hi")
+        react(message, maya, "heart")
+        react(message, maya, "party")  # another emoji is fine
+        with pytest.raises(IntegrityError), transaction.atomic():
+            react(message, maya, "heart")
+
+    def test_only_known_emoji(self, maya, room):
+        from django.db import IntegrityError, transaction
+
+        message = visible_text(room, maya, "hi")
+        with pytest.raises(IntegrityError), transaction.atomic():
+            react(message, maya, "skull")
+
+    def test_removed_with_message_and_kept_when_reactor_leaves(
+        self, maya, arjun, lee, group
+    ):
+        from chat import groups
+        from chat.models import Reaction
+
+        message = visible_text(group, maya, "hi")
+        react(message, lee, "heart")
+        groups.leave(group, lee)
+        assert Reaction.objects.filter(message=message, user=lee).exists()
+        message.delete()
+        assert not Reaction.objects.exists()
+
+    def test_emoji_table(self):
+        from chat.presenters import reaction_emoji_table
+
+        table = reaction_emoji_table()
+        assert [r["key"] for r in table] == [
+            "thumbs_up",
+            "heart",
+            "laugh",
+            "wow",
+            "sad",
+            "party",
+        ]
+        assert table[0] == {"key": "thumbs_up", "char": "👍", "label": "Thumbs up"}
+        assert table[1]["char"] == "❤️"
+        assert [r["label"] for r in table[2:]] == [
+            "Laughing",
+            "Surprised",
+            "Sad",
+            "Party",
+        ]
+
+
+@pytest.mark.django_db
+class TestReactionPayload:
+    def test_emoji_in_fixed_order_and_people_by_time(self, maya, arjun, lee, group):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from chat.presenters import reactions_for_messages
+
+        maya.first_name, maya.last_name = "Maya", "Rao"
+        maya.save()
+        message = visible_text(group, maya, "hi")
+        t = timezone.now()
+        react(message, lee, "party", t)
+        react(message, maya, "party", t - timedelta(seconds=5))
+        react(message, arjun, "thumbs_up", t + timedelta(seconds=5))
+        assert reactions_for_messages([message.pk]) == {
+            message.pk: [
+                {
+                    "emoji": "thumbs_up",
+                    "count": 1,
+                    "users": [{"user": "arjun", "name": "arjun"}],
+                },
+                {
+                    "emoji": "party",
+                    "count": 2,
+                    "users": [
+                        {"user": "maya", "name": "Maya Rao"},
+                        {"user": "lee", "name": "Lee"},
+                    ],
+                },
+            ]
+        }
+
+    def test_deleted_system_and_new_messages_have_none(self, maya, room):
+        from chat.presenters import message_data, reactions_for_message
+
+        message = visible_text(room, maya, "hi")
+        assert message_data(message)["reactions"] == []
+        react(message, maya, "heart")
+        listed = reactions_for_message(message)
+        assert len(listed) == 1
+        assert message_data(message, reactions=listed)["reactions"] == listed
+        system = Message.objects.create(
+            content="x", room=room, user=maya, kind=Message.Kinds.SYSTEM
+        )
+        assert message_data(system, reactions=listed)["reactions"] == []
+        from django.utils import timezone
+
+        message.deleted_at = timezone.now()
+        assert message_data(message, reactions=listed)["reactions"] == []
+        assert reactions_for_message(message) == []
+
+    def test_history_and_page_carry_reactions(self, client, maya, arjun, room):
+        message = visible_text(room, arjun, "hi")
+        react(message, maya, "laugh")
+        client.force_login(maya)
+        response = client.get(reverse("chat:history", args=[room.id]))
+        (data,) = response.json()["messages"]
+        assert data["reactions"] == [
+            {"emoji": "laugh", "count": 1, "users": [{"user": "maya", "name": "maya"}]}
+        ]
+        response = client.get(reverse("chat:chat"), {"room": room.id})
+        assert response.context["room_messages"][0]["reactions"] == data["reactions"]
+        assert len(response.context["reaction_emoji"]) == 6
+
+    def test_history_costs_one_query_more_however_many_reactions(
+        self, maya, arjun, room
+    ):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from chat.models import Reaction
+        from chat.views import history_page
+
+        messages = make_messages(room, arjun, 30)
+
+        def queries():
+            with CaptureQueriesContext(connection) as ctx:
+                page, _ = history_page(room, maya)
+            return page, [q["sql"] for q in ctx.captured_queries]
+
+        page, bare = queries()
+        assert all(m["reactions"] == [] for m in page)
+        for m in messages:
+            for emoji in ("thumbs_up", "heart", "laugh"):
+                react(m, maya, emoji)
+                react(m, arjun, emoji)
+        page, busy = queries()
+        assert len(busy) == len(bare)
+        assert sum('"chat_reaction"' in q for q in busy) == 1
+        assert all(m["reactions"][0]["count"] == 2 for m in page)
+        assert Reaction.objects.count() == 180
+
+
+@pytest.mark.django_db(transaction=True)
+class TestReactionSockets:
+    async def connect(self, room, *users):
+        sockets = []
+        for user in users:
+            socket = make_communicator(room.id, user)
+            assert (await socket.connect())[0]
+            sockets.append(socket)
+        return sockets
+
+    async def close(self, *sockets):
+        for socket in sockets:
+            await socket.disconnect()
+
+    async def reactions(self, message):
+        from chat.models import Reaction
+
+        def rows():
+            return sorted(
+                Reaction.objects.filter(message=message).values_list(
+                    "user__username", "emoji"
+                )
+            )
+
+        return await database_sync_to_async(rows)()
+
+    async def test_on_and_off_reach_everyone_and_are_idempotent(
+        self, maya, arjun, room
+    ):
+        message = await database_sync_to_async(visible_text)(room, arjun, "hi")
+        maya_socket, arjun_socket = await self.connect(room, maya, arjun)
+        frame = {"type": "react", "id": str(message.id), "emoji": "heart"}
+
+        await maya_socket.send_json_to({**frame, "on": True})
+        expected = {
+            "type": "reactions_updated",
+            "id": str(message.id),
+            "reactions": [
+                {
+                    "emoji": "heart",
+                    "count": 1,
+                    "users": [{"user": "maya", "name": "maya"}],
+                }
+            ],
+        }
+        for socket in (maya_socket, arjun_socket):
+            assert await socket.receive_json_from() == expected
+        assert await self.reactions(message) == [("maya", "heart")]
+
+        # Already on: success, nothing saved twice, only the sender hears.
+        await maya_socket.send_json_to({**frame, "on": True})
+        assert await maya_socket.receive_json_from() == expected
+        assert await arjun_socket.receive_nothing(timeout=0.1)
+        assert await self.reactions(message) == [("maya", "heart")]
+
+        # Own messages too.
+        await arjun_socket.send_json_to({**frame, "on": True})
+        for socket in (maya_socket, arjun_socket):
+            data = await socket.receive_json_from()
+            assert data["reactions"][0]["count"] == 2
+
+        await maya_socket.send_json_to({**frame, "on": False})
+        for socket in (maya_socket, arjun_socket):
+            data = await socket.receive_json_from()
+            assert data["reactions"] == [
+                {
+                    "emoji": "heart",
+                    "count": 1,
+                    "users": [{"user": "arjun", "name": "arjun"}],
+                }
+            ]
+        await maya_socket.send_json_to({**frame, "on": False})
+        assert (await maya_socket.receive_json_from())["type"] == "reactions_updated"
+        assert await arjun_socket.receive_nothing(timeout=0.1)
+        assert await self.reactions(message) == [("arjun", "heart")]
+        await self.close(maya_socket, arjun_socket)
+
+    async def test_refused_targets_and_bad_frames_get_one_error(
+        self, maya, arjun, lee, room
+    ):
+        from django.utils import timezone
+
+        def build():
+            other = Room.objects.create(name="other", type=Room.RoomTypes.PRIVATE)
+            other.members.add(maya, lee)
+            elsewhere = visible_text(other, lee, "elsewhere")
+            system = Message.objects.create(
+                content="event", room=room, user=arjun, kind=Message.Kinds.SYSTEM
+            )
+            system.visible_for.add(maya, arjun)
+            deleted = visible_text(room, arjun, "gone")
+            Message.objects.filter(pk=deleted.pk).update(
+                content="", deleted_at=timezone.now()
+            )
+            hidden = visible_text(room, arjun, "cleared", visible=[arjun])
+            fine = visible_text(room, arjun, "fine")
+            return [elsewhere, system, deleted, hidden], fine
+
+        refused, fine = await database_sync_to_async(build)()
+        (socket,) = await self.connect(room, maya)
+        good = {"type": "react", "id": str(fine.id), "emoji": "heart", "on": True}
+        frames = [{**good, "id": str(m.id)} for m in refused] + [
+            {**good, "id": "not-a-uuid"},
+            {**good, "id": 7},
+            {**good, "id": None},
+            {k: v for k, v in good.items() if k != "id"},
+            {**good, "id": "00000000-0000-0000-0000-000000000000"},
+            {**good, "emoji": "skull"},
+            {**good, "emoji": "👍"},
+            {**good, "emoji": ["heart"]},
+            {k: v for k, v in good.items() if k != "emoji"},
+            {**good, "on": "true"},
+            {**good, "on": 1},
+            {**good, "on": None},
+            {k: v for k, v in good.items() if k != "on"},
+        ]
+        for i, frame in enumerate(frames):
+            await socket.send_json_to(frame)
+            assert without_ts(await socket.receive_json_from()) == CANT_REACT_FRAME
+            if i % 10 == 9:
+                # Every react frame counts toward the rate limit: reconnect
+                # for a fresh window.
+                await self.close(socket)
+                (socket,) = await self.connect(room, maya)
+        from chat.models import Reaction
+
+        count = await database_sync_to_async(Reaction.objects.count)()
+        assert count == 0
+        await self.close(socket)
+
+    async def test_rate_limit(self, maya, arjun, room):
+        from chat.models import Reaction
+
+        message = await database_sync_to_async(visible_text)(room, arjun, "hi")
+        (socket,) = await self.connect(room, maya)
+        for _ in range(10):
+            await socket.send_json_to(
+                {"type": "react", "id": str(message.id), "emoji": "nope", "on": True}
+            )
+            assert (await socket.receive_json_from())["code"] == 400
+        await socket.send_json_to(
+            {"type": "react", "id": str(message.id), "emoji": "heart", "on": True}
+        )
+        assert without_ts(await socket.receive_json_from()) == {
+            "type": "error",
+            "code": 429,
+            "message": "Slow down",
+            "for": "react",
+        }
+        assert not await database_sync_to_async(Reaction.objects.exists)()
+        await self.close(socket)
+
+    async def test_audience_is_people_who_still_see_it(self, maya, arjun, lee, group):
+        from chat.models import Membership
+
+        def build():
+            message = visible_text(group, maya, "hi", visible=[maya, arjun, lee])
+            arjun.visible_for.remove(message)  # arjun cleared history
+            sam = User.objects.create_user("sam", password="pw")
+            group.members.add(sam)  # joined later: can't see it
+            return message, sam
+
+        message, sam = await database_sync_to_async(build)()
+        sockets = await self.connect(group, maya, arjun, lee, sam)
+        # Lee is removed but their socket missed the revoke event.
+        await database_sync_to_async(
+            Membership.objects.filter(room=group, user=lee).delete
+        )()
+        await sockets[0].send_json_to(
+            {"type": "react", "id": str(message.id), "emoji": "wow", "on": True}
+        )
+        assert (await sockets[0].receive_json_from())["type"] == "reactions_updated"
+        for socket in sockets[1:]:
+            assert await socket.receive_nothing(timeout=0.1)
+        # Arjun can't react to what he cleared.
+        await sockets[1].send_json_to(
+            {"type": "react", "id": str(message.id), "emoji": "wow", "on": True}
+        )
+        assert without_ts(await sockets[1].receive_json_from()) == CANT_REACT_FRAME
+        await self.close(*sockets)
+
+    async def test_edit_carries_reactions_and_delete_clears_them(
+        self, maya, arjun, room
+    ):
+        from chat.models import Reaction
+
+        def build():
+            message = visible_text(room, maya, "hi")
+            react(message, arjun, "party")
+            return message
+
+        message = await database_sync_to_async(build)()
+        maya_socket, arjun_socket = await self.connect(room, maya, arjun)
+        await maya_socket.send_json_to(
+            {"type": "edit_message", "id": str(message.id), "message": "hey"}
+        )
+        for socket in (maya_socket, arjun_socket):
+            frame = await socket.receive_json_from()
+            assert frame["type"] == "message_updated"
+            assert frame["reactions"][0]["users"] == [
+                {"user": "arjun", "name": "arjun"}
+            ]
+        await maya_socket.send_json_to(
+            {"type": "delete_message", "id": str(message.id)}
+        )
+        for socket in (maya_socket, arjun_socket):
+            frame = await socket.receive_json_from()
+            assert (frame["deleted"], frame["reactions"]) == (True, [])
+        assert not await database_sync_to_async(Reaction.objects.exists)()
+        await self.close(maya_socket, arjun_socket)
+
+    async def test_new_messages_and_inbox_carry_none(self, maya, arjun, room):
+        message = await database_sync_to_async(visible_text)(room, arjun, "q")
+        inbox = make_inbox(arjun)
+        await inbox.connect()
+        await inbox.receive_json_from()  # presence snapshot
+        (socket,) = await self.connect(room, maya)
+        await socket.send_json_to({"type": "save_message", "message": "a"})
+        assert (await socket.receive_json_from())["reactions"] == []
+        frame = await next_frame_of_type(inbox, "room_activity")
+        assert frame["message"]["reactions"] == []
+        # Reacting changes nothing in the room list.
+        await socket.send_json_to(
+            {"type": "react", "id": str(message.id), "emoji": "sad", "on": True}
+        )
+        assert (await socket.receive_json_from())["type"] == "reactions_updated"
+        assert await inbox.receive_nothing(timeout=0.2)
+        await self.close(socket, inbox)
+
+
+class TestReactRateLimitWindow:
+    def test_window_slides(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from chat.channels import consumers
+
+        clock = [100.0]
+        monkeypatch.setattr(
+            consumers, "time", SimpleNamespace(monotonic=lambda: clock[0])
+        )
+        consumer = consumers.ChatConsumer()
+        assert not any(consumer.react_rate_limited() for _ in range(10))
+        assert consumer.react_rate_limited()
+        clock[0] += 4.9
+        assert consumer.react_rate_limited()
+        clock[0] += 0.2  # the first ten are now more than 5 s old
+        assert not consumer.react_rate_limited()
