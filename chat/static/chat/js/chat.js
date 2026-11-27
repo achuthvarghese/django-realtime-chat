@@ -571,7 +571,8 @@
                 applyRoomUpdate(data);
             } else if (data.type === "error") {
                 showToast(data.message);
-                restorePendingReply();
+                // A refused send gives back the reply's text and target.
+                if (data.for === "save_message") restorePendingReply();
             }
         });
 
