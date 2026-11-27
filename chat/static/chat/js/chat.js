@@ -168,16 +168,12 @@
     }
     const timeId = (id) => `msg-time-${id}`;
 
-    // Reactions: a fixed set of six, in this order. The server sends each
-    // message's `reactions` as [{emoji, count, users: [{user, name}]}].
-    const REACTIONS = [
-        ["thumbs_up", "\u{1F44D}", "Thumbs up"],
-        ["heart", "❤️", "Heart"],
-        ["laugh", "\u{1F602}", "Laughing"],
-        ["wow", "\u{1F62E}", "Surprised"],
-        ["sad", "\u{1F622}", "Sad"],
-        ["party", "\u{1F389}", "Party"],
-    ];
+    // Reactions: the server's fixed set ("reaction-emoji": [{key, char,
+    // label}] in display order). Each message's `reactions` is
+    // [{emoji, count, users: [{user, name}]}].
+    const REACTIONS = (readJSON("reaction-emoji") || [])
+        .filter((r) => r && typeof r.key === "string" && typeof r.char === "string" && typeof r.label === "string")
+        .map((r) => [r.key, r.char, r.label]);
     const REACTION = new Map(REACTIONS.map(([key, char, label]) => [key, { char, label }]));
     const reactionsOf = (data) => (Array.isArray(data.reactions) ? data.reactions : []).filter((r) => REACTION.has(r.emoji) && r.count > 0);
     const isMine = (reaction) => (reaction.users || []).some((u) => u.user === me);
