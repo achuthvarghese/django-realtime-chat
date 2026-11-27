@@ -2929,6 +2929,17 @@ def react(message, user, emoji, at=None):
     return reaction
 
 
+@pytest.fixture(autouse=True)
+def fresh_react_limits():
+    """Rate-limit windows live in the cache and are keyed by user pk, which
+    tests reuse; start every test with none."""
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
+
+
 CANT_REACT_FRAME = {
     "type": "error",
     "code": 400,
@@ -3046,6 +3057,53 @@ class TestReactionPayload:
         message.deleted_at = timezone.now()
         assert message_data(message, reactions=listed)["reactions"] == []
         assert reactions_for_message(message) == []
+
+    def test_matches_building_from_model_objects(self, maya, arjun, lee, group):
+        from chat.models import Reaction, ReactionEmoji
+        from chat.presenters import display_name, reactions_for_messages
+
+        arjun.first_name, arjun.last_name = "Arjun", "Kumar"
+        arjun.save()
+        messages = [visible_text(group, maya, f"m{i}") for i in range(4)]
+        people = [maya, arjun, lee]
+        for i, m in enumerate(messages[:3]):
+            for j, emoji in enumerate(ReactionEmoji.values[i:]):
+                react(m, people[(i + j) % 3], emoji)
+                if j % 2:
+                    react(m, people[(i + j + 1) % 3], emoji)
+
+        # The plain model-object way to build the same data.
+        expected = {}
+        order = list(ReactionEmoji.values)
+        for r in Reaction.objects.select_related("user").order_by("created_at", "id"):
+            per = expected.setdefault(r.message_id, {})
+            per.setdefault(r.emoji, []).append(
+                {"user": r.user.username, "name": display_name(r.user)}
+            )
+        expected = {
+            mid: [
+                {"emoji": e, "count": len(u), "users": u}
+                for e, u in sorted(per.items(), key=lambda kv: order.index(kv[0]))
+            ]
+            for mid, per in expected.items()
+        }
+        assert reactions_for_messages(m.pk for m in messages) == expected
+        assert messages[3].pk not in expected
+
+    def test_no_op_writes_nothing(self, maya, arjun, room):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from chat.reactions import set_reaction
+
+        message = visible_text(room, arjun, "hi")
+        with CaptureQueriesContext(connection) as ctx:
+            _frame, changed = set_reaction(maya, room, str(message.id), "sad", False)
+        assert changed is False
+        assert not any(
+            q["sql"].lstrip().upper().startswith(("INSERT", "DELETE", "SAVEPOINT"))
+            for q in ctx.captured_queries
+        )
 
     def test_history_and_page_carry_reactions(self, client, maya, arjun, room):
         message = visible_text(room, arjun, "hi")
@@ -3209,10 +3267,11 @@ class TestReactionSockets:
             await socket.send_json_to(frame)
             assert without_ts(await socket.receive_json_from()) == CANT_REACT_FRAME
             if i % 10 == 9:
-                # Every react frame counts toward the rate limit: reconnect
-                # for a fresh window.
-                await self.close(socket)
-                (socket,) = await self.connect(room, maya)
+                # Every react frame counts toward the rate limit: start a
+                # fresh window.
+                from django.core.cache import cache
+
+                cache.clear()
         from chat.models import Reaction
 
         count = await database_sync_to_async(Reaction.objects.count)()
@@ -3239,6 +3298,60 @@ class TestReactionSockets:
             "for": "react",
         }
         assert not await database_sync_to_async(Reaction.objects.exists)()
+        await self.close(socket)
+
+    async def test_limit_is_shared_by_a_users_sockets_and_reconnects(
+        self, maya, arjun, room
+    ):
+        from chat.models import Reaction
+
+        message = await database_sync_to_async(visible_text)(room, arjun, "hi")
+        bad = {"type": "react", "id": str(message.id), "emoji": "nope", "on": True}
+        good = {**bad, "emoji": "heart"}
+        first, second = await self.connect(room, maya, maya)
+        for socket in [first] * 5 + [second] * 5:
+            await socket.send_json_to(bad)
+            assert (await socket.receive_json_from())["code"] == 400
+        await second.send_json_to(good)
+        assert (await second.receive_json_from())["code"] == 429
+        await self.close(first, second)
+        (again,) = await self.connect(room, maya)
+        await again.send_json_to(good)
+        assert (await again.receive_json_from())["code"] == 429
+        # Other people have their own window.
+        (other,) = await self.connect(room, arjun)
+        await other.send_json_to(good)
+        assert (await other.receive_json_from())["type"] == "reactions_updated"
+        assert (
+            await database_sync_to_async(Reaction.objects.filter(user=maya).exists)()
+            is False
+        )
+        await self.close(again, other)
+
+    async def test_busy_database_gets_503_and_keeps_socket(
+        self, maya, arjun, room, monkeypatch
+    ):
+        from django.db import OperationalError
+
+        from chat import reactions
+
+        def locked(*args, **kwargs):
+            raise OperationalError("database is locked")
+
+        message = await database_sync_to_async(visible_text)(room, arjun, "hi")
+        (socket,) = await self.connect(room, maya)
+        monkeypatch.setattr(reactions, "set_reaction", locked)
+        frame = {"type": "react", "id": str(message.id), "emoji": "heart", "on": True}
+        await socket.send_json_to(frame)
+        assert without_ts(await socket.receive_json_from()) == {
+            "type": "error",
+            "code": 503,
+            "message": "Try again",
+            "for": "react",
+        }
+        monkeypatch.undo()
+        await socket.send_json_to(frame)
+        assert (await socket.receive_json_from())["type"] == "reactions_updated"
         await self.close(socket)
 
     async def test_audience_is_people_who_still_see_it(self, maya, arjun, lee, group):
@@ -3320,19 +3433,12 @@ class TestReactionSockets:
 
 
 class TestReactRateLimitWindow:
-    def test_window_slides(self, monkeypatch):
-        from types import SimpleNamespace
+    def test_window_slides_per_user(self):
+        from chat.reactions import rate_limited
 
-        from chat.channels import consumers
-
-        clock = [100.0]
-        monkeypatch.setattr(
-            consumers, "time", SimpleNamespace(monotonic=lambda: clock[0])
-        )
-        consumer = consumers.ChatConsumer()
-        assert not any(consumer.react_rate_limited() for _ in range(10))
-        assert consumer.react_rate_limited()
-        clock[0] += 4.9
-        assert consumer.react_rate_limited()
-        clock[0] += 0.2  # the first ten are now more than 5 s old
-        assert not consumer.react_rate_limited()
+        assert not any(rate_limited(1, now=100.0) for _ in range(10))
+        assert rate_limited(1, now=100.0)
+        assert not rate_limited(2, now=100.0)  # someone else
+        assert rate_limited(1, now=104.9)
+        # The first ten are now 5 s old.
+        assert not rate_limited(1, now=105.0)
