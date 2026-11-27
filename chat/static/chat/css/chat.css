@@ -671,9 +671,10 @@ button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
 .msg__quote[aria-busy="true"] { cursor: progress; background: var(--hover); }
 .msg__quote--unavailable { border-left-color: var(--line); font-style: italic; }
 
+/* A focused row (keyboard roving) shows a ring; its bar opens on Tab. */
 .msg:focus { outline: none; }
 .msg:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
-/* A focused row (keyboard roving) shows a ring; its bar opens on Tab. */
+/* The message a quote jumped to: an accent tint that fades. */
 .msg--target { animation: msg-target 1600ms ease-out both; }
 @keyframes msg-target {
     from { background: color-mix(in srgb, var(--accent) 22%, transparent); }
@@ -681,8 +682,7 @@ button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
 }
 @media (prefers-reduced-motion: reduce) {
     /* No fade: a still tint for the same time (chat.js removes the class). */
-    /* A focused row (keyboard roving) shows a ring; its bar opens on Tab. */
-.msg--target { animation: none !important; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+    .msg--target { animation: none !important; background: color-mix(in srgb, var(--accent) 16%, transparent); }
 }
 
 /* The reply bar and the composer read as one unit: the bar sits on top
