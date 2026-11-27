@@ -271,23 +271,27 @@ def reactions_for_messages(message_ids):
         return {}
     rows = (
         Reaction.objects.filter(message_id__in=message_ids)
-        .select_related("user")
-        .only(
+        .order_by("created_at", "id")
+        .values_list(
             "message_id",
             "emoji",
             "user__username",
             "user__first_name",
             "user__last_name",
         )
-        .order_by("created_at", "id")
     )
-    # message id -> emoji -> [{user, name}], in reaction time order.
+    # message id -> emoji -> [{user, name}], in reaction time order. Plain
+    # tuples and one person dict per user keep heavy pages cheap.
+    people = {}
     grouped = {}
-    for reaction in rows:
-        per_emoji = grouped.setdefault(reaction.message_id, {})
-        per_emoji.setdefault(reaction.emoji, []).append(
-            {"user": reaction.user.username, "name": display_name(reaction.user)}
-        )
+    for message_id, emoji, username, first, last in rows:
+        person = people.get(username)
+        if person is None:
+            # Same rule as display_name (User.get_full_name, else username).
+            name = f"{first} {last}".strip() or username
+            person = people[username] = {"user": username, "name": name}
+        per_emoji = grouped.setdefault(message_id, {})
+        per_emoji.setdefault(emoji, []).append(person)
     return {
         message_id: [
             {"emoji": emoji, "count": len(users), "users": users}
