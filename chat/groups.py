@@ -99,8 +99,13 @@ def system_message(room, actor, text):
     message = Message.objects.create(
         content=text, room=room, user=actor, kind=Message.Kinds.SYSTEM
     )
-    message.visible_for.add(*room.members.all())
-    realtime.broadcast_frame(room.id, {"type": "save_message", **message_data(message)})
+    members = list(room.members.all())
+    message.visible_for.add(*members)
+    realtime.broadcast_frame(
+        room.id,
+        {"type": "save_message", **message_data(message)},
+        visible_to=[m.pk for m in members],
+    )
     return message
 
 

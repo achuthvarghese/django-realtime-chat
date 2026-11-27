@@ -29,6 +29,10 @@ def send_to_inbox(user_pk, event):
         async_to_sync(layer.group_send)(inbox_group(user_pk), event)
 
 
-def broadcast_frame(room_id, data):
-    """Deliver `data` as a frame to every socket in the room."""
-    send_to_room(room_id, {"type": "chat_response", "data": data})
+def broadcast_frame(room_id, data, visible_to=None):
+    """Deliver `data` as a frame to every socket in the room, or only to the
+    sockets of the users whose pks are in `visible_to` when given."""
+    event = {"type": "chat_response", "data": data}
+    if visible_to is not None:
+        event["visible_to"] = list(visible_to)
+    send_to_room(room_id, event)

@@ -79,9 +79,12 @@ class TestErrorPages:
         assert b"<script>x</script>" not in response.content
 
     def test_room_outside_membership_shows_site_404(self, client):
+        # The chat page itself redirects with a notice instead (chat/tests.py).
+        import uuid
+
         user = get_user_model().objects.create_user("eve", password="pw")
         client.force_login(user)
-        response = client.get(reverse("chat:chat"), {"room": "not-a-uuid"})
+        response = client.get(reverse("chat:details", args=[uuid.uuid4()]))
         assert response.status_code == 404
         assert "This page or room isn" in response.content.decode()
 
