@@ -113,6 +113,9 @@ Screen-specific components live with their screens:
 | `.settings`, `.settings__nav`, `.settings__section`, `.settings__identity` | `account/css/settings.css` | Settings sections; the current section link has `aria-current="page"` |
 | `.account-menu`, `.account-menu__panel`, `.account-menu__item` | `chat/css/chat.css` | Account popover above your name in the chat sidebar |
 | `.chat`, `.chat-side`, `.room-link`, `.chat-head`, `.status`, `.chat-toast`, `.confirm` | `chat/css/chat.css` | Chat screen; see [screens.md](./screens.md#chat) |
+| `.room-list__new` | `chat/css/chat.css` | A room that just arrived: the row grows from zero height (`grid-template-rows` 0fr to 1fr, 200ms, `cubic-bezier(.2, 0, 0, 1)`) so the rows below move down smoothly, its content fades in, then an accent tint (`color-mix(in srgb, var(--accent) 22%, transparent)`) fades out over 1.6s. `inbox.js` removes the class when the tint is done |
+| `.chat-head--gone`, `.chat-gone`, `.chat-gone__heading`, `.chat-gone__back` | `chat/css/chat.css` | The open room went away: muted header avatar and title, an icon, the heading (focused, without a focus ring) and Back to chats (44px tall on touch screens and phones) |
+| `.chat-notices--side` | `chat/css/chat.css` | Notices in the room list on phones when no room is open; uses the chrome colours (`--chrome-raised`, `--chrome-strong`) |
 
 ### Transcript
 
@@ -143,7 +146,10 @@ Screen-specific components live with their screens:
 ## Accessibility
 
 - Every interactive element has a visible focus ring (`--focus-ring`).
-- `prefers-reduced-motion` disables transitions and animations.
+- `prefers-reduced-motion` removes movement; short colour fades may stay.
+  `relay.css` cuts every transition and animation to almost nothing, and a
+  new room-list row skips growing and fading in and only shows the accent
+  tint, fading out over 1.2s.
 - `base.html` includes a skip link to `#main`; pages put `id="main"` on their
   main landmark.
 - Theme controls are real radio inputs inside `fieldset`/`legend`.

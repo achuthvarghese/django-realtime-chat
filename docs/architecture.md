@@ -47,8 +47,8 @@ Inside `chat`, each module has one job:
 | --- | --- |
 | `services.py` | Create rooms: people search, direct chats, groups |
 | `groups.py` | Group rules: add, remove, rename, admins, leave, delete; writes group events |
-| `live_rooms.py` | After a commit, tell each affected person's inbox sockets that a room was added, changed or removed |
-| `realtime.py` | Channel layer group names and helpers for sending to room and inbox sockets from views |
+| `live_rooms.py` | After a commit, tell each affected person's inbox sockets that a room was added, changed, removed or needs a refresh. `room_changed` is one frame for every member; `room_added` summaries for any number of people are built with a fixed number of queries. A failed send is skipped and logged once per action (frame type, room id, failed user ids, count), so it never breaks the request |
+| `realtime.py` | Channel layer group names and helpers for sending to room and inbox sockets from views. The `*_after_commit` helpers queue room events until the transaction commits, keep their order, send nothing on rollback, and log failed sends |
 | `presenters.py` | Turn rooms and messages into plain data for templates, JSON and sockets |
 | `presence.py` | Online status (`Connection`) and unread counts (`ReadState`) |
 | `views.py` | HTTP: chat page, people search, start chats, history pages, Details panel, group actions |
@@ -58,9 +58,11 @@ Inside `chat`, each module has one job:
 
 ### Opening a room
 
-1. `GET /chat/?room=<uuid>` checks membership (404 otherwise), marks the room
+1. `GET /chat/?room=<uuid>` checks membership, marks the room
    read and renders the page with the latest 50 messages and the room list
-   (previews, unread counts) embedded as JSON.
+   (previews, unread counts) embedded as JSON. A room you can't open
+   redirects to `/chat/` with the same notice whether it's unknown, deleted
+   or you're not a member.
 2. `chat.js` draws the transcript from that JSON, then opens the room socket.
    `inbox.js` opens the inbox socket.
 3. Scrolling to the top fetches `GET /chat/rooms/<uuid>/messages/?before=…`.
@@ -86,8 +88,9 @@ sequenceDiagram
     CL-->>IB: room_activity (with Arjun's unread count)
 ```
 
-Edits and deletes follow the same path and broadcast `message_updated`.
-Typing events go only to the room group. See
+Edits and deletes follow the same path and broadcast `message_updated`,
+then send `room_refresh` to the inboxes of the same people. Typing events go
+only to the room group. See
 [websocket-protocol.md](./websocket-protocol.md) for every frame.
 
 ### Presence
@@ -104,7 +107,8 @@ process simply expire.
 | Concern | Where it's handled |
 | --- | --- |
 | Signed-in only | `login_required` on views; consumers close with `4401` for anonymous users |
-| Room membership | Views look rooms up through `request.user.rooms`; `ChatConsumer` checks membership on connect **and on every frame**, and removal or deletion closes open sockets (`4403`/`4404`) |
+| Room membership | Views look rooms up through `request.user.rooms`; `ChatConsumer` checks membership on connect **and on every frame**, and removal or deletion closes open sockets (`4403`/`4404`). On connect it joins the room group before checking, so a removal can't slip between the two |
+| Message visibility | Room events about messages carry the ids of the people allowed to see them (`visible_to`); each socket drops the frame unless its user is listed. People who cleared their history, joined later or were just removed don't get the text. See [websocket-protocol.md](./websocket-protocol.md#who-gets-room-frames) |
 | Group permissions | `chat/groups.py` checks admin rights server-side for rename, remove, admin changes and delete; the panel only hides controls |
 | Message ownership | Edit and delete only match the sender's own, undeleted, non-system messages |
 | Cross-site WebSockets | `AllowedHostsOriginValidator` checks the `Origin` header against `ALLOWED_HOSTS` |

@@ -60,6 +60,10 @@ root is loaded automatically; real environment variables take precedence.
   and unread updates depend on it in the same way.
 - Presence is stored in the database (`chat.Connection`), so all processes
   must share one database.
+- SQLite waits up to 20 seconds for a write lock (`OPTIONS = {"timeout": 20}`
+  in `settings.py`) instead of failing at once with "database is locked" when
+  sockets and requests write together. If marking a room read still hits a
+  locked database, the server logs a warning and keeps the socket open.
 
 ## Upgrading
 
