@@ -49,9 +49,9 @@
     panel.addEventListener("click", (event) => {
         if (event.target.closest("[data-details-close]")) close();
     });
-    // Escape closes the innermost thing only: an open menu or dialog first,
-    // then a reply being written (when you're in the composer; chat.js
-    // cancels it), the panel on the next press. Capture phase, so this sees
+    // Escape closes the innermost thing only: an open menu, dialog or
+    // reaction picker first, then a reply being written (when you're in the
+    // composer; chat.js cancels it), the panel on the next press. Capture phase, so this sees
     // the menu before theme.js closes it.
     const replying = () => {
         const bar = document.getElementById("reply-bar");
@@ -63,7 +63,7 @@
         "keydown",
         (event) => {
             if (event.key !== "Escape" || panel.hidden) return;
-            if (document.querySelector("dialog[open], details[data-popover][open]")) return;
+            if (document.querySelector("dialog[open], details[data-popover][open], .reaction-picker")) return;
             if (replying()) return;
             // Escape in an inline message edit cancels the edit (chat.js).
             if (document.activeElement?.closest(".msg__edit")) return;
