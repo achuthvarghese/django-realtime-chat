@@ -2,7 +2,6 @@ import json
 import logging
 import time
 import uuid
-from collections import deque
 from enum import Enum
 
 from asgiref.sync import async_to_sync
@@ -21,11 +20,6 @@ MAX_MESSAGE_LENGTH = 4000
 # room, hidden from the sender, deleted, a system event), so the error says
 # nothing about messages the sender can't see.
 CANT_REPLY = "You can't reply to that message"
-
-# At most REACT_RATE_LIMIT react frames per REACT_RATE_WINDOW seconds per
-# socket; the rest get a 429 and change nothing.
-REACT_RATE_LIMIT = 10
-REACT_RATE_WINDOW = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +60,6 @@ class ChatConsumer(WebsocketConsumer):
     room = None
     room_group_name = None
     last_typing = 0.0
-    react_times = None  # monotonic times of recent react frames (a deque)
     # The type of the client frame being handled; error frames echo it as
     # "for" so the client can tell which request failed.
     current_frame = None
@@ -366,21 +359,8 @@ class ChatConsumer(WebsocketConsumer):
             },
         )
 
-    def react_rate_limited(self):
-        """True when this socket has sent too many react frames lately;
-        otherwise counts this one."""
-        now = time.monotonic()
-        if self.react_times is None:
-            self.react_times = deque()
-        while self.react_times and now - self.react_times[0] >= REACT_RATE_WINDOW:
-            self.react_times.popleft()
-        if len(self.react_times) >= REACT_RATE_LIMIT:
-            return True
-        self.react_times.append(now)
-        return False
-
     def handle_react(self, payload):
-        if self.react_rate_limited():
+        if reactions.rate_limited(self.user.pk):
             self.send_error("Slow down", code=429)
             return
         try:
@@ -394,10 +374,16 @@ class ChatConsumer(WebsocketConsumer):
         except reactions.CantReact:
             self.send_error(reactions.CANT_REACT)
             return
-        except IntegrityError:
-            # The message left the database between the check and the commit.
-            logger.info("Reaction target vanished in room %s", self.room.id)
-            self.send_error(reactions.CANT_REACT)
+        except OperationalError as error:
+            # A busy database (SQLite locked) shouldn't close the socket; the
+            # client may try again.
+            logger.warning(
+                "Couldn't save a reaction in room %s for user %s (%s)",
+                self.room.id,
+                self.user.pk,
+                type(error).__name__,
+            )
+            self.send_error("Try again", code=503)
             return
         if not changed:
             # Already as asked: nobody else needs to hear, but this socket
