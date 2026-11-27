@@ -403,11 +403,9 @@
     // Connection with reconnect and a 30-second keepalive
 
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const RESYNC_GRACE_MS = 3000; // a first connect this soon after load has missed nothing
     let attempts = 0;
     let pingTimer = null;
     let reconnectTimer = null;
-    let everConnected = false;
     let socket = null;
 
     const ping = () => {
@@ -418,12 +416,10 @@
         socket = new WebSocket(`${scheme}://${window.location.host}/inbox/`);
         const current = socket;
         current.addEventListener("open", () => {
-            // Resync on every open, except a first one right after the page
-            // rendered (then the server-rendered list is current).
-            // Resync unless this is a first connect that worked at once soon
-            // after load (a failed first attempt may have missed frames).
-            if (everConnected || attempts > 0 || performance.now() > RESYNC_GRACE_MS) resync();
-            everConnected = true;
+            // Resync on every open, the first one included: frames sent
+            // between the page render and the socket joining its group
+            // (or during a failed first attempt) are otherwise lost.
+            resync();
             attempts = 0;
             clearInterval(pingTimer);
             pingTimer = setInterval(ping, 30000);

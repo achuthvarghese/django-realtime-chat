@@ -336,8 +336,9 @@ list (a `room_added` frame was missed), the page fetches the row from
 Every time the inbox socket opens, the page fetches the whole list from
 `GET /chat/rooms/summaries/` and makes the page match it: missing rooms are
 added, rooms not in the list are removed, and titles, previews and unread
-counts are updated. The only exception is a first connect within 3 seconds
-of page load, when the server-rendered list is still current.
+counts are updated. This includes the first connect after page load: frames
+sent between the server rendering the page and the socket joining its group
+would otherwise be lost.
 
 ```json
 {"rooms": [{"id": "<room uuid>", "title": "Launch prep", "…": "…"}]}
