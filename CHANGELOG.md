@@ -16,6 +16,8 @@ into `master`.
   They commit on their own branches and work in parallel on one phase
   through a shared contract; the lead session merges their work into one
   pull request. See docs/agents.md.
+- `CLAUDE.md`: the orchestrator playbook for the main session (standing
+  rules, git identity, running a phase with the team).
 
 ## Phase 9b: live rooms
 

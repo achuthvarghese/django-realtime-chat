@@ -42,6 +42,12 @@ All eleven use the same model as the session that calls them.
 
 ## Team workflow
 
+The **orchestrator** (also called the lead) is the main Claude Code session,
+not a subagent: subagents can't start other agents, so only the main session
+can plan, delegate, relay messages between agents, merge and open pull
+requests. Its playbook is in [`CLAUDE.md`](../CLAUDE.md), which Claude Code
+loads in every session in this repository.
+
 One phase (for example P10a replies) is built by several agents in parallel
 and still lands as **one pull request**:
 
