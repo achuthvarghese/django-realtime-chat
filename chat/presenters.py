@@ -1,11 +1,7 @@
 """Plain-data views of rooms and messages for templates, JSON and sockets."""
 
-from datetime import datetime
-from datetime import timezone as dt_timezone
-
 from django.contrib.auth import get_user_model
-from django.db.models import Count, DateTimeField, OuterRef, Subquery, Value
-from django.db.models.functions import Coalesce
+from django.db.models import Count, F, Max, OuterRef, Q, Subquery
 
 from chat.models import Message, ReadState, Room
 from chat.presence import unread_counts
@@ -82,7 +78,8 @@ def _jsonable(row):
 def rooms_for(user, room_ids=None):
     """The user's rooms, most recently active first, with the last message
     they can still see. `room_ids` limits it to those rooms."""
-    visible = _visible_texts(OuterRef("pk"), user).order_by("-created_at")
+    # Ties on time go to the highest id (room_summaries_for_users agrees).
+    visible = _visible_texts(OuterRef("pk"), user).order_by("-created_at", "-id")
     rooms = user.rooms.all()
     if room_ids is not None:
         rooms = rooms.filter(pk__in=room_ids)
@@ -121,14 +118,14 @@ def room_summary(user, room_id):
     return _jsonable(rows[0]) if rows else None
 
 
-# Before a member first opens a room, every message from others is unread.
-_NEVER_READ = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
-
-
 def room_summaries_for_users(room_id, users):
-    """{user pk: room object} for one room seen by many people, in a fixed
-    number of queries however many there are. People who aren't members are
-    left out. Each object equals room_summary(user, room_id)."""
+    """{user pk: room object} for one room seen by many people. People who
+    aren't members are left out. Each object equals room_summary(user,
+    room_id).
+
+    Set-based: a fixed number of queries, each a grouped scan of the room's
+    visibility rows for these people, so the cost doesn't multiply people by
+    room history (adding 40 people to a long-running group stays fast)."""
     room = Room.objects.filter(pk=room_id).prefetch_related("members").first()
     if room is None:
         return {}
@@ -136,44 +133,66 @@ def room_summaries_for_users(room_id, users):
     pks = [u.pk for u in users if u.pk in member_pks]
     if not pks:
         return {}
-    visible = _visible_texts(room_id, OuterRef("pk"))
-    latest = visible.order_by("-created_at")
-    last_read = ReadState.objects.filter(user=OuterRef("pk"), room=room_id).values(
-        "last_read_at"
-    )[:1]
-    unread = (
-        visible.exclude(user=OuterRef("pk"))
-        .filter(created_at__gt=OuterRef("last_read_at"))
-        .order_by()
-        .values("room")
-        .annotate(n=Count("pk"))
-        .values("n")
+    seen = Message.visible_for.through.objects.filter(
+        user_id__in=pks,
+        message__room=room_id,
+        message__deleted_at__isnull=True,
+        message__kind=Message.Kinds.TEXT,
     )
-    viewers = (
-        User.objects.filter(pk__in=pks)
-        .annotate(
-            last_content=Subquery(latest.values("content")[:1]),
-            last_at=Subquery(latest.values("created_at")[:1]),
-            last_user_id=Subquery(latest.values("user_id")[:1]),
-            last_read_at=Coalesce(
-                Subquery(last_read), Value(_NEVER_READ, output_field=DateTimeField())
-            ),
+
+    # Newest message time each person can see, then the rows at those times
+    # (only messages that person can see; ties go to the highest id, as in
+    # rooms_for).
+    last_at = dict(
+        seen.values("user_id")
+        .annotate(t=Max("message__created_at"))
+        .values_list("user_id", "t")
+    )
+    latest = {}
+    if last_at:
+        rows = seen.filter(message__created_at__in=set(last_at.values())).values_list(
+            "user_id",
+            "message_id",
+            "message__content",
+            "message__created_at",
+            "message__user_id",
         )
-        .annotate(unread=Coalesce(Subquery(unread), 0))
+        for user_id, message_id, content, created_at, author_id in rows:
+            if created_at != last_at[user_id]:
+                continue
+            best = latest.get(user_id)
+            if best is None or message_id > best[0]:
+                latest[user_id] = (message_id, content, created_at, author_id)
+
+    # Unread: messages from others after each person's last read (all of
+    # them if they never opened the room).
+    reads = dict(
+        ReadState.objects.filter(room=room_id, user_id__in=pks).values_list(
+            "user_id", "last_read_at"
+        )
     )
-    return {
-        viewer.pk: _jsonable(
+    scope = Q(user_id__in=[pk for pk in pks if pk not in reads])
+    for pk, when in reads.items():
+        scope |= Q(user_id=pk, message__created_at__gt=when)
+    unread = dict(
+        seen.filter(scope)
+        .exclude(message__user_id=F("user_id"))
+        .values("user_id")
+        .annotate(n=Count("pk"))
+        .values_list("user_id", "n")
+    )
+
+    summaries = {}
+    for viewer in User.objects.filter(pk__in=pks):
+        _id, content, created_at, author_id = latest.get(
+            viewer.pk, (None, None, None, None)
+        )
+        summaries[viewer.pk] = _jsonable(
             _summary_row(
-                room,
-                viewer,
-                viewer.last_content,
-                viewer.last_at,
-                viewer.last_user_id,
-                viewer.unread,
+                room, viewer, content, created_at, author_id, unread.get(viewer.pk, 0)
             )
         )
-        for viewer in viewers
-    }
+    return summaries
 
 
 def room_changed_data(room):
