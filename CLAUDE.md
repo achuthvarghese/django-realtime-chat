@@ -17,6 +17,14 @@ session plans, delegates, merges and opens pull requests. Agents live in
 - Builders (commit on their own branch): `backend-dev`, `frontend-dev`,
   `devops-dev`, `docs-writer`.
 
+**Sub agent or sub session.** `backend-dev`, `frontend-dev` and
+`devops-dev` run as **sub sessions** (`create_session`): long, multi-round
+work in their own container, with `send_message` to the orchestrator and
+each other, and visible to the user in the app. Everyone else runs as a
+**sub agent** (`Agent` tool): short jobs that read the scratchpad notes and
+report straight back. If your first message says you are a builder sub
+session, you are not the orchestrator: follow your agent file.
+
 ## The user's standing rules
 
 - **Plan in phases and steps, and get the user's confirmation before
@@ -30,10 +38,11 @@ session plans, delegates, merges and opens pull requests. Agents live in
 
 ## Git
 
-- Identity: `achuthvarghese` / `acvknr@gmail.com`. It can reset when a
-  session restarts: check `git config user.email` before every commit and
-  restore it with `git config --global user.name achuthvarghese` and
-  `git config --global user.email acvknr@gmail.com`.
+- Identity: commit as the repository owner, the same author as the
+  project's existing commits. It can reset when a session restarts: before
+  every commit check that `git config user.name` and `user.email` match
+  `git log -1 --no-merges --format='%an <%ae>' origin/master`, and restore
+  them from that output if not. Never write an email address into a file.
 - Branches: descriptive names off `dev` (`dev-<feature>`, not counters).
   PRs go into `master`; after a merge, fast-forward `dev` to `master`.
 - CI must pass: `check_format_and_imports` (black, isort; required),
@@ -47,26 +56,31 @@ session plans, delegates, merges and opens pull requests. Agents live in
    behaviour, model fields, URLs, JSON and socket frame shapes, CSS classes
    and `data-` hooks, error codes, and which agent owns which files. Builders
    append decisions, contract changes, questions and finished commits.
-3. **Branches.** Create the phase branch `dev-<feature>` off the latest
-   `master`/`dev` and check it out. Start the builders in parallel with
-   `isolation: "worktree"`; each creates and commits on
-   `dev-<feature>-<role>` (backend, frontend, devops) in its worktree.
-   Give each the plan, the notes file path, its files and the scratchpad.
-4. **Relay.** Builders have no SendMessage tool and can't reach each other,
-   so the orchestrator passes contract changes and questions between them
-   (SendMessage to each builder's agent id resumes it with the message) and
-   asks the user what only the user can decide.
-5. **Merge.** Merge each builder branch into the phase branch, resolve
+3. **Branches and builders.** Create the phase branch `dev-<feature>` off
+   the latest `master`/`dev`, push it, and start the builders in parallel
+   as sub sessions (`create_session` with this repo's `source_url`, the
+   phase branch as `source_revision`, the agent's model). The first message
+   says which agent file to follow, the phase and role branches
+   (`dev-<feature>-<role>`), the plan, the full contract text (sub sessions
+   can't read this scratchpad) and the session ids of the orchestrator and
+   teammates (send ids to the first builders once the later ones exist).
+4. **Relay.** Builders report and ask with `send_message`. Keep the notes
+   file current from their messages, pass contract changes on, answer what
+   you can and ask the user what only the user can decide. Check on quiet
+   builders with `get_session` and `list_events`.
+5. **Merge.** Fetch each pushed builder branch and merge it into the phase
+   branch, resolve
    conflicts, run `black --check . && isort --check-only .`,
    `DJANGO_DEBUG=true python manage.py makemigrations --check --dry-run`
    and `pytest -q`. Check no commit has a co-author line.
 6. **Review.** `code-reviewer` and `user-tester` always; `ui-ux-designer`
    for visible changes; `security-auditor` for auth, permissions, sockets or
    data exposure; `performance-profiler` for lists, broadcasts or heavier
-   pages. Send fixes back to the owning builder (or make small ones
-   yourself) and re-check.
-7. **Docs.** `docs-writer` updates docs and the CHANGELOG on
-   `dev-<feature>-docs`; merge it.
+   pages. Send fixes to the owning builder session with `send_message` (or
+   make small ones yourself) and re-check. Archive the builder sessions
+   when the phase is merged.
+7. **Docs.** `docs-writer` (a sub agent with `isolation: "worktree"`)
+   updates docs and the CHANGELOG on `dev-<feature>-docs`; merge it.
 8. **Ship.** Push the phase branch, open one PR into `master`, subscribe to
    it, and report the result to the user in a few lines. The user merges.
 9. **Record.** Once the user merges the PR, update the `claude-memory`

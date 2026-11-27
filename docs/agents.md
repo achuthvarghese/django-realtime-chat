@@ -13,6 +13,17 @@ conventions and demo data.
   parallel on one phase and their work lands in **one pull request** (see
   [Team workflow](#team-workflow)).
 
+## Sub agent or sub session
+
+| Runs as | Agents | Why |
+| --- | --- | --- |
+| **Sub session** (`create_session`, own container) | `backend-dev`, `frontend-dev`, `devops-dev` | Long, multi-round building. Each gets its own checkout, ports and database, can message the orchestrator and teammates with `send_message`, pushes its own branch, and shows up in the app so you can watch or steer it. It isn't limited by the orchestrator's context. |
+| **Sub agent** (`Agent` tool) | all reviewers, `idea-planner`, `database-designer`, `docs-writer` | Short jobs that read the orchestrator's scratchpad notes and report straight back. A sub session would only add container setup. |
+
+A builder sub session reads the same `.claude/agents/<name>.md` file; its
+first message tells it which one to follow and that it is not the
+orchestrator.
+
 ## Reviewers
 
 | Agent | Use it for | Tools |
@@ -29,14 +40,16 @@ conventions and demo data.
 
 | Agent | Area | Tools |
 | --- | --- | --- |
-| `backend-dev` | Models and migrations, services and group rules, presenters, views and JSON endpoints, Channels consumers and socket frames, demo data, pytest tests | Read, search, shell, edit, write |
-| `frontend-dev` | Django templates, vanilla JavaScript (no jQuery, no build step), plain CSS on the Signal tokens, accessibility, responsive layouts; checks its work in Playwright | Read, search, shell, edit, write |
-| `docs-writer` | Compares a phase's diff with `docs/`, README, CHANGELOG and CONTRIBUTING; updates what's stale or missing and writes the CHANGELOG entry. Edits Markdown docs only, and reports code/doc contradictions as possible bugs | Read, search, shell, edit, write |
-| `devops-dev` | Dockerfile, docker-compose, GitHub Actions (e.g. browser tests in CI), production and security settings, HTTPS, Redis, setup docs. Never deploys or handles real secrets | Read, search, shell, edit, write |
+| `backend-dev` (sub session) | Models and migrations, services and group rules, presenters, views and JSON endpoints, Channels consumers and socket frames, demo data, pytest tests | Read, search, shell, edit, write |
+| `frontend-dev` (sub session) | Django templates, vanilla JavaScript (no jQuery, no build step), plain CSS on the Signal tokens, accessibility, responsive layouts; checks its work in Playwright | Read, search, shell, edit, write |
+| `docs-writer` (sub agent) | Compares a phase's diff with `docs/`, README, CHANGELOG and CONTRIBUTING; updates what's stale or missing and writes the CHANGELOG entry. Edits Markdown docs only, and reports code/doc contradictions as possible bugs | Read, search, shell, edit, write |
+| `devops-dev` (sub session) | Dockerfile, docker-compose, GitHub Actions (e.g. browser tests in CI), production and security settings, HTTPS, Redis, setup docs. Never deploys or handles real secrets | Read, search, shell, edit, write |
 
-Builders commit as `achuthvarghese`, with no `Co-Authored-By` lines, only on
-their own branch. They never push to `master` or `dev` and never open, merge
-or approve pull requests.
+Builders commit with the same author as the project's existing commits (read
+from `git log`; no email address is written into any file), with no
+`Co-Authored-By` lines, only on their own branch. Builder sub sessions push
+that branch; none of them push to `master`, `dev` or the phase branch, or
+open, merge or approve pull requests.
 
 All eleven use the same model as the session that calls them.
 
@@ -44,8 +57,8 @@ All eleven use the same model as the session that calls them.
 
 The **orchestrator** (also called the lead) is the main Claude Code session,
 not a subagent: subagents can't start other agents, so only the main session
-can plan, delegate, relay messages between agents, merge and open pull
-requests. Its playbook is in [`CLAUDE.md`](../CLAUDE.md), which Claude Code
+plans, starts the builder sessions and reviewer agents, relays between them,
+merges and opens pull requests. Its playbook is in [`CLAUDE.md`](../CLAUDE.md), which Claude Code
 loads in every session in this repository.
 
 One phase (for example P10a replies) is built by several agents in parallel
@@ -57,24 +70,27 @@ and still lands as **one pull request**:
    URLs, JSON and socket frame shapes, CSS classes and `data-` hooks, error
    codes, and who owns which files. If the phase changes models,
    `database-designer` designs the schema and migrations first.
-2. **Branches.** The lead creates the phase branch off `dev` (e.g.
-   `dev-replies`). Each builder gets its own branch off it
-   (`dev-replies-backend`, `dev-replies-frontend`, `dev-replies-devops`)
-   in its own git worktree, so parallel edits never collide.
-3. **Build in parallel.** Builders work only in their own area, follow the
-   contract, and log decisions, contract changes and open questions in the
-   notes file. Builders have no SendMessage tool, so they can't message each
-   other: the lead reads the notes file and relays messages and contract
-   changes between them. Questions for you come back through the lead.
-4. **Merge.** The lead merges the builder branches into the phase branch,
-   resolves any conflicts and runs the full checks.
+2. **Branches.** The lead creates and pushes the phase branch off `dev`
+   (e.g. `dev-replies`) and starts each builder as a sub session on it.
+   Each builder works on its own branch (`dev-replies-backend`,
+   `dev-replies-frontend`, `dev-replies-devops`) in its own container, so
+   parallel edits never collide. Sub sessions can't read the lead's
+   scratchpad, so the contract goes in their first message.
+3. **Build in parallel.** Builders work only in their own area and follow
+   the contract. They message the lead (and each other) with
+   `send_message`: decisions, contract changes, questions and pushed
+   commits. The lead keeps the notes file current and asks you what only you
+   can decide.
+4. **Merge.** The lead fetches the pushed builder branches, merges them
+   into the phase branch, resolves any conflicts and runs the full checks.
 5. **Review.** `code-reviewer`, `user-tester` and (for visible changes)
    `ui-ux-designer` review the phase branch; `security-auditor` too when the
    phase touches auth, permissions, sockets or data exposure, and
    `performance-profiler` when it adds lists, broadcasts or heavier pages.
-   Fixes go back to the owning builder.
-6. **One PR.** `docs-writer` updates the docs and CHANGELOG on its own
-   branch; the lead merges it, pushes the phase branch and opens a single
+   Fixes go back to the owning builder session; the lead archives the
+   sessions once the phase is merged.
+6. **One PR.** `docs-writer` (a sub agent in a worktree) updates the docs
+   and CHANGELOG on its own branch; the lead merges it, pushes the phase branch and opens a single
    PR into `master`. You review and merge it; the
    lead then fast-forwards `dev`.
 
