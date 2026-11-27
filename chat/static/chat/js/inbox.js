@@ -114,6 +114,7 @@
     let seq = 0;
     const removedAt = new Map(); // room id -> seq of its latest removal
     const addedAt = new Map(); // room id -> seq of its latest room_added
+    const fetchedAt = new Map(); // room id -> seq when the fetch that added its row started
     const touchedAt = new Map(); // room id -> seq of its latest live preview update
     const touch = (roomId) => {
         seq += 1;
@@ -236,6 +237,7 @@
         }
         applyIdentity(link, room);
         applyActivity(link, room, startedAt);
+        if (Array.isArray(room.member_usernames)) link.dataset.members = [...room.member_usernames].sort().join(" ");
         if (rerender) render();
         return link;
     }
@@ -312,6 +314,7 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const room = await response.json();
             if (acceptFetched(room.id, startedAt)) {
+                if (!findLink(room.id)) fetchedAt.set(room.id, startedAt);
                 upsertRoom(room, { moveToTop: moveToTop || !findLink(room.id), startedAt });
                 const later = pending.get(roomId).activity;
                 if (later) showMessage(roomId, later.message, { unread: later.unread });
@@ -371,6 +374,11 @@
         for (const link of [...list.querySelectorAll(".room-link")]) {
             const id = link.dataset.roomId;
             if (listed.has(id) || (addedAt.get(id) ?? -1) > startedAt) continue;
+            // A row a summary fetch added after this resync started is newer.
+            if ((fetchedAt.get(id) ?? -1) >= startedAt) continue;
+            // Record the removal so a slower fetch can't bring the row back.
+            seq += 1;
+            removedAt.set(id, seq);
             removeRoom(id, { rerender: false });
             if (id === openRoom) openMissing = true;
         }
@@ -412,7 +420,9 @@
         current.addEventListener("open", () => {
             // Resync on every open, except a first one right after the page
             // rendered (then the server-rendered list is current).
-            if (everConnected || performance.now() > RESYNC_GRACE_MS) resync();
+            // Resync unless this is a first connect that worked at once soon
+            // after load (a failed first attempt may have missed frames).
+            if (everConnected || attempts > 0 || performance.now() > RESYNC_GRACE_MS) resync();
             everConnected = true;
             attempts = 0;
             clearInterval(pingTimer);
@@ -450,9 +460,14 @@
                     applyIdentity(link, data.room);
                     listChanged();
                     // Members joined or left: refresh presence (and "· N online").
+                    // Renames carry the same list; don't ping for those.
                     if (Array.isArray(data.room.member_usernames)) {
-                        renderPresence();
-                        ping();
+                        const members = [...data.room.member_usernames].sort().join(" ");
+                        if (link.dataset.members !== members) {
+                            renderPresence();
+                            ping();
+                        }
+                        link.dataset.members = members;
                     }
                 } else if (!removedAt.has(data.room.id)) {
                     fetchRoom(data.room.id);
