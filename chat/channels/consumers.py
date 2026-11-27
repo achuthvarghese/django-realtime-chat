@@ -57,14 +57,19 @@ class ChatConsumer(WebsocketConsumer):
         if self.room is None:
             self.reject(404, "Room not found", CloseCode.NOT_FOUND)
             return
+
+        # Join the group before checking membership: if the user is removed
+        # in between, the revoke event reaches this socket. Checking first
+        # would leave a window where the revoke is missed for good.
+        group_name = room_group(self.room.id)
+        async_to_sync(self.channel_layer.group_add)(group_name, self.channel_name)
         if not self.room.members.filter(pk=self.user.pk).exists():
+            async_to_sync(self.channel_layer.group_discard)(
+                group_name, self.channel_name
+            )
             self.reject(403, "You are not a member of this room", CloseCode.FORBIDDEN)
             return
-
-        self.room_group_name = room_group(self.room.id)
-        async_to_sync(self.channel_layer.group_add)(
-            self.room_group_name, self.channel_name
-        )
+        self.room_group_name = group_name
         self.accept()
 
     def disconnect(self, close_code):
@@ -152,7 +157,14 @@ class ChatConsumer(WebsocketConsumer):
                     "type": WSChatType.MESSAGE_UPDATED.value,
                     **message_data(message),
                 },
-                "visible_to": list(message.visible_for.values_list("pk", flat=True)),
+                # Current members who can still see it: not those who cleared
+                # it, joined after it, or left (even if their socket missed
+                # the revoke).
+                "visible_to": list(
+                    message.visible_for.filter(memberships__room=self.room).values_list(
+                        "pk", flat=True
+                    )
+                ),
             },
         )
 
@@ -250,6 +262,8 @@ class ChatConsumer(WebsocketConsumer):
     def chat_response(self, event):
         # Events about one message carry the pks of the people who may see it
         # (never sent on to the client); everything else goes to every socket.
+        if self.room_group_name is None:
+            return  # refused in connect(); events queued before the discard
         visible_to = event.get("visible_to")
         if visible_to is not None and self.user.pk not in visible_to:
             return

@@ -116,6 +116,7 @@ def assert_unavailable_redirect(client, room_param):
     assert response.url == reverse("chat:chat")
     notices = [(m.level, m.message) for m in get_messages(response.wsgi_request)]
     assert notices == [(INFO, ROOM_UNAVAILABLE)]
+    assert ROOM_UNAVAILABLE.startswith("That chat isn’t available.")
     return response
 
 
@@ -145,7 +146,7 @@ class TestChatViewAccess:
         response = client.get(reverse("chat:chat"), {"room": group.id}, follow=True)
         assert response.redirect_chain == [(reverse("chat:chat"), 302)]
         assert response.context["room"] is None
-        assert ROOM_UNAVAILABLE.replace("'", "&#x27;") in response.content.decode()
+        assert ROOM_UNAVAILABLE in response.content.decode()
 
     def test_deleted_room_is_redirected(self, client, group, maya):
         from chat import groups
@@ -1790,3 +1791,187 @@ class TestPingRefreshesContacts:
         assert snapshot["online"] == ["arjun"]
         await maya_inbox.disconnect()
         await arjun_inbox.disconnect()
+
+
+# Security round (P9c): stale sockets and events after commit
+
+
+@pytest.mark.django_db(transaction=True)
+class TestStaleRoomSocket:
+    """A socket whose membership ended without a revoke reaching it (a
+    dropped event, or a race) gets nothing that needs membership."""
+
+    async def test_no_updates_after_membership_row_is_gone(self, maya, arjun, lee):
+        from chat import groups
+        from chat.models import Membership
+        from chat.services import create_group_room
+
+        def build():
+            g = create_group_room(maya, "Team", ["arjun", "lee"])
+            old = Message.objects.create(content="old", room=g, user=maya)
+            old.visible_for.add(maya, arjun, lee)
+            return g, old
+
+        group, old = await database_sync_to_async(build)()
+        lee_socket = make_communicator(group.id, lee)
+        maya_socket = make_communicator(group.id, maya)
+        assert (await lee_socket.connect())[0]
+        assert (await maya_socket.connect())[0]
+        await database_sync_to_async(
+            Membership.objects.filter(room=group, user=lee).delete
+        )()
+
+        await maya_socket.send_json_to(
+            {"type": "edit_message", "id": str(old.id), "message": "edited"}
+        )
+        assert (await maya_socket.receive_json_from())["type"] == "message_updated"
+        await maya_socket.send_json_to({"type": "save_message", "message": "new"})
+        assert (await maya_socket.receive_json_from())["type"] == "save_message"
+        await database_sync_to_async(groups.rename)(group, maya, "Renamed")
+        seen_by_maya = [(await maya_socket.receive_json_from())["type"] for _ in "12"]
+        assert seen_by_maya == ["save_message", "room_updated"]  # the rename
+        assert await lee_socket.receive_nothing(timeout=0.3)
+        await lee_socket.disconnect()
+        await maya_socket.disconnect()
+
+    async def test_removed_during_connect_is_refused(self, maya, arjun, lee):
+        """Removal landing between joining the group and the membership check
+        is caught by the check; the socket leaves the group again."""
+        from unittest import mock
+
+        from channels.layers import get_channel_layer
+
+        from chat.models import Membership
+        from chat.realtime import room_group
+        from chat.services import create_group_room
+
+        group = await database_sync_to_async(create_group_room)(
+            maya, "Team", ["arjun", "lee"]
+        )
+        layer = get_channel_layer()
+        real_add = layer.group_add
+
+        async def add_then_remove(name, channel):
+            await real_add(name, channel)
+            await database_sync_to_async(
+                Membership.objects.filter(room=group, user=lee).delete
+            )()
+
+        socket = make_communicator(group.id, lee)
+        with mock.patch.object(layer, "group_add", side_effect=add_then_remove):
+            connected, _ = await socket.connect()
+        assert connected  # accepted briefly to say why
+        assert (await socket.receive_json_from())["code"] == 403
+        assert (await socket.receive_output())["code"] == 4403
+        assert not layer.groups.get(room_group(group.id))
+        await socket.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+class TestRoomEventsAfterCommit:
+    @pytest.fixture
+    def room_sends(self):
+        """(event name, still inside a transaction?) for every room send."""
+        from unittest import mock
+
+        from django.db import transaction
+
+        from chat import realtime
+
+        sent = []
+
+        def spy(room_id, event):
+            sent.append(
+                (
+                    realtime._event_name(event),
+                    transaction.get_connection().in_atomic_block,
+                )
+            )
+
+        with mock.patch("chat.realtime.send_to_room", side_effect=spy):
+            yield sent
+
+    def test_remove_member_order_and_timing(self, group, maya, lee, room_sends):
+        from chat import groups
+
+        groups.remove_member(group, maya, lee)
+        assert room_sends == [
+            ("chat_response/save_message", False),
+            ("membership.revoked", False),
+            ("chat_response/room_updated", False),
+        ]
+
+    def test_leave_with_successor_order(self, maya, arjun, lee, room_sends):
+        from chat import groups
+        from chat.services import create_group_room
+
+        g = create_group_room(maya, "Team", ["arjun", "lee"])
+        room_sends.clear()
+        groups.leave(g, maya)
+        assert [name for name, _ in room_sends] == [
+            "chat_response/save_message",  # left
+            "chat_response/save_message",  # is now an admin
+            "membership.revoked",
+            "chat_response/room_updated",
+        ]
+        assert not any(inside for _, inside in room_sends)
+
+    def test_delete_after_commit(self, group, maya, room_sends):
+        from chat import groups
+
+        groups.delete_group(group, maya)
+        assert room_sends == [("room.deleted", False)]
+
+    def test_nothing_sent_on_rollback(self, group, maya, lee, room_sends):
+        from django.db import transaction
+
+        from chat import groups
+
+        with pytest.raises(RuntimeError):
+            with transaction.atomic():
+                groups.rename(group, maya, "Crew")
+                groups.remove_member(group, maya, lee)
+                raise RuntimeError("later step failed")
+        assert room_sends == []
+        group.refresh_from_db()
+        assert group.name == "Design team"
+
+    def test_failed_send_is_logged_and_others_still_go(self, group, maya, lee, caplog):
+        import logging
+        from unittest import mock
+
+        sent = []
+
+        def send(room_id, event):
+            if event["type"] == "membership.revoked":
+                raise RuntimeError(f"layer down for {lee.username}")
+            sent.append(event["type"])
+
+        from chat import groups
+
+        with mock.patch("chat.realtime.send_to_room", side_effect=send):
+            with caplog.at_level(logging.WARNING, logger="chat.realtime"):
+                groups.remove_member(group, maya, lee)
+        assert sent == ["chat_response", "chat_response"]
+        [record] = caplog.records
+        text = record.getMessage()
+        assert "membership.revoked" in text and str(group.id) in text
+        assert "lee" not in text
+
+    def test_room_updated_goes_to_current_members(self, group, maya, lee):
+        from unittest import mock
+
+        from chat import groups
+
+        events = []
+        with mock.patch(
+            "chat.realtime.send_to_room", side_effect=lambda r, e: events.append(e)
+        ):
+            groups.remove_member(group, maya, lee)
+        [updated] = [
+            e for e in events if e.get("data", {}).get("type") == "room_updated"
+        ]
+        assert sorted(updated["visible_to"]) == sorted(
+            group.members.values_list("pk", flat=True)
+        )
+        assert lee.pk not in updated["visible_to"]
