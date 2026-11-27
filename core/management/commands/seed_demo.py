@@ -133,23 +133,38 @@ class Command(BaseCommand):
                 rng.choice(data.FILLER_SENDERS),
                 rng.choice(data.FILLER_LINES),
                 filler_start + timedelta(minutes=i * 80 + rng.randint(0, 30)),
+                None,
             )
             for i in range(data.FILLER_COUNT)
         ]
         rows += [
-            (room, sender, text, now - timedelta(minutes=minutes))
-            for room, sender, text, minutes in data.SCRIPT
+            (room, sender, text, now - timedelta(minutes=minutes), reply)
+            for room, sender, text, minutes, reply in (
+                (*line, None) if len(line) == 4 else line for line in data.SCRIPT
+            )
         ]
         system_rows = [
             (room, actor, text, now - timedelta(minutes=minutes))
             for room, actor, text, minutes in data.SYSTEM
         ]
 
-        for room_key, sender, text, when in sorted(rows, key=lambda r: r[3]):
+        # (room key, text) -> the latest message so far with that text, for
+        # SCRIPT lines that reply to an earlier one.
+        by_text = {}
+        for room_key, sender, text, when, reply in sorted(rows, key=lambda r: r[3]):
             room = rooms[room_key]
+            reply_to = None
+            if reply is not None:
+                reply_to = by_text.get((room_key, reply))
+                if reply_to is None:
+                    raise CommandError(
+                        f"Demo line in {room_key} replies to an unknown or later "
+                        f"line: {reply!r}"
+                    )
             message = Message.objects.create(
-                content=text, room=room, user=users[sender]
+                content=text, room=room, user=users[sender], reply_to=reply_to
             )
+            by_text[(room_key, text)] = message
             Message.objects.filter(pk=message.pk).update(created_at=when)
             message.visible_for.add(*room.members.all())
 
