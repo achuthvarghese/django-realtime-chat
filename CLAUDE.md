@@ -68,6 +68,20 @@ session plans, delegates, merges and opens pull requests. Agents live in
    `dev-<feature>-docs`; merge it.
 8. **Ship.** Push the phase branch, open one PR into `master`, subscribe to
    it, and report the result to the user in a few lines. The user merges.
+9. **Record.** Once the user merges the PR, update the `claude-memory`
+   branch (see below) with the phase's artifacts and data.
+
+## The `claude-memory` branch
+
+An orphan branch with no code that keeps Claude Code session records:
+`session-log.md` (rules, decisions, PR history, roadmap, open questions),
+`phases/<phase>/` (the contract and notes file, reports, screenshots),
+`agent-trials/`, `plans/` and `screenshots/`. **Never merge it** and never
+open a PR from it. **After every merged PR**, add that phase's notes,
+agent reports, screenshots and mockups (no scripts, databases or
+transcripts), update `session-log.md`, commit and push it. Use a separate
+worktree (`git worktree add <dir> claude-memory`) so the main checkout
+isn't disturbed.
 
 Small fixes don't need the team: build them directly, with the same branch,
 test, docs and PR rules.
