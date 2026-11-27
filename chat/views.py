@@ -3,7 +3,7 @@ import uuid
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -32,10 +32,43 @@ User = get_user_model()
 PAGE_SIZE = 50
 
 
+# What message_data reads, so a page doesn't load password hashes and other
+# user fields it never shows.
+_USER_FIELDS = ("username", "first_name", "last_name")
+_MESSAGE_FIELDS = (
+    "content",
+    "kind",
+    "room_id",
+    "created_at",
+    "edited_at",
+    "deleted_at",
+)
+MESSAGE_DATA_FIELDS = (
+    *_MESSAGE_FIELDS,
+    *(f"user__{f}" for f in _USER_FIELDS),
+    *(f"reply_to__{f}" for f in _MESSAGE_FIELDS),
+    *(f"reply_to__user__{f}" for f in _USER_FIELDS),
+)
+
+
 def history_page(room, user, before=None, limit=PAGE_SIZE):
     """Up to `limit` messages the user can see, oldest first, ending just
-    before `before` (a Message) when given. Returns (messages, has_more)."""
-    qs = Message.objects.filter(room=room, visible_for=user).select_related("user")
+    before `before` (a Message) when given. Returns (messages, has_more).
+
+    One query per page however many messages are replies: each reply's
+    original and its author come joined in, and whether the user can see the
+    original is an EXISTS on its visibility rows."""
+    can_see_original = Message.visible_for.through.objects.filter(
+        message_id=OuterRef("reply_to_id"),
+        message__room_id=OuterRef("room_id"),  # never quote across rooms
+        user_id=user.pk,
+    )
+    qs = (
+        Message.objects.filter(room=room, visible_for=user)
+        .select_related("user", "reply_to__user")
+        .only(*MESSAGE_DATA_FIELDS)
+        .annotate(reply_visible=Exists(can_see_original))
+    )
     if before is not None:
         qs = qs.filter(
             Q(created_at__lt=before.created_at)
@@ -144,7 +177,11 @@ def room_history(request, room_id):
     before = None
     if request.GET.get("before"):
         try:
-            before = Message.objects.get(id=uuid.UUID(request.GET["before"]), room=room)
+            # Only messages the user can see: ids of hidden ones reach the
+            # client (as reply_to.id), and must not work as a cursor.
+            before = Message.objects.get(
+                id=uuid.UUID(request.GET["before"]), room=room, visible_for=request.user
+            )
         except (ValueError, Message.DoesNotExist):
             return JsonResponse({"error": "Unknown message"}, status=400)
     try:

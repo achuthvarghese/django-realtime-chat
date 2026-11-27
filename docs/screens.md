@@ -8,7 +8,7 @@
 | `/account/logout/` | `account:logout` | Signed in | POST only; returns to sign in |
 | `/chat/` | `chat:chat` | Signed in | Room list; `?room=<uuid>` opens a room. A room you can't open (not a member, deleted, unknown or a bad id) redirects to `/chat/` with the notice "That chat isn’t available. You may have been removed, or it was deleted." |
 | `/chat/people/?q=` | `chat:people` | Signed in | JSON people search for New chat |
-| `/chat/rooms/<uuid>/messages/` | `chat:history` | Room members | JSON page of older messages: `?before=<message id>&limit=1..100` |
+| `/chat/rooms/<uuid>/messages/` | `chat:history` | Room members | JSON page of older messages: `?before=<message id>&limit=1..100`. `before` must be a message in this room that you can see; otherwise 400 `{"error": "Unknown message"}` |
 | `/chat/rooms/summaries/` | `chat:summaries` | Signed in | JSON `{"rooms": [...]}`: every room-list row, most recent first. The list resyncs with it when the inbox socket reconnects |
 | `/chat/rooms/<uuid>/summary/` | `chat:summary` | Room members | JSON room-list row (the `room` object of the inbox `room_added` frame) |
 | `/chat/rooms/<uuid>/details/` | `chat:details` | Room members | HTML for the Details panel |
@@ -122,13 +122,23 @@ Styles `account/static/account/css/auth.css`, script
   group with the avatar and name; day separators read Today, Yesterday or the
   date. Times are shown in your local time zone; follow-up times appear on
   hover. Line breaks are kept. New messages keep the view pinned to the bottom
-  unless you have scrolled up to read.
-- **Your messages** show Edit and Delete on hover or keyboard focus. On touch
-  screens, tap one of your messages to show them; tap it again or another
-  message to hide them. Edit opens an inline box: Enter saves, Esc
+  unless you have scrolled up to read. A reply always starts a new group.
+- **Action bar**: every text message (not group events, not deleted ones)
+  has a small bar of actions at its top right, shown on hover or when you
+  Tab into it. **Reply** is on everyone's messages, including your own; **Edit**
+  and **Delete** only on yours. Each button is named for its message ("Reply
+  to Maya Rao", "Edit your message") and described by the message's time. On
+  touch screens, tap any text message to select it and show its bar on a line
+  below; tap it again or another message to hide it.
+- **Edit and delete**: Edit opens an inline box: Enter saves, Esc
   cancels. Delete asks for confirmation and leaves "Message deleted" for
   everyone. Edited messages show "(edited)". Changes reach everyone live, and
   the sidebar preview follows edits and deletes of the latest message.
+- **Keyboard in the transcript**: the transcript is one Tab stop. Tab lands on
+  the newest message (or the one you last moved to); ↑ and ↓ move between
+  messages, Home and End go to the first and last loaded. ↑ on the oldest
+  loaded message loads the page before it. From a focused message, Tab moves
+  into its quote and action buttons, then on out of the transcript.
 - **Composer**: grows with the text up to about six lines. Enter sends,
   Shift+Enter adds a line, ↑ in an empty composer edits your last message. Send is disabled while disconnected; the text stays
   in the box.
@@ -143,6 +153,43 @@ Styles `account/static/account/css/auth.css`, script
   messages sent in between are not replayed. Being signed out sends you to
   sign in. If you're removed from a group, or it's deleted, while it's open,
   the page shows the gone pane below and stays on it.
+
+#### Replies
+
+- **Reply** (in the action bar) opens a "Replying to <name>" bar on top of
+  the composer, joined to it as one unit, with a one-line excerpt of the
+  message and a × button ("Cancel reply"). Replying to your own message reads
+  "Replying to yourself". Focus moves to the composer; screen readers hear
+  "Replying to <name>". While replying, the placeholder reads "Reply to
+  <name>" and the hint "Esc cancel reply · Shift ↵ new line". If you were at
+  the bottom of the transcript, it stays there as the bar opens and closes.
+- **Sending** sends the reply and closes the bar. Esc in the composer or the
+  bar, or ×, cancels the reply ("Reply cancelled"). Escape closes the
+  innermost thing first: an open dialog or menu, then the reply, then the
+  Details panel. If the message you're replying to is deleted, the bar closes
+  with "The message you were replying to was deleted."
+- If the server refuses the reply (the message was deleted or hidden
+  meanwhile), the toast says "You can't reply to that message" and your text
+  comes back, with the bar if the message can still be replied to. It doesn't
+  come back over something new you've started typing.
+- **Quotes**: a reply shows a one-line quote of its original above its text,
+  with an accent rule on the left: the original's author ("You" for yours)
+  and the start of its text. The quote is live: it follows edits of the
+  original, and reads "Message deleted" (in italics) once the original is
+  deleted. If you can't see the original (you cleared your history, or joined
+  after it), the quote reads "Original message unavailable", isn't a button,
+  and its tooltip says "Sent before you joined, or not visible to you". A
+  deleted reply shows no quote; if the original is removed from the database,
+  the reply shows as a plain message.
+- **Jump to the original**: click a quote (or Enter on it) to scroll the
+  original to the middle of the view, tint it in the accent colour for about
+  1.6 seconds and focus it. With reduced motion it doesn't animate the scroll
+  and shows a still tint. If the original isn't loaded yet, the page loads
+  older messages 100 at a time, up to 10 pages, then jumps. If it still isn't
+  found, a toast says "That message is too far back." ("Couldn't find that
+  message." when the start of the conversation was reached). Deleted
+  originals can still be jumped to.
+- The room list's preview of a reply is the reply's own text, never the quote.
 
 #### When the open room goes away
 
@@ -184,7 +231,9 @@ hidden, they show at the top of the room list instead.
 
 The **Details** button in the room header opens a panel: a third column on
 desktop and tablet, full screen on phones. Escape closes the innermost open
-thing first (a menu or dialog, then the panel).
+thing first (a menu or dialog, then a reply you're writing when focus is in
+the composer, then the panel). Escape in an inline message edit cancels the
+edit and leaves the panel open.
 
 | Part | Who sees it | What it does |
 | --- | --- | --- |

@@ -32,7 +32,9 @@ ROOMS = [
     ("sofia-priya", None, "private", ["sofia", "priya"]),
 ]
 
-# Short scripted conversations: (room, sender, text, minutes before now).
+# Short scripted conversations: (room, sender, text, minutes before now),
+# optionally followed by the exact text of an earlier line in the same room
+# that this one replies to.
 SCRIPT = [
     # Design team, three days ago to now
     ("design", "arjun", "Morning all. Kicking off the chat redesign this week.", 4320),
@@ -55,9 +57,16 @@ SCRIPT = [
         "maya",
         "Yes, default stays. Everyone can switch in Settings → Appearance",
         78,
+        "Can we keep Graphite + Coral as the default?",
     ),
     ("design", "arjun", "Typing indicator and unread badges are live too", 40),
-    ("design", "arjun", "Try opening Ops in another tab", 39),
+    (
+        "design",
+        "arjun",
+        "Try opening Ops in another tab",
+        39,
+        "Pushed the new spine layout to staging",
+    ),
     (
         "design",
         "maya",
@@ -68,19 +77,39 @@ SCRIPT = [
     # Ops
     ("ops", "omar", "Deploy window is 14:00 today.", 300),
     ("ops", "sofia", "Database backups verified this morning.", 240),
-    ("ops", "lee", "Rolling out relay v1.0 now", 30),
+    # Replies to a line deleted below, so its quote reads "Message deleted".
+    (
+        "ops",
+        "lee",
+        "Rolling out relay v1.0 now",
+        30,
+        "Database backups verified this morning.",
+    ),
     ("ops", "omar", "Deploy finished: relay v1.0 is live", 8),
-    ("ops", "lee", "Smoke tests passed", 6),
+    ("ops", "lee", "Smoke tests passed", 6, "Deploy finished: relay v1.0 is live"),
     # Book club
     ("books", "anika", "Next pick: The Left Hand of Darkness?", 10080),
     ("books", "sofia", "Yes please, I've been meaning to read it.", 10070),
     ("books", "priya", "I'm in. Meeting on the 30th?", 10000),
     ("books", "omar", "Works for me.", 9990),
-    ("books", "maya", "Halfway through, no spoilers please!", 1440),
+    # Priya cleared the older history, so she can't see what Maya quotes.
+    (
+        "books",
+        "maya",
+        "Halfway through, no spoilers please!",
+        1440,
+        "Next pick: The Left Hand of Darkness?",
+    ),
     ("books", "priya", "Chapter 7 is so good", 200),
     # Direct chats
     ("maya-arjun", "arjun", "Got a minute to look at the PR?", 30),
-    ("maya-arjun", "maya", "Sure, sending notes in a bit", 28),
+    (
+        "maya-arjun",
+        "maya",
+        "Sure, sending notes in a bit",
+        28,
+        "Got a minute to look at the PR?",
+    ),
     ("maya-anika", "anika", "Lunch at 1?", 50),
     ("arjun-lee", "lee", "Can you review the presence changes?", 120),
     ("arjun-lee", "arjun", "On it. Looks solid so far.", 110),

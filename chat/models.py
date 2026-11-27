@@ -2,6 +2,7 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.db.models import F, Q
 from django.utils import timezone
 
 User = get_user_model()
@@ -25,10 +26,27 @@ class Message(models.Model):
     edited_at = models.DateTimeField(null=True, blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     visible_for = models.ManyToManyField(User, related_name="visible_for")
+    # The message this one answers. Only text messages reply; if the original
+    # is removed from the database the reply becomes a plain message.
+    reply_to = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="replies",
+    )
 
     class Meta:
         ordering = ["created_at"]
         indexes = [models.Index(fields=["room", "created_at"])]
+        constraints = [
+            # Only text messages reply, and never to themselves.
+            models.CheckConstraint(
+                condition=Q(reply_to__isnull=True)
+                | (Q(kind="text") & ~Q(reply_to=F("id"))),
+                name="message_reply_valid",
+            ),
+        ]
 
     @property
     def is_deleted(self):

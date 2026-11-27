@@ -14,6 +14,9 @@ when the speaker changes.
   status in the header.
 - **Edit and delete** your own messages; press ↑ in an empty composer to edit
   the last one.
+- **Replies**: reply to any message; the reply shows a live quote of the
+  original, and clicking the quote jumps to it. People who can't see the
+  original only see "Original message unavailable".
 - **Infinite scroll** through history, 50 messages at a time.
 - **Presence, typing and unread**: online dots, "… is typing…", per-room unread
   badges and a count in the tab title.

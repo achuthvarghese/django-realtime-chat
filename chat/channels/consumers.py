@@ -6,7 +6,7 @@ from enum import Enum
 
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
-from django.db import OperationalError
+from django.db import IntegrityError, OperationalError, transaction
 from django.utils import timezone
 
 from chat import live_rooms, presence
@@ -16,7 +16,16 @@ from chat.realtime import inbox_group, room_group
 
 MAX_MESSAGE_LENGTH = 4000
 
+# One answer for every reason a reply target is refused (unknown, another
+# room, hidden from the sender, deleted, a system event), so the error says
+# nothing about messages the sender can't see.
+CANT_REPLY = "You can't reply to that message"
+
 logger = logging.getLogger(__name__)
+
+
+class CantReply(Exception):
+    """The frame's `reply_to` names a message the sender can't reply to."""
 
 
 class WSChatType(str, Enum):
@@ -50,6 +59,9 @@ class ChatConsumer(WebsocketConsumer):
     room = None
     room_group_name = None
     last_typing = 0.0
+    # The type of the client frame being handled; error frames echo it as
+    # "for" so the client can tell which request failed.
+    current_frame = None
 
     def connect(self):
         self.user = self.scope.get("user")
@@ -114,7 +126,11 @@ class ChatConsumer(WebsocketConsumer):
         if handler is None:
             self.send_error("Invalid type")
             return
-        handler(payload)
+        self.current_frame = payload["type"]
+        try:
+            handler(payload)
+        finally:
+            self.current_frame = None
 
     # Handlers
 
@@ -145,7 +161,7 @@ class ChatConsumer(WebsocketConsumer):
                 kind=Message.Kinds.TEXT,
                 visible_for=self.user,
             )
-            .select_related("user")
+            .select_related("user", "reply_to__user")
             .first()
             if message_id
             else None
@@ -153,6 +169,42 @@ class ChatConsumer(WebsocketConsumer):
         if message is None:
             self.send_error("You can only change your own messages", code=403)
         return message
+
+    def send_message_frame(self, frame_type, message, visible_to):
+        """Send `message` as a `frame_type` frame to the room sockets of the
+        users in `visible_to`. For a reply, those who can also see the
+        original get its quote; the rest get only {"id", "available": false}
+        (one extra query)."""
+        visible_to = list(visible_to)
+        # Deleted replies carry no quote (see presenters.reply_data).
+        if message.reply_to_id is not None and not message.is_deleted:
+            sees_original = set(
+                Message.visible_for.through.objects.filter(
+                    message_id=message.reply_to_id,
+                    message__room_id=message.room_id,  # never quote across rooms
+                    user_id__in=visible_to,
+                ).values_list("user_id", flat=True)
+            )
+        else:
+            sees_original = set(visible_to)
+        groups = [
+            (True, [pk for pk in visible_to if pk in sees_original]),
+            (False, [pk for pk in visible_to if pk not in sees_original]),
+        ]
+        for reply_visible, pks in groups:
+            if not pks:
+                continue
+            async_to_sync(self.channel_layer.group_send)(
+                self.room_group_name,
+                {
+                    "type": WSChatType.CHAT_RESPONSE.value,
+                    "data": {
+                        "type": frame_type,
+                        **message_data(message, reply_visible=reply_visible),
+                    },
+                    "visible_to": pks,
+                },
+            )
 
     def broadcast_update(self, message):
         """Send the edit or delete only to people who can see the message
@@ -165,17 +217,7 @@ class ChatConsumer(WebsocketConsumer):
                 "pk", flat=True
             )
         )
-        async_to_sync(self.channel_layer.group_send)(
-            self.room_group_name,
-            {
-                "type": WSChatType.CHAT_RESPONSE.value,
-                "data": {
-                    "type": WSChatType.MESSAGE_UPDATED.value,
-                    **message_data(message),
-                },
-                "visible_to": visible_to,
-            },
-        )
+        self.send_message_frame(WSChatType.MESSAGE_UPDATED.value, message, visible_to)
         live_rooms.room_refresh(self.room.id, visible_to)
 
     def handle_edit_message(self, payload):
@@ -200,34 +242,72 @@ class ChatConsumer(WebsocketConsumer):
         message.save(update_fields=["deleted_at", "content"])
         self.broadcast_update(message)
 
+    def reply_target(self, payload):
+        """The message named by `reply_to` (locked to this room, a text
+        message the sender can see and that isn't deleted), or None when the
+        frame isn't a reply. Raises CantReply for anything else."""
+        value = payload.get("reply_to")
+        if value is None:
+            return None
+        try:
+            original_id = uuid.UUID(value) if isinstance(value, str) else None
+        except ValueError:
+            original_id = None
+        if original_id is None:
+            raise CantReply
+        original = (
+            Message.objects.filter(
+                id=original_id,
+                room=self.room,
+                kind=Message.Kinds.TEXT,
+                deleted_at__isnull=True,
+                visible_for=self.user,
+            )
+            .select_related("user")
+            .first()
+        )
+        if original is None:
+            raise CantReply
+        return original
+
     def handle_save_message(self, payload):
         content = self.clean_content(payload)
         if content is None:
             return
 
-        message = Message.objects.create(
-            content=content, room=self.room, user=self.user
-        )
         members = list(self.room.members.all())
-        message.visible_for.add(*members)
+        original = None
+        try:
+            # Check the target and insert together; if the original is
+            # removed from the database in between, the foreign key fails at
+            # commit and nothing is saved.
+            with transaction.atomic():
+                original = self.reply_target(payload)
+                message = Message.objects.create(
+                    content=content, room=self.room, user=self.user, reply_to=original
+                )
+                message.visible_for.add(*members)
+        except CantReply:
+            self.send_error(CANT_REPLY)
+            return
+        except IntegrityError:
+            if original is None:
+                raise
+            logger.info("Reply target vanished in room %s", self.room.id)
+            self.send_error(CANT_REPLY)
+            return
         presence.mark_read(self.user, self.room, message.created_at)
 
-        async_to_sync(self.channel_layer.group_send)(
-            self.room_group_name,
-            {
-                "type": WSChatType.CHAT_RESPONSE.value,
-                "data": {
-                    "type": WSChatType.SAVE_MESSAGE.value,
-                    **message_data(message),
-                },
-                "visible_to": [m.pk for m in members],
-            },
+        self.send_message_frame(
+            WSChatType.SAVE_MESSAGE.value, message, [m.pk for m in members]
         )
         self.notify_inboxes(message, members)
 
     def notify_inboxes(self, message, members):
-        """Tell every member's inbox socket about new activity in this room."""
-        data = message_data(message)
+        """Tell every member's inbox socket about new activity in this room.
+        The room list never shows quotes, so `reply_to` is always null here
+        (and the original's text can't reach anyone who can't see it)."""
+        data = {**message_data(message), "reply_to": None}
         for member in members:
             async_to_sync(self.channel_layer.group_send)(
                 inbox_group(member.pk),
@@ -307,14 +387,15 @@ class ChatConsumer(WebsocketConsumer):
         self.send(text_data=json.dumps(data, default=str))
 
     def send_error(self, message, code=400):
-        self.send_json(
-            {
-                "type": WSChatType.ERROR.value,
-                "code": code,
-                "message": message,
-                "ts": timezone.now().isoformat(),
-            }
-        )
+        frame = {
+            "type": WSChatType.ERROR.value,
+            "code": code,
+            "message": message,
+            "ts": timezone.now().isoformat(),
+        }
+        if self.current_frame is not None:
+            frame["for"] = self.current_frame
+        self.send_json(frame)
 
     def reject(self, code, message, close_code):
         """Accept briefly so the client receives the reason, then close."""

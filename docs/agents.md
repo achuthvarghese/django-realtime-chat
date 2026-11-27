@@ -51,6 +51,12 @@ from `git log`; no email address is written into any file), with no
 that branch; none of them push to `master`, `dev` or the phase branch, or
 open, merge or approve pull requests.
 
+A container can reset the git identity at any time, so builders check it
+before every commit and set it again from `git log` when it differs. If a
+commit still goes out under the wrong author, the builder doesn't
+force-push: it tells the orchestrator, which re-authors the commit when it
+merges the branch into the phase branch.
+
 All eleven use the same model as the session that calls them.
 
 ## Team workflow

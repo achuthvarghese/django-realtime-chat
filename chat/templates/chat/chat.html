@@ -96,7 +96,7 @@
             </button>
         </header>
 
-        <div class="chat-scroll" id="chat-scroll" tabindex="0" aria-label="Messages">
+        <div class="chat-scroll" id="chat-scroll">
             <p class="chat-history" id="history-status" hidden></p>
             <div class="transcript" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
             <p class="chat-empty" id="chat-empty" hidden>No messages yet. Say hello.</p>
@@ -104,6 +104,17 @@
         </div>
 
         <p class="chat-toast" id="chat-toast" role="status" hidden></p>
+
+        {# Shown by chat.js while you reply to a message; text is filled in as text. #}
+        <div class="reply-bar" id="reply-bar" hidden>
+            <svg class="reply-bar__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+            <div class="reply-bar__text">
+                <span class="reply-bar__label">Replying to <span class="reply-bar__name" data-reply-name></span></span>
+                <span class="reply-bar__excerpt" data-reply-excerpt></span>
+            </div>
+            <button class="btn btn--ghost btn--icon btn--sm reply-bar__cancel" type="button" data-reply-cancel aria-label="Cancel reply" title="Cancel reply (Esc)">×</button>
+        </div>
+        <p class="visually-hidden" id="reply-status" aria-live="polite"></p>
 
         <form class="composer" id="composer" autocomplete="off">
             <label class="visually-hidden" for="message">Message {{ room_summary.title }}</label>
