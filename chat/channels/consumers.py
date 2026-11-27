@@ -1,18 +1,22 @@
 import json
+import logging
 import time
 import uuid
 from enum import Enum
 
 from asgiref.sync import async_to_sync
 from channels.generic.websocket import WebsocketConsumer
+from django.db import OperationalError
 from django.utils import timezone
 
-from chat import presence
+from chat import live_rooms, presence
 from chat.models import Message, Room
 from chat.presenters import display_name, message_data
 from chat.realtime import inbox_group, room_group
 
 MAX_MESSAGE_LENGTH = 4000
+
+logger = logging.getLogger(__name__)
 
 
 class WSChatType(str, Enum):
@@ -148,7 +152,15 @@ class ChatConsumer(WebsocketConsumer):
 
     def broadcast_update(self, message):
         """Send the edit or delete only to people who can see the message
-        (not those who cleared it or joined after it)."""
+        (not those who cleared it or joined after it), and ask the same
+        people's room lists to refresh this room's preview."""
+        # Current members who can still see it: not those who cleared it,
+        # joined after it, or left (even if their socket missed the revoke).
+        visible_to = list(
+            message.visible_for.filter(memberships__room=self.room).values_list(
+                "pk", flat=True
+            )
+        )
         async_to_sync(self.channel_layer.group_send)(
             self.room_group_name,
             {
@@ -157,16 +169,10 @@ class ChatConsumer(WebsocketConsumer):
                     "type": WSChatType.MESSAGE_UPDATED.value,
                     **message_data(message),
                 },
-                # Current members who can still see it: not those who cleared
-                # it, joined after it, or left (even if their socket missed
-                # the revoke).
-                "visible_to": list(
-                    message.visible_for.filter(memberships__room=self.room).values_list(
-                        "pk", flat=True
-                    )
-                ),
+                "visible_to": visible_to,
             },
         )
+        live_rooms.room_refresh(self.room.id, visible_to)
 
     def handle_edit_message(self, payload):
         content = self.clean_content(payload)
@@ -225,7 +231,17 @@ class ChatConsumer(WebsocketConsumer):
             )
 
     def handle_read(self, payload):
-        presence.mark_read(self.user, self.room)
+        # A busy database (SQLite locked) shouldn't close the socket: the
+        # next read frame or page load marks the room read anyway.
+        try:
+            presence.mark_read(self.user, self.room)
+        except OperationalError as error:
+            logger.warning(
+                "Couldn't mark room %s read for user %s (%s)",
+                self.room.id,
+                self.user.pk,
+                type(error).__name__,
+            )
 
     def handle_typing(self, payload):
         # At most one typing event per second per socket.
@@ -386,6 +402,10 @@ class InboxConsumer(WebsocketConsumer):
 
     def inbox_room_removed(self, event):
         self.send(text_data=json.dumps({"type": "room_removed", "room": event["room"]}))
+
+    def inbox_room_refresh(self, event):
+        """A message in the room was edited or deleted: refetch its row."""
+        self.send(text_data=json.dumps({"type": "room_refresh", "room": event["room"]}))
 
     def inbox_message(self, event):
         data = event["data"]

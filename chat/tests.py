@@ -2217,3 +2217,154 @@ class TestChatPageRace:
         assert [m.message for m in get_messages(response.wsgi_request)] == [
             ROOM_UNAVAILABLE
         ]
+
+
+# User-tester round (P9c): room_refresh, busy database, leave notice
+
+
+@pytest.mark.django_db(transaction=True)
+class TestRoomRefresh:
+    """Edits and deletes ask the room lists of people who can see the
+    message (and are still members) to refetch that room."""
+
+    async def build(self, maya, arjun, lee):
+        from chat.models import Membership
+        from chat.services import create_group_room
+
+        def setup():
+            g = create_group_room(maya, "Team", ["arjun", "lee"])
+            message = Message.objects.create(content="secret", room=g, user=maya)
+            message.visible_for.add(maya, arjun, lee)
+            arjun.visible_for.remove(message)  # arjun cleared it
+            kai = User.objects.create_user("kai", password="pw")
+            Membership.objects.create(room=g, user=kai)  # joined after it
+            eve = User.objects.create_user("eve", password="pw")
+            Membership.objects.create(room=g, user=eve)
+            message.visible_for.add(eve)
+            Membership.objects.filter(room=g, user=eve).delete()  # left, no revoke
+            return g, message
+
+        return await database_sync_to_async(setup)()
+
+    async def test_sent_only_to_members_who_can_see_it(self, maya, arjun, lee):
+        from unittest import mock
+
+        group, message = await self.build(maya, arjun, lee)
+        sent = []
+        socket = make_communicator(group.id, maya)
+        await socket.connect()
+        with mock.patch(
+            "chat.live_rooms.realtime.send_to_inbox",
+            side_effect=lambda pk, event: sent.append((pk, event)),
+        ):
+            for payload in (
+                {"type": "edit_message", "id": str(message.id), "message": "new"},
+                {"type": "delete_message", "id": str(message.id)},
+            ):
+                await socket.send_json_to(payload)
+                assert (await socket.receive_json_from())["type"] == "message_updated"
+        await socket.disconnect()
+        event = {"type": "inbox.room_refresh", "room": str(group.id)}
+        assert sorted(sent) == sorted(
+            [(maya.pk, event), (lee.pk, event), (maya.pk, event), (lee.pk, event)]
+        )
+
+    async def test_inbox_receives_room_refresh(self, maya, arjun, lee):
+        group, message = await self.build(maya, arjun, lee)
+        inbox = make_inbox(lee)
+        await inbox.connect()
+        socket = make_communicator(group.id, maya)
+        await socket.connect()
+        await socket.send_json_to({"type": "delete_message", "id": str(message.id)})
+        frame = await next_frame_of_type(inbox, "room_refresh")
+        assert frame == {"type": "room_refresh", "room": str(group.id)}
+        await socket.disconnect()
+        await inbox.disconnect()
+
+    async def test_failed_refresh_send_keeps_the_edit(self, maya, arjun, lee, caplog):
+        import logging
+        from unittest import mock
+
+        group, message = await self.build(maya, arjun, lee)
+        socket = make_communicator(group.id, maya)
+        await socket.connect()
+        with mock.patch(
+            "chat.live_rooms.realtime.send_to_inbox", side_effect=RuntimeError
+        ):
+            with caplog.at_level(logging.WARNING, logger="chat.live_rooms"):
+                await socket.send_json_to(
+                    {"type": "edit_message", "id": str(message.id), "message": "x"}
+                )
+                assert (await socket.receive_json_from())["message"] == "x"
+        assert any("room_refresh" in r.getMessage() for r in caplog.records)
+        await socket.send_json_to({"type": "save_message", "message": "still open"})
+        assert (await socket.receive_json_from())["message"] == "still open"
+        await socket.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+class TestBusyDatabase:
+    async def test_read_survives_locked_database(self, maya, room, caplog):
+        import logging
+        from unittest import mock
+
+        from django.db import OperationalError
+
+        socket = make_communicator(room.id, maya)
+        await socket.connect()
+        with mock.patch(
+            "chat.channels.consumers.presence.mark_read",
+            side_effect=OperationalError("database is locked"),
+        ):
+            with caplog.at_level(logging.WARNING, logger="chat.channels.consumers"):
+                await socket.send_json_to({"type": "read"})
+                assert await socket.receive_nothing(timeout=0.3)
+        [record] = caplog.records
+        assert str(room.id) in record.getMessage()
+        assert "locked" not in record.getMessage()
+        await socket.send_json_to({"type": "save_message", "message": "hi"})
+        assert (await socket.receive_json_from())["message"] == "hi"
+        await socket.disconnect()
+
+    def test_sqlite_waits_for_locks(self):
+        from django.conf import settings
+
+        db = settings.DATABASES["default"]
+        assert db["ENGINE"] == "django.db.backends.sqlite3"
+        assert db["OPTIONS"]["timeout"] == 20
+
+
+@pytest.mark.django_db
+class TestLeaveNotice:
+    def test_json_leave_queues_the_notice(self, client, group, arjun):
+        from django.contrib.messages import SUCCESS, get_messages
+
+        client.force_login(arjun)
+        response = client.post(
+            reverse("chat:group_action", args=[group.id, "leave"]),
+            HTTP_ACCEPT="application/json",
+        )
+        assert response.json() == {"ok": True, "redirect": reverse("chat:chat")}
+        notices = [(m.level, m.message) for m in get_messages(response.wsgi_request)]
+        assert notices == [(SUCCESS, "You left Design team.")]
+
+    def test_redirect_leave_has_same_notice(self, client, group, arjun):
+        from django.contrib.messages import get_messages
+
+        client.force_login(arjun)
+        response = client.post(reverse("chat:group_action", args=[group.id, "leave"]))
+        assert [m.message for m in get_messages(response.wsgi_request)] == [
+            "You left Design team."
+        ]
+
+    def test_other_json_actions_add_no_notice(self, client, group, maya):
+        from django.contrib.messages import get_messages
+
+        client.force_login(maya)
+        response = client.post(
+            reverse("chat:group_action", args=[group.id, "rename"]),
+            {"name": "Crew"},
+            HTTP_ACCEPT="application/json",
+        )
+        assert response.json()["ok"] is True
+        assert list(get_messages(response.wsgi_request)) == []
