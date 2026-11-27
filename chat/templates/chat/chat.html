@@ -28,7 +28,7 @@
                    {% if r.other_username %}data-username="{{ r.other_username }}"{% endif %} data-unread="{{ r.unread }}"
                    title="{{ r.title }}" {% if room and r.id == room_summary.id %}aria-current="page"{% endif %}>
                     <span class="room-link__avatar-wrap">
-                        <span class="avatar room-link__avatar{% if r.type == 'group' %} room-link__avatar--group{% endif %}">{{ r.initials }}</span>
+                        <span class="avatar room-link__avatar{% if r.type == 'group' %} room-link__avatar--group{% endif %}" aria-hidden="true">{{ r.initials }}</span>
                         {% if r.other_username %}<span class="presence-dot" aria-hidden="true"></span>{% endif %}
                     </span>
                     <span class="room-link__text">
@@ -147,8 +147,8 @@
                     <svg data-gone-icon="removed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m17 8 5 5"/><path d="m22 8-5 5"/></svg>
                     <svg data-gone-icon="deleted" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                 </span>
-                <h1 class="chat-gone__heading" tabindex="-1" data-gone-heading></h1>
-                <p class="muted" data-gone-text></p>
+                <h1 class="chat-gone__heading" tabindex="-1" aria-describedby="gone-text" data-gone-heading></h1>
+                <p class="muted" id="gone-text" data-gone-text></p>
                 <div><a class="btn btn--primary chat-gone__back" href="{% url 'chat:chat' %}">Back to chats</a></div>
             </div>
         </template>
@@ -157,8 +157,8 @@
             <div class="transcript chat-welcome__spine" aria-hidden="true">
                 <div class="msg"><span class="msg__time">now</span><span class="msg__node avatar avatar--mine">{{ me.initials }}</span><span class="msg__body"><span class="msg__name">You</span>opened Relay</span></div>
             </div>
-            <h1>{% if rooms %}Pick a chat{% else %}Welcome, {{ me.name }}{% endif %}</h1>
-            <p class="muted">{% if rooms %}Choose a conversation from the list, or start a new one.{% else %}You're not in any chats yet. Message someone or start a group.{% endif %}</p>
+            <h1 data-welcome-title data-rooms="Pick a chat" data-empty="Welcome, {{ me.name }}">{% if rooms %}Pick a chat{% else %}Welcome, {{ me.name }}{% endif %}</h1>
+            <p class="muted" data-welcome-text data-rooms="Choose a conversation from the list, or start a new one." data-empty="You’re not in any chats yet. Message someone or start a group.">{% if rooms %}Choose a conversation from the list, or start a new one.{% else %}You’re not in any chats yet. Message someone or start a group.{% endif %}</p>
             <div><button class="btn btn--primary" type="button" data-open-new-chat aria-haspopup="dialog">New chat</button></div>
         </div>
         {% endif %}
