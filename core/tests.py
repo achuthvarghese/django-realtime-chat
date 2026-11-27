@@ -192,6 +192,49 @@ class TestSeedDemo:
         assert books.filter(visible_for=priya).count() < books.count()
 
     @override_settings(DEBUG=True)
+    def test_reactions_seeded(self):
+        from chat.models import Reaction, Room
+        from chat.views import history_page
+        from core import demo_data
+
+        self.run()
+        User = get_user_model()
+        assert Reaction.objects.count() == sum(
+            len(people) for *_rest, people in demo_data.REACTIONS
+        )
+        design = Room.objects.get(name="Design team")
+        maya = User.objects.get(username="maya")
+        page, _ = history_page(design, maya, limit=100)
+        palette = next(
+            m for m in page if m["message"] == "Palette cards are in, six of them"
+        )
+        assert [r["emoji"] for r in palette["reactions"]] == [
+            "thumbs_up",
+            "heart",
+            "party",
+        ]
+        party = palette["reactions"][2]
+        assert party["count"] == 3
+        assert [u["user"] for u in party["users"]] == ["arjun", "maya", "lee"]
+        assert party["users"][0]["name"] == "Arjun Kumar"
+        # Anika reacted to her own message.
+        assert palette["user"] == "anika"
+        assert palette["reactions"][1]["users"][0]["user"] == "anika"
+
+        # A direct chat has one.
+        dm = Room.objects.get(type="private", members=maya, name="arjun-maya")
+        page, _ = history_page(dm, maya)
+        assert sum(len(m["reactions"]) for m in page) == 1
+
+        # Book club: Maya sees the reactions on the old message; Priya cleared
+        # it, so none of her messages carry any.
+        books = Room.objects.get(name="Book club")
+        page, _ = history_page(books, maya)
+        assert any(m["reactions"] for m in page)
+        page, _ = history_page(books, User.objects.get(username="priya"))
+        assert page and not any(m["reactions"] for m in page)
+
+    @override_settings(DEBUG=True)
     def test_second_run_skips(self):
         from chat.models import Message
 
