@@ -320,7 +320,7 @@
                 if (later) showMessage(roomId, later.message, { unread: later.unread });
             }
         } catch (error) {
-            console.warn(`Relay: couldn't load the room list row for ${roomId}.`, error);
+            console.warn("Relay: couldn't load the room list row for %s.", roomId, error);
         } finally {
             const again = pending.get(roomId).again;
             pending.delete(roomId);
