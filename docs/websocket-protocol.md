@@ -60,6 +60,32 @@ Every frame is a JSON object with a `type`.
 `message` is trimmed and must be 1 to 4000 characters. The message is saved
 and made visible to every current member of the room.
 
+To reply to a message, add its id as `reply_to`:
+
+```json
+{"type": "save_message", "message": "Sounds good", "reply_to": "3b1d…"}
+```
+
+`reply_to` is optional; `null` or no key sends a plain message. Otherwise it
+must be a string holding the UUID of a message that is:
+
+- in the same room,
+- a text message (not a group event),
+- not deleted, and
+- visible to you (not hidden by your **Clear history**, not sent before you
+  joined).
+
+Anything else, including an empty string, a number or an object, is refused
+with one fixed error and nothing is saved:
+
+```json
+{"type": "error", "code": 400, "message": "You can't reply to that message", "ts": "…", "for": "save_message"}
+```
+
+The text is the same for every reason, so the error doesn't reveal whether a
+message you can't see exists. The same error is sent if the original is
+removed from the database while the reply is being saved.
+
 ### `edit_message`
 
 ```json
@@ -67,7 +93,8 @@ and made visible to every current member of the room.
 ```
 
 Changes the text of one of your own messages in this room. The same rules as
-`save_message` apply to `message`. Deleted messages can't be edited.
+`save_message` apply to `message`. Deleted messages can't be edited. An edit
+never changes what a reply replies to; a `reply_to` key is ignored.
 
 ### `delete_message`
 
@@ -120,9 +147,9 @@ to the client.
 
 | Frame | Goes to |
 | --- | --- |
-| `save_message` (yours) | People who were members when it was sent |
+| `save_message` (yours) | People who were members when it was sent; a reply is split by who can see the original (see [Replies](#replies-and-the-reply_to-object)) |
 | `save_message` (group event) | People who were members when it happened, so a removed member doesn't see "Maya removed Lee" |
-| `message_updated` | Current members who can still see the message: not people who cleared their history or joined after it |
+| `message_updated` | Current members who can still see the message: not people who cleared their history or joined after it. Edits and deletes of a reply are split the same way as new replies |
 | `room_updated` | Current members |
 | `typing` | Every socket in the room |
 | `clear_room`, `error` | The requesting socket only |
@@ -145,7 +172,8 @@ sends `room_updated`. A failed send is logged and skipped.
   "created_at": "2026-11-25T09:41:00.123456+00:00",
   "edited": false,
   "deleted": false,
-  "kind": "text"
+  "kind": "text",
+  "reply_to": null
 }
 ```
 
@@ -159,6 +187,34 @@ history from the same shape (`chat/presenters.py: message_data`).
 
 `message`, `user` and `name` are plain text. Clients must insert them as text
 (`textContent`), never as HTML.
+
+#### Replies and the `reply_to` object
+
+Every message object (the page's initial JSON, `GET /chat/rooms/<uuid>/messages/`,
+`save_message` and `message_updated`) has a `reply_to` key. It takes one of
+four forms, built for each viewer when the message is sent or loaded:
+
+| Case | `reply_to` |
+| --- | --- |
+| Plain message, a deleted reply, or the original was removed from the database | `null` |
+| You can't see the original (you cleared it, or joined after it) | `{"id": "<uuid>", "available": false}` |
+| The original is deleted | `{"id": "<uuid>", "available": true, "deleted": true, "user": "maya", "name": "Maya Rao"}` |
+| Otherwise | `{"id": "<uuid>", "available": true, "deleted": false, "user": "maya", "name": "Maya Rao", "excerpt": "Can we keep Graphite + Coral as the default?"}` |
+
+A viewer who can't see the original gets only its id: never its author or
+text. `excerpt` is the original's current text with every run of whitespace
+collapsed to one space, trimmed, and cut to the first 200 characters (no
+ellipsis). `user`, `name` and `excerpt` are plain text.
+
+For a new reply, and for an edit or delete of a reply, the server splits the
+recipients in two: people who can see the original get the full quote, the
+rest get `{"id": "<uuid>", "available": false}`. Each group gets its own
+frame (one extra query to find who can see the original).
+
+When an original is edited or deleted, its `message_updated` frame is the
+usual one. Clients update every loaded quote whose `reply_to.id` matches it:
+the new excerpt (computed from `message` with the same rule) or the deleted
+state. Quotes shown as unavailable stay unavailable.
 
 ### `typing` (to every socket in the room, including yours)
 
@@ -182,8 +238,8 @@ if it's open.
 ### `message_updated` (to people who can see the message)
 
 Sent after an edit or delete, with the same fields as `save_message`. A deleted
-message has `"deleted": true` and an empty `message`; an edited one has
-`"edited": true`. The same people also get a `room_refresh` frame on their
+message has `"deleted": true`, an empty `message` and `"reply_to": null`; an
+edited one has `"edited": true`. The same people also get a `room_refresh` frame on their
 inbox socket (see below).
 
 You can only edit or delete your own messages that you can still see. After
@@ -199,11 +255,19 @@ you (the server answers `403`).
 ### `error` (to the requesting socket only)
 
 ```json
-{"type": "error", "code": 400, "message": "Message cannot be empty", "ts": "…"}
+{"type": "error", "code": 400, "message": "Message cannot be empty", "ts": "…", "for": "save_message"}
 ```
 
 Sent for invalid JSON, a non-object payload, an unknown `type`, an empty or
-over-long message, and when a connection is refused (`403`, `404`).
+over-long message, a refused reply, editing or deleting a message you can't
+change, and when a connection is refused (`403`, `404`).
+
+`for` is the `type` of the client frame the error answers (`save_message`,
+`edit_message`, `delete_message`, …), so the page can tell which request
+failed: it puts a refused reply's text and target back only for
+`"for": "save_message"`. `for` is absent when the error doesn't answer a
+known frame type: invalid JSON, a non-object payload, an unknown `type`, and
+refusals (on connect, or when membership is checked on a frame).
 
 
 ## Inbox socket
@@ -244,14 +308,15 @@ connection) or goes offline (their last connection closes).
 **`room_activity`**, to every member when a message is sent in one of their
 rooms, with their unread count for that room. The page uses it to update the
 preview, move the room to the top and show the unread badge, except for the
-room already open.
+room already open. The embedded message always has `"reply_to": null`: the
+room list shows a reply's own text, never its quote.
 
 ```json
 {
   "type": "room_activity",
   "room": "<room uuid>",
   "unread": 3,
-  "message": {"type": "save_message", "id": "…", "message": "standup in 5", "user": "anika", "…": "…"}
+  "message": {"id": "…", "message": "standup in 5", "user": "anika", "…": "…", "reply_to": null}
 }
 ```
 

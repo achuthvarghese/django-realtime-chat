@@ -116,6 +116,10 @@ Screen-specific components live with their screens:
 | `.room-list__new` | `chat/css/chat.css` | A room that just arrived: the row grows from zero height (`grid-template-rows` 0fr to 1fr, 200ms, `cubic-bezier(.2, 0, 0, 1)`) so the rows below move down smoothly, its content fades in, then an accent tint (`color-mix(in srgb, var(--accent) 22%, transparent)`) fades out over 1.6s. `inbox.js` removes the class when the tint is done |
 | `.chat-head--gone`, `.chat-gone`, `.chat-gone__heading`, `.chat-gone__back` | `chat/css/chat.css` | The open room went away: muted header avatar and title, an icon, the heading (focused, without a focus ring) and Back to chats (44px tall on touch screens and phones) |
 | `.chat-notices--side` | `chat/css/chat.css` | Notices in the room list on phones when no room is open; uses the chrome colours (`--chrome-raised`, `--chrome-strong`) |
+| `.msg__actions`, `.msg__action` | `chat/css/chat.css` | Action bar at a message's top right (Reply; Edit and Delete on yours, Delete in `--danger`). Hidden with `opacity: 0` and `pointer-events: none` (not `display: none`) so its buttons stay reachable by keyboard; shown on hover or `:focus-within`. Focus on the row itself (`.msg:focus`, from ↑/↓ or a jump) doesn't open it; Tab into its buttons does. On touch screens (`hover: none`) a tapped row gets `.is-selected` and shows the bar on its own line below the text. Buttons are 44px tall on coarse pointers |
+| `.msg__quote` | `chat/css/chat.css` | A reply's quote above its text: one line, 2px `--accent` left rule, no fill at rest (`--hover` on hover and focus), name (`.msg__quote-name`, bold, `--fg`) then excerpt (`.msg__quote-text`, `color-mix(in srgb, var(--fg) 72%, var(--bg))`, cut with an ellipsis). A `button` that jumps to the original; `--deleted` sets the text in italics; `--unavailable` is a plain `div` with a `--line` rule and italic text. At least 44px tall on coarse pointers |
+| `.reply-bar` | `chat/css/chat.css` | "Replying to" bar on top of the composer: `--surface`, `--line` border with no bottom edge, top corners `--radius-lg`; the composer loses its top corners while the bar shows, so the two read as one unit, and the bar's border turns `--accent` while the composer has focus. Parts: `__icon` (accent), `__label`, `__name`, `__excerpt` (one line, ellipsis), `__cancel` (44px on coarse pointers) |
+| `.msg--target` | `chat/css/chat.css` | The message you jumped to: an accent tint (`color-mix(in srgb, var(--accent) 22%, transparent)`) that fades out over 1.6s. With reduced motion, a still 16% tint for the same time. `chat.js` removes the class |
 
 ### Transcript
 
@@ -140,6 +144,10 @@ Screen-specific components live with their screens:
   the text. Follow-ups (`msg--cont`) show only text; their time appears on
   hover or focus.
 - Your own messages use `avatar--mine`.
+- A reply puts `.msg__quote` at the top of `.msg__body`, before the text,
+  and always starts a new run.
+- Rows are focusable (`tabindex="-1"`, one row `0`) and show an inset
+  `--focus-ring` on `:focus-visible`.
 - `.transcript` is a size container. Below 420px wide the time gutter is hidden
   and `.msg__inline-time` shows next to the name.
 

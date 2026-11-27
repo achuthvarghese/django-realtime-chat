@@ -3,6 +3,72 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 10a: replies
+
+Reply to a specific message. The reply shows a live quote of the original,
+and clicking the quote jumps to it. This is the first phase whose builders
+(`backend-dev`, `frontend-dev`) ran as Claude Code sub sessions, each in its
+own container on its own branch.
+
+### Added
+- `Message.reply_to`: a nullable foreign key to the message being answered
+  (`on_delete=SET_NULL`, `message.replies`), with one check constraint,
+  `message_reply_valid` (only text messages reply, never to themselves).
+  Migration `chat/0005_message_reply_to`.
+- `save_message` takes an optional `reply_to` (the original's id). The
+  original must be in the same room, a text message, not deleted and
+  visible to the sender; otherwise the server answers with the fixed error
+  "You can't reply to that message" and saves nothing.
+- Every message object has a `reply_to` key: `null`, `{"id", "available":
+  false}` for people who can't see the original, or the original's author
+  and an excerpt (up to 200 characters on one line), or `"deleted": true`.
+  Quotes are built for each viewer, so the original's author and text never
+  reach someone who can't see it. Inbox `room_activity` frames carry
+  `"reply_to": null`.
+- `error` frames carry `for`, the type of the client frame they answer, when
+  there is one.
+- Reply in a new action bar on every text message, and a "Replying to"
+  bar joined to the composer, with a matching placeholder and hint. Esc or ×
+  cancels; Escape closes a dialog or menu first, then the reply, then the
+  Details panel.
+- Quotes above replies: the original's author and text, "Message deleted",
+  or "Original message unavailable". They follow edits and deletes of the
+  original live.
+- Jump to the original: scroll, focus and a brief accent tint (a still tint
+  with reduced motion). Older messages load 100 at a time, up to 10 pages,
+  then "That message is too far back."
+- Six demo replies (Design team, Ops, Book club and Maya ↔ Arjun), including
+  one quoting a deleted message and one Priya sees as unavailable. `SCRIPT`
+  lines take an optional fifth item: the text of the line they reply to.
+
+### Changed
+- Keyboard: the transcript is one Tab stop (roving tabindex). ↑ and ↓ move
+  between messages, Home and End go to the first and last loaded, and Tab
+  from a message reaches its quote and actions. The scroll area itself is no
+  longer a Tab stop.
+- On touch screens, tapping any text message (not only your own) shows its
+  actions, on a line below the text.
+- Action buttons are named for their message ("Reply to Maya Rao", "Edit
+  your message") and described by its time.
+- A reply always starts a new group of messages, even from the same sender.
+- Loading older history adds the new rows above the old ones instead of
+  redrawing the whole transcript, keeping focus and any open edit.
+- History pages load only the columns they show (no password hashes) and
+  stay at one query per page with replies.
+- Builders check their git identity before every commit; a commit under the
+  wrong author is re-authored by the orchestrator when merging, never
+  force-pushed.
+
+### Fixed
+- The message action bar is reachable by keyboard: it was hidden with
+  `display: none`, so Tab skipped Edit and Delete.
+- `GET /chat/rooms/<uuid>/messages/?before=` refuses a message you can't see
+  (400 "Unknown message"), since hidden message ids now reach the page as
+  `reply_to.id`.
+- Escape in an inline message edit no longer closes the Details panel.
+- Clearing your history while older messages are loading no longer brings
+  them back.
+
 ## Agent sessions
 
 ### Changed

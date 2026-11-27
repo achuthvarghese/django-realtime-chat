@@ -56,10 +56,10 @@ with `python manage.py createsuperuser` if you need `/admin/`.
 
 | Room | Type | Members (admins in bold) | What's in it |
 | --- | --- | --- | --- |
-| Design team | Group, created by maya | **maya**, **arjun**, anika, lee | 135 messages over ten days, enough for **infinite scroll** (the room opens with 50); grouping and day separators; one **edited** message; two group events |
-| Ops | Group, created by lee | **lee**, omar, sofia, maya | Deploy chatter; one **deleted** message ("Message deleted"); a group event |
-| Book club | Group, created by anika | **anika**, sofia, priya, omar, maya | A week-old thread plus recent replies; Priya has cleared her older history |
-| Maya ↔ Arjun | Direct | maya, arjun | Short recent exchange, all read |
+| Design team | Group, created by maya | **maya**, **arjun**, anika, lee | 135 messages over ten days, enough for **infinite scroll** (the room opens with 50); grouping and day separators; one **edited** message; two group events; two **replies** |
+| Ops | Group, created by lee | **lee**, omar, sofia, maya | Deploy chatter; one **deleted** message ("Message deleted"); a group event; two **replies**, one quoting the deleted message |
+| Book club | Group, created by anika | **anika**, sofia, priya, omar, maya | A week-old thread plus recent replies; Priya has cleared her older history; one **reply** whose original Priya can't see |
+| Maya ↔ Arjun | Direct | maya, arjun | Short recent exchange, all read; one **reply** |
 | Maya ↔ Anika | Direct | maya, anika | One unread message for Maya |
 | Arjun ↔ Lee | Direct | arjun, lee | Code review chat |
 | Sofia ↔ Priya | Direct | sofia, priya | Book chat |
@@ -78,18 +78,38 @@ with `python manage.py createsuperuser` if you need `/admin/`.
 5. **Themes**: sign in as `arjun`, `anika`, `omar` or `sofia` to see their saved
    palettes, or change yours in Settings → Appearance.
 6. **New chat**: as `sam`, use New chat to message `maya`, or create a group.
-7. **Phone layout**: open the site with your browser's device toolbar; tap one
-   of your messages to show Edit and Delete.
+7. **Phone layout**: open the site with your browser's device toolbar; tap a
+   message to show its actions (Reply, plus Edit and Delete on yours).
 8. **Group admin**: as `maya`, open Design team → Details (ⓘ). Make `anika` an
    admin, rename the group, or remove `lee` while `lee` has it open in another
    window: their tab says "You're no longer in this chat." As `lee` (Ops'
    only admin) try stepping down: the panel asks you to make someone else
    admin first.
+9. **Replies**: as `maya`, use Reply on any message and send. Click a quote
+   to jump to its original. See the seeded replies below for each kind of
+   quote.
+
+### Seeded replies
+
+| Room | Reply | Quotes | What it shows |
+| --- | --- | --- | --- |
+| Design team | maya: "Yes, default stays. Everyone can switch in Settings → Appearance" | lee: "Can we keep Graphite + Coral as the default?" | A quote of a nearby message |
+| Design team | arjun: "Try opening Ops in another tab" | arjun: "Pushed the new spine layout to staging" | An original about two days back; jumping to it may load older messages |
+| Ops | lee: "Rolling out relay v1.0 now" | sofia's deleted message | A "Message deleted" quote that still jumps |
+| Ops | lee: "Smoke tests passed" | omar: "Deploy finished: relay v1.0 is live" | A quote of the message just above |
+| Book club | maya: "Halfway through, no spoilers please!" | anika: "Next pick: The Left Hand of Darkness?" | Everyone else sees the quote; `priya` cleared the original, so she sees "Original message unavailable" |
+| Maya ↔ Arjun | maya: "Sure, sending notes in a bit" | arjun: "Got a minute to look at the PR?" | A reply in a direct chat |
 
 ## Changing the data
 
 The dataset lives in `core/demo_data.py` (users, rooms, scripted messages,
 edits, deletes, read state, cleared history); the loader is
 `core/management/commands/seed_demo.py`. Times are relative to when you seed,
-so "Today" and "Yesterday" always look right. If you change the data, update
-this page; `core/tests.py` checks the unread counts and scenarios listed here.
+so "Today" and "Yesterday" always look right.
+
+Each `SCRIPT` line is `(room, sender, text, minutes before now)`. A reply adds
+a fifth item: the exact text of an earlier line in the same room. The loader
+links it to the latest message with that text so far, and stops with an error
+if no earlier line in that room matches. If you change the data, update
+this page; `core/tests.py` checks the unread counts and scenarios listed here, and
+`chat/tests.py` checks the seeded replies.

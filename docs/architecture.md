@@ -89,7 +89,31 @@ sequenceDiagram
 ```
 
 Edits and deletes follow the same path and broadcast `message_updated`,
-then send `room_refresh` to the inboxes of the same people. Typing events go
+then send `room_refresh` to the inboxes of the same people.
+
+### Replies
+
+A `save_message` frame with `reply_to` is a reply. `ChatConsumer.reply_target`
+looks the original up inside the same transaction as the insert: it must be
+in this room, a text message, not deleted and visible to the sender. Any other
+value raises `CantReply`, and the sender gets the one fixed error "You can't
+reply to that message". If the original is removed from the database between
+the check and the commit, the foreign key fails, the reply isn't saved and the
+sender gets the same error.
+
+`send_message_frame` sends a reply, and later edits or deletes of it, in up
+to two group sends: one query finds which recipients can see the original,
+those get the full quote, and the rest get only `{"id", "available": false}`.
+The inbox `room_activity` frame always carries `"reply_to": null`.
+
+History pages (`views.history_page`, used by the chat page and
+`GET /chat/rooms/<uuid>/messages/`) stay at one query per page however many
+messages are replies: the original and its author are joined in with
+`select_related("user", "reply_to__user")`, `.only(...)` limits the columns
+to what `message_data` reads (no password hashes or other user fields), and
+an `Exists` on the original's `visible_for` rows (same room only) is
+annotated as `reply_visible`. `message_data` treats a missing annotation as
+"can't see", so nothing leaks by default. Typing events go
 only to the room group. See
 [websocket-protocol.md](./websocket-protocol.md) for every frame.
 
@@ -110,6 +134,7 @@ process simply expire.
 | Room membership | Views look rooms up through `request.user.rooms`; `ChatConsumer` checks membership on connect **and on every frame**, and removal or deletion closes open sockets (`4403`/`4404`). On connect it joins the room group before checking, so a removal can't slip between the two |
 | Message visibility | Room events about messages carry the ids of the people allowed to see them (`visible_to`); each socket drops the frame unless its user is listed. People who cleared their history, joined later or were just removed don't get the text. See [websocket-protocol.md](./websocket-protocol.md#who-gets-room-frames) |
 | Group permissions | `chat/groups.py` checks admin rights server-side for rename, remove, admin changes and delete; the panel only hides controls |
+| Reply quotes | A quote's author and text go only to people who can see the original. Everyone else gets only its id with `"available": false`, on the page, in history and in every frame; inbox frames carry no quote. A refused reply gets one fixed error whatever the reason, and `?before=` in history accepts only messages you can see, since hidden ids now reach the client as `reply_to.id` |
 | Message ownership | Edit and delete only match the sender's own, undeleted, non-system messages |
 | Cross-site WebSockets | `AllowedHostsOriginValidator` checks the `Origin` header against `ALLOWED_HOSTS` |
 | XSS | Templates autoescape; scripts build messages with text nodes, never `innerHTML`; initial data uses `json_script` |

@@ -8,6 +8,7 @@ erDiagram
     Room ||--o{ Message : "contains"
     User ||--o{ Message : "sends"
     User }o--o{ Message : "can see (visible_for)"
+    Message |o--o{ Message : "replied to by (reply_to)"
     User ||--o{ ReadState : "has"
     Room ||--o{ ReadState : "tracked by"
     User ||--o{ Connection : "has open"
@@ -59,6 +60,24 @@ creator.
 | `edited_at` | Set when the author edits the text |
 | `deleted_at` | Set when the author deletes it; `content` is emptied at the same time |
 | `visible_for` | Members who can still see the message. Set to all room members on send; **Clear history** removes the requesting user |
+| `reply_to` | The message this one replies to, or null. Foreign key to `Message` (`message.replies`), `on_delete=SET_NULL`, indexed. Never changed by an edit |
+
+One check constraint, `message_reply_valid`, guards replies:
+`reply_to` is null, or the message is a `text` message and doesn't reply to
+itself. The consumer also checks that the original is in the same room, is a
+text message, isn't deleted and is visible to the sender (see
+[the protocol](./websocket-protocol.md#save_message)).
+
+Quotes are live: the reply stores only the original's id, never a copy of its
+text. Each time a reply is shown, the server reads the original and builds the
+quote for that viewer: its author and an excerpt of its current text, "Message
+deleted" once the original is deleted, or nothing but the id for a viewer who
+can't see the original. If the original row is removed from the database, the
+reply's `reply_to` becomes null and it shows as a plain message. A deleted
+reply shows no quote.
+
+Migration `chat/0005_message_reply_to` adds the field and the constraint. It
+needs no data migration.
 
 `chat/presenters.py: message_data` turns a message into the JSON shape used by
 the page and the socket.
