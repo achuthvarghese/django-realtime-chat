@@ -12,6 +12,16 @@
     const me = readJSON("me");
     const GROUP_GAP_MS = 5 * 60 * 1000;
 
+    // The characters Python's str.split() splits on (JavaScript's \s differs).
+    const PY_WHITESPACE = /[\t\n\v\f\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/u;
+    // A reply's quote of its original: the same rule as the server (collapse
+    // whitespace runs to one space, strip, first 200 characters).
+    const EXCERPT_CHARS = 200;
+    const excerptOf = (text) =>
+        Array.from((text || "").split(PY_WHITESPACE).filter(Boolean).join(" "))
+            .slice(0, EXCERPT_CHARS)
+            .join("");
+
     // Dates
 
     const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
@@ -107,19 +117,61 @@
         }
     }
 
+    // Text messages you can act on: not group events, not deleted.
+    const actionable = (data) => data.kind !== "system" && !data.deleted;
+
+    // The per-message action bar. Everyone can reply; only the author can
+    // edit or delete. Each entry is [data-action, label, accessible name].
     function actionsFor(data) {
+        const items = [["reply", "Reply", "Reply to message"]];
+        if (data.user === me) items.push(["edit", "Edit", "Edit message"], ["delete", "Delete", "Delete message"]);
         const bar = document.createElement("span");
         bar.className = "msg__actions";
-        for (const [action, label] of [["edit", "Edit"], ["delete", "Delete"]]) {
+        for (const [action, label, name] of items) {
             const button = document.createElement("button");
             button.type = "button";
             button.className = "msg__action";
             button.dataset.action = action;
             button.textContent = label;
-            button.setAttribute("aria-label", `${label} message`);
+            button.setAttribute("aria-label", name);
             bar.append(button);
         }
         return bar;
+    }
+
+    // The quote above a reply: a button that jumps to the original, or a
+    // plain note when you can't see the original.
+    function buildQuote(reply) {
+        if (!reply.available) {
+            const note = document.createElement("div");
+            note.className = "msg__quote msg__quote--unavailable";
+            note.textContent = "Original message unavailable";
+            return note;
+        }
+        const quote = document.createElement("button");
+        quote.type = "button";
+        quote.className = "msg__quote";
+        quote.dataset.replyTo = reply.id;
+        fillQuote(quote, reply);
+        return quote;
+    }
+
+    function fillQuote(quote, reply) {
+        const hidden = document.createElement("span");
+        hidden.className = "visually-hidden";
+        hidden.textContent = "In reply to ";
+        const name = document.createElement("span");
+        name.className = "msg__quote-name";
+        name.textContent = reply.user === me ? "You" : reply.name || reply.user;
+        const separator = document.createElement("span");
+        separator.className = "visually-hidden";
+        separator.textContent = ": ";
+        const text = document.createElement("span");
+        text.className = "msg__quote-text";
+        quote.classList.toggle("msg__quote--deleted", !!reply.deleted);
+        text.textContent = reply.deleted ? "Message deleted" : reply.excerpt;
+        quote.replaceChildren(hidden, name, separator, text);
+        quote.title = reply.deleted ? "Message deleted. Jump to it" : "Jump to the original message";
     }
 
     // Build the nodes for `data`, given the message before it (or null).
@@ -196,11 +248,12 @@
             who.textContent = speaker(data) + ": ";
             body.append(who);
         }
+        if (data.reply_to && !data.deleted) body.append(buildQuote(data.reply_to));
         const text = document.createElement("span");
         text.className = "msg__text";
         fillText(text, data);
         body.append(text);
-        if (mine && !data.deleted) body.append(actionsFor(data));
+        if (actionable(data)) body.append(actionsFor(data));
 
         row.append(time, node, body);
         nodes.push(row);
@@ -208,9 +261,21 @@
     }
 
     function renderAll() {
+        // Keep focus and the jump tint on the same message (e.g. a jump
+        // target near the top that makes older history load).
+        const focused = transcript.contains(document.activeElement) ? document.activeElement.closest(".msg[data-id]") : null;
+        const targetId = transcript.querySelector(".msg--target")?.dataset.id;
         const nodes = [];
         messages.forEach((data, i) => nodes.push(...buildRow(data, messages[i - 1] || null)));
         transcript.replaceChildren(...nodes);
+        if (focused) {
+            const row = transcript.querySelector(`.msg[data-id="${CSS.escape(focused.dataset.id)}"]`);
+            if (row) {
+                row.tabIndex = -1;
+                row.focus({ preventScroll: true });
+            }
+        }
+        if (targetId) transcript.querySelector(`.msg[data-id="${CSS.escape(targetId)}"]`)?.classList.add("msg--target");
         emptyNote.hidden = messages.length > 0;
         updateHistoryStatus();
     }
@@ -228,10 +293,43 @@
         messages[index] = data;
         const row = transcript.querySelector(`.msg[data-id="${CSS.escape(data.id)}"]`);
         if (!row) return;
-        fillText(row.querySelector(".msg__text"), data);
+        const text = row.querySelector(".msg__text");
+        fillText(text, data);
+        text.hidden = false;
+        if (data.deleted) {
+            row.querySelector(".msg__quote")?.remove();
+            row.classList.remove("is-selected");
+        }
         row.querySelector(".msg__actions")?.remove();
         row.querySelector(".msg__edit")?.remove();
-        if (data.user === me && !data.deleted) row.querySelector(".msg__body").append(actionsFor(data));
+        if (actionable(data)) row.querySelector(".msg__body").append(actionsFor(data));
+    }
+
+    // An original was edited or deleted: refresh every loaded quote of it
+    // (quotes you can't see stay unavailable) and the reply bar.
+    function updateQuotesOf(data) {
+        const reply = {
+            id: data.id,
+            available: true,
+            deleted: !!data.deleted,
+            user: data.user,
+            name: data.name,
+        };
+        if (!data.deleted) reply.excerpt = excerptOf(data.message);
+        for (const m of messages) {
+            if (m.reply_to && m.reply_to.id === data.id && m.reply_to.available) m.reply_to = reply;
+        }
+        for (const quote of transcript.querySelectorAll(`button.msg__quote[data-reply-to="${CSS.escape(data.id)}"]`)) {
+            fillQuote(quote, reply);
+        }
+        if (replyTarget && replyTarget.id === data.id) {
+            if (data.deleted) {
+                cancelReply({ announce: false, focus: false });
+                showToast("The message you were replying to was deleted.");
+            } else {
+                setReply(data, { announce: false, focus: false });
+            }
+        }
     }
 
     function updateHistoryStatus() {
@@ -246,13 +344,22 @@
         }
     }
 
-    async function loadOlder() {
-        if (loadingOlder || !hasMore || !messages.length) return;
+    // Load the page before the oldest loaded message. Resolves true when a
+    // page was added; a call while one is loading shares that request.
+    let olderRequest = null;
+    function loadOlder(limit = historyMeta.page_size) {
+        if (olderRequest) return olderRequest;
+        if (!hasMore || !messages.length) return Promise.resolve(false);
+        olderRequest = fetchOlder(limit).finally(() => { olderRequest = null; });
+        return olderRequest;
+    }
+
+    async function fetchOlder(limit) {
         loadingOlder = true;
         updateHistoryStatus();
         const before = messages[0].id;
         try {
-            const url = `/chat/rooms/${encodeURIComponent(roomId)}/messages/?before=${encodeURIComponent(before)}&limit=${historyMeta.page_size}`;
+            const url = `/chat/rooms/${encodeURIComponent(roomId)}/messages/?before=${encodeURIComponent(before)}&limit=${encodeURIComponent(limit)}`;
             const response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } });
             if (!response.ok) throw new Error(String(response.status));
             const page = await response.json();
@@ -264,16 +371,69 @@
             loadingOlder = false;
             renderAll();
             scroller.scrollTop = scroller.scrollHeight - fromBottom;
+            return true;
         } catch (error) {
-            console.warn("Relay: couldn't load earlier messages.", error);
+            console.warn("Relay: couldn't load earlier messages: %s", String(error));
             loadingOlder = false;
             updateHistoryStatus();
             showToast("Couldn't load earlier messages. Scroll up to try again.");
+            return false;
+        }
+    }
+
+    // Jump to a reply's original: scroll it into view, tint it briefly and
+    // focus it. If it isn't loaded, load older pages (100 at a time, up to
+    // 10 pages) until it is.
+    const JUMP_PAGE_SIZE = 100;
+    const JUMP_MAX_PAGES = 10;
+    const TARGET_MS = 1600;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let jumping = false;
+    let targetTimer = null;
+
+    const rowFor = (id) => transcript.querySelector(`.msg[data-id="${CSS.escape(id)}"]`);
+
+    function showTarget(row) {
+        for (const old of transcript.querySelectorAll(".msg--target")) old.classList.remove("msg--target");
+        clearTimeout(targetTimer);
+        row.scrollIntoView({ block: "center", behavior: reducedMotion.matches ? "auto" : "smooth" });
+        row.tabIndex = -1;
+        row.focus({ preventScroll: true });
+        // Restart the tint if the same message is the target again.
+        void row.offsetWidth;
+        row.classList.add("msg--target");
+        // Query again: loading older history may have rebuilt the row.
+        targetTimer = setTimeout(() => {
+            for (const tinted of transcript.querySelectorAll(".msg--target")) tinted.classList.remove("msg--target");
+        }, TARGET_MS);
+    }
+
+    async function jumpTo(id) {
+        if (jumping) return;
+        let row = rowFor(id);
+        if (row) return showTarget(row);
+        jumping = true;
+        try {
+            for (let pages = 0; !row && hasMore && pages < JUMP_MAX_PAGES; pages += 1) {
+                if (!(await loadOlder(JUMP_PAGE_SIZE))) {
+                    if (hasMore) return; // the request failed and said so
+                    break;
+                }
+                row = rowFor(id);
+            }
+            if (row) showTarget(row);
+            else if (hasMore) showToast("That message is too far back.");
+            else showToast("Couldn't find that message.");
+        } catch (error) {
+            console.warn("Relay: couldn't jump to message %s: %s", id, String(error));
+            showToast("Couldn't jump to that message.");
+        } finally {
+            jumping = false;
         }
     }
 
     scroller.addEventListener("scroll", () => {
-        if (scroller.scrollTop < 80) loadOlder();
+        if (scroller.scrollTop < 80 && !jumping) loadOlder();
     });
 
     renderAll();
@@ -281,8 +441,7 @@
     // If the first page doesn't fill the pane there is nothing to scroll; load more.
     (async () => {
         while (hasMore && scroller.scrollHeight <= scroller.clientHeight) {
-            await loadOlder();
-            if (loadingOlder) break;
+            if (!(await loadOlder())) break;
         }
         scrollToEnd();
     })();
@@ -382,6 +541,7 @@
                 return;
             }
             if (data.type === "save_message") {
+                if (data.user === me) pendingReply = null;
                 const stick = nearBottom() || data.user === me;
                 appendMessage(data);
                 // Previews show conversation, not group events (matches the server).
@@ -395,6 +555,7 @@
                 if (data.user !== me) showTyping(data);
             } else if (data.type === "message_updated") {
                 updateMessage(data);
+                updateQuotesOf(data);
                 if (messages.length && messages[messages.length - 1].id === data.id) {
                     updatePreview({ ...data, message: data.deleted ? "Message deleted" : data.message }, false);
                 }
@@ -410,6 +571,7 @@
                 applyRoomUpdate(data);
             } else if (data.type === "error") {
                 showToast(data.message);
+                restorePendingReply();
             }
         });
 
@@ -548,8 +710,6 @@
     // Same rule as initials() in chat/presenters.py: the first letter or
     // digit of the first two words, else the first two letters or digits
     // of the only word, else "?".
-    // The characters Python's str.split() splits on (JavaScript's \s differs).
-    const PY_WHITESPACE = /[\t\n\v\f\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/u;
     function initialsOf(name) {
         const words = (name || "")
             .split(PY_WHITESPACE)
@@ -606,15 +766,83 @@
         }
     });
 
+    // Replying: the bar above the composer says to whom; sending clears it.
+
+    const replyBar = document.getElementById("reply-bar");
+    const replyName = replyBar.querySelector("[data-reply-name]");
+    const replyExcerpt = replyBar.querySelector("[data-reply-excerpt]");
+    const replyStatus = document.getElementById("reply-status");
+    let replyTarget = null; // { id, name, excerpt } while replying
+    // A reply just sent: if the server refuses it, its text and target come back.
+    let pendingReply = null;
+
+    function announce(text) {
+        // Clear first so the same words are read again.
+        replyStatus.textContent = "";
+        setTimeout(() => { replyStatus.textContent = text; }, 50);
+    }
+
+    function setReply(data, { announce: say = true, focus = true } = {}) {
+        const name = data.user === me ? "yourself" : data.name || data.user;
+        replyTarget = { id: data.id, user: data.user, name, excerpt: excerptOf(data.message) };
+        replyName.textContent = name;
+        replyExcerpt.textContent = replyTarget.excerpt;
+        replyBar.hidden = false;
+        if (say) announce(`Replying to ${name}`);
+        if (focus) input.focus();
+    }
+
+    function cancelReply({ announce: say = true, focus = true } = {}) {
+        if (!replyTarget) return;
+        replyTarget = null;
+        replyBar.hidden = true;
+        replyName.textContent = "";
+        replyExcerpt.textContent = "";
+        if (say) announce("Reply cancelled");
+        if (focus) input.focus();
+    }
+
+    function restorePendingReply() {
+        if (!pendingReply) return;
+        const { text, target } = pendingReply;
+        pendingReply = null;
+        if (input.value === "") {
+            input.value = text;
+            autosize();
+        }
+        if (!replyTarget) {
+            const original = messages.find((m) => m.id === target.id);
+            if (original && actionable(original)) setReply(original, { announce: false, focus: false });
+        }
+    }
+
+    replyBar.querySelector("[data-reply-cancel]").addEventListener("click", () => cancelReply());
+
     composer.addEventListener("submit", (event) => {
         event.preventDefault();
         const text = input.value.trim();
         if (!text) return;
-        if (send({ type: "save_message", message: text })) {
+        const payload = { type: "save_message", message: text };
+        if (replyTarget) payload.reply_to = replyTarget.id;
+        if (send(payload)) {
+            pendingReply = replyTarget ? { text, target: replyTarget } : null;
             input.value = "";
             autosize();
+            cancelReply({ announce: false, focus: false });
         }
         input.focus();
+    });
+
+    // Escape in the composer cancels a reply (details.js leaves it to us).
+    composer.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || !replyTarget || event.isComposing) return;
+        event.preventDefault();
+        cancelReply();
+    });
+    replyBar.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || !replyTarget) return;
+        event.preventDefault();
+        cancelReply();
     });
 
     input.addEventListener("keydown", (event) => {
@@ -689,16 +917,26 @@
     }
 
     transcript.addEventListener("click", (event) => {
+        const quote = event.target.closest("button.msg__quote");
+        if (quote) {
+            selectRow(null);
+            jumpTo(quote.dataset.replyTo);
+            return;
+        }
         const button = event.target.closest(".msg__action");
         if (!button) {
-            // Touch screens: tap your own message to show Edit and Delete.
+            // Touch screens: tap a message to show its actions.
             if (!touchOnly.matches || event.target.closest(".msg__edit")) return;
-            const row = event.target.closest(".msg--mine");
-            selectRow(row && !row.querySelector(".msg__text--deleted") ? row : null);
+            const row = event.target.closest(".msg:not(.msg--system)");
+            selectRow(row && row.querySelector(".msg__actions") ? row : null);
             return;
         }
         const row = button.closest(".msg");
         row.classList.remove("is-selected");
+        if (button.dataset.action === "reply") {
+            const data = messages.find((m) => m.id === row.dataset.id);
+            if (data && actionable(data)) setReply(data);
+        }
         if (button.dataset.action === "edit") startEdit(row);
         if (button.dataset.action === "delete") {
             pendingDelete = row.dataset.id;

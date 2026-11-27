@@ -487,14 +487,18 @@
     .chat-side__new { width: auto; padding: 0 var(--space-3); }
 }
 
-/* Message actions (own messages): shown on hover or keyboard focus */
+/* Message actions (Reply; Edit and Delete on your own): shown on hover or
+   keyboard focus */
 
 .chat .msg { position: relative; }
 .msg__actions {
     position: absolute;
     top: -10px;
     right: var(--space-3);
-    display: none;
+    /* Hidden but still in the tab order, so the keyboard can reach it. */
+    display: inline-flex;
+    opacity: 0;
+    pointer-events: none;
     gap: 2px;
     padding: 2px;
     border: 1px solid var(--line);
@@ -504,8 +508,10 @@
     z-index: 2;
 }
 .msg:hover .msg__actions,
-.msg:focus-within .msg__actions { display: inline-flex; }
+.msg:focus-within .msg__actions { opacity: 1; pointer-events: auto; }
 .msg__actions[hidden] { display: none !important; }
+/* A message focused by a jump doesn't open its bar; Tab into it does. */
+.msg:focus:not(:hover) .msg__actions { opacity: 0; pointer-events: none; }
 .msg__action {
     padding: 2px 8px;
     border: 0;
@@ -520,11 +526,12 @@
 .msg__action:hover { background: var(--hover); }
 .msg__action[data-action="delete"] { color: var(--danger); }
 @media (hover: none) {
-    /* Touch screens: no hover, so tapping one of your messages selects it and
-       shows its actions; tapping it again or another message deselects it. */
-    .msg:hover .msg__actions { display: none; }
-    .msg--mine.is-selected { background: color-mix(in srgb, var(--hover) 80%, transparent); }
-    .msg--mine.is-selected .msg__actions { display: inline-flex; position: static; margin-left: var(--space-2); box-shadow: none; vertical-align: middle; }
+    /* Touch screens: no hover, so tapping a message selects it and shows its
+       actions on a line below; tapping it again or another message
+       deselects it. */
+    .msg:not(.is-selected):hover:not(:focus-within) .msg__actions { opacity: 0; pointer-events: none; }
+    .msg.is-selected { background: color-mix(in srgb, var(--hover) 80%, transparent); }
+    .msg.is-selected .msg__actions { display: flex; width: fit-content; position: static; margin-top: var(--space-1); box-shadow: none; opacity: 1; pointer-events: auto; }
 }
 
 .msg__text--deleted { color: var(--muted); font-style: italic; }
@@ -627,4 +634,74 @@
 @media (max-width: 599px) {
     .room-link__meta { position: static; padding-top: 3px; }
     .room-link__meta .room-link__time { display: block; }
+}
+
+/* Replies: the quote above a reply, the bar above the composer and the
+   tint on a message you jumped to */
+
+.msg__quote {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    max-width: 100%;
+    margin: 2px 0 3px;
+    padding: 2px var(--space-2);
+    border: 0;
+    border-left: 2px solid var(--accent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: color-mix(in srgb, var(--hover) 70%, transparent);
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--text-sm);
+    line-height: 1.45;
+    text-align: left;
+    white-space: nowrap;
+    width: fit-content;
+}
+button.msg__quote { cursor: pointer; }
+button.msg__quote:hover { background: var(--hover); color: var(--fg); }
+.msg__quote-name { flex: none; font-weight: 700; color: var(--fg); }
+.msg__quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-right: 2px; }
+.msg__quote--deleted .msg__quote-text { font-style: italic; }
+.msg__quote--unavailable { border-left-color: var(--line); font-style: italic; }
+
+.msg:focus { outline: none; }
+.msg:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
+.msg--target { animation: msg-target 1600ms ease-out both; }
+@keyframes msg-target {
+    from { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+    to { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+    /* No fade: a still tint for the same time (chat.js removes the class). */
+    .msg--target { animation: none !important; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+}
+
+.reply-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 var(--space-3) var(--space-1);
+    padding: 4px 4px 4px var(--space-3);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    font-size: var(--text-sm);
+}
+.reply-bar[hidden] { display: none; }
+.reply-bar__icon { flex: none; color: var(--accent); }
+.reply-bar__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.reply-bar__label { font-size: var(--text-xs); color: var(--muted); }
+.reply-bar__name { font-weight: 700; color: var(--fg); }
+.reply-bar__excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reply-bar__cancel { flex: none; font-size: 18px; }
+
+@media (max-width: 599px) {
+    .reply-bar { margin: 0 var(--space-2) var(--space-1); }
+}
+@media (pointer: coarse) {
+    .reply-bar__cancel { min-width: 44px; min-height: 44px; }
+    button.msg__quote { min-height: 44px; align-items: center; }
+    .msg__action { min-height: 44px; padding: 0 12px; }
 }
