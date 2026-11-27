@@ -1819,6 +1819,26 @@ class TestPingRefreshesContacts:
 # Security round (P9c): stale sockets and events after commit
 
 
+class TestRefusedSocketFrames:
+    """A socket refused in connect() is accepted briefly to send the reason;
+    frames the client sends before it sees the close are ignored."""
+
+    @pytest.mark.parametrize("room_exists", [False, True])
+    def test_frames_on_a_refused_socket_are_ignored(self, room_exists):
+        from types import SimpleNamespace
+
+        from chat.channels.consumers import ChatConsumer
+
+        consumer = ChatConsumer()
+        consumer.user = SimpleNamespace(pk=1, is_authenticated=True)
+        consumer.room = SimpleNamespace() if room_exists else None
+        sent = []
+        consumer.send = lambda *args, **kwargs: sent.append((args, kwargs))
+        consumer.receive(text_data=json.dumps({"type": "read"}))
+        consumer.receive(text_data="not json")
+        assert sent == []
+
+
 @pytest.mark.django_db(transaction=True)
 class TestStaleRoomSocket:
     """A socket whose membership ended without a revoke reaching it (a

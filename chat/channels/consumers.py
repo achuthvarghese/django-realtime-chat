@@ -83,6 +83,10 @@ class ChatConsumer(WebsocketConsumer):
             )
 
     def receive(self, text_data=None, bytes_data=None):
+        if self.room_group_name is None:
+            # Refused in connect() (unknown room or not a member) and closing:
+            # ignore frames the client sent before it saw the close.
+            return
         try:
             payload = json.loads(text_data or "")
         except (TypeError, ValueError):
