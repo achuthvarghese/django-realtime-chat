@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from chat.models import Message, Room
+from chat.models import Message, Reaction, Room
 
 
 @admin.register(Message)
@@ -24,3 +24,14 @@ class RoomAdmin(admin.ModelAdmin):
     @admin.display(description="Count members")
     def members_count(self, obj):
         return obj.members.count()
+
+
+@admin.register(Reaction)
+class ReactionAdmin(admin.ModelAdmin):
+    list_display = ("id", "message", "user", "emoji", "created_at")
+    list_filter = ("emoji",)
+    list_select_related = ("user",)
+    ordering = ("-created_at",)
+    raw_id_fields = ("message", "user")
+    readonly_fields = ("created_at",)
+    search_fields = ("message__id", "user__username")

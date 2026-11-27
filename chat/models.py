@@ -57,6 +57,46 @@ class Message(models.Model):
         return self.kind == self.Kinds.SYSTEM
 
 
+class ReactionEmoji(models.TextChoices):
+    """The fixed set of reactions, in display order. The database stores the
+    key; the label is the emoji character (names live in presenters)."""
+
+    THUMBS_UP = "thumbs_up", "\N{THUMBS UP SIGN}"
+    HEART = "heart", "\N{HEAVY BLACK HEART}\N{VARIATION SELECTOR-16}"
+    LAUGH = "laugh", "\N{FACE WITH TEARS OF JOY}"
+    WOW = "wow", "\N{FACE WITH OPEN MOUTH}"
+    SAD = "sad", "\N{CRYING FACE}"
+    PARTY = "party", "\N{PARTY POPPER}"
+
+
+class Reaction(models.Model):
+    """One person's emoji on one text message. Several emoji per person, one
+    of each. Deleting the message (or the user) removes it."""
+
+    # No separate index: the unique constraint below starts with `message`.
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name="reactions", db_index=False
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reactions")
+    emoji = models.CharField(max_length=16, choices=ReactionEmoji.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user", "emoji"], name="unique_reaction"
+            ),
+            models.CheckConstraint(
+                condition=Q(emoji__in=ReactionEmoji.values),
+                name="reaction_emoji_valid",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} {self.emoji} on {self.message_id}"
+
+
 class Room(models.Model):
     class RoomTypes(models.TextChoices):
         PRIVATE = "private", "Private"
