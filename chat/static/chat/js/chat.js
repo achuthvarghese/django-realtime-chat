@@ -55,6 +55,19 @@
         applyFilter();
     }
 
+    // The welcome pane (no room open) says "Pick a chat" or "Welcome" to
+    // match the list as rooms arrive or go.
+    const welcomeParts = document.querySelectorAll("[data-welcome-title], [data-welcome-text]");
+    if (welcomeParts.length) {
+        document.addEventListener("relay:rooms-changed", () => {
+            const any = !!document.querySelector("#room-list .room-link");
+            for (const part of welcomeParts) {
+                const text = any ? part.dataset.rooms : part.dataset.empty;
+                if (part.textContent !== text) part.textContent = text;
+            }
+        });
+    }
+
     const roomId = readJSON("room-id");
     if (!roomId) return;
     let gone = false; // the room went away while open (see showGone)
@@ -275,6 +288,10 @@
     })();
 
     // The room list row for this room (inbox.js owns the list).
+    function refreshRow() {
+        document.dispatchEvent(new CustomEvent("relay:room-refresh", { detail: { room: roomId } }));
+    }
+
     function updatePreview(data, moveToTop = true) {
         document.dispatchEvent(
             new CustomEvent("relay:room-message", { detail: { room: roomId, message: data, moveToTop } })
@@ -318,6 +335,10 @@
     let socket = null;
     let attempts = 0;
     let everConnected = false;
+    let reconnectTimer = null;
+    let checkTimer = null; // set while checking whether you're still a member
+    let rechecking = false; // the socket was closed on purpose to check
+    const STILL_HERE_MS = 1000;
 
     function connect() {
         if (gone) return;
@@ -325,7 +346,22 @@
         socket = new WebSocket(socketUrl);
 
         socket.addEventListener("open", () => {
-            if (everConnected) {
+            if (checkTimer) {
+                // The server accepts for a moment before refusing (4403 or
+                // 4404), so only an open socket that stays open means you're
+                // still a member (e.g. added back).
+                // Send nothing until then.
+                clearTimeout(checkTimer);
+                checkTimer = setTimeout(() => {
+                    checkTimer = null;
+                    if (socket.readyState !== WebSocket.OPEN) return; // closed meanwhile: reconnecting
+                    attempts = 0;
+                    setStatus("live");
+                    markRead();
+                    document.dispatchEvent(new CustomEvent("relay:room-still-here", { detail: { room: roomId } }));
+                }, STILL_HERE_MS);
+                return;
+            } else if (everConnected) {
                 showToast("Reconnected. Messages sent while you were away may be missing.", {
                     persist: true,
                     action: { label: "Reload", run: () => window.location.reload() },
@@ -362,11 +398,14 @@
                 if (messages.length && messages[messages.length - 1].id === data.id) {
                     updatePreview({ ...data, message: data.deleted ? "Message deleted" : data.message }, false);
                 }
+                // The server's row may differ (e.g. a deleted last message); refetch it.
+                refreshRow();
             } else if (data.type === "clear_room" && data.for === me) {
                 messages.length = 0;
                 hasMore = false;
                 renderAll();
                 showToast("History cleared for you.");
+                refreshRow();
             } else if (data.type === "room_updated") {
                 applyRoomUpdate(data);
             } else if (data.type === "error") {
@@ -379,10 +418,16 @@
             // 4401 signed out, 4403 not a member, 4404 unknown room
             if (event.code === 4401) return window.location.assign("/account/login/");
             if (event.code === 4403 || event.code === 4404) return showGone(event.code === 4404);
+            clearTimeout(reconnectTimer);
+            if (rechecking) {
+                rechecking = false;
+                connect();
+                return;
+            }
             setStatus("offline");
             attempts += 1;
             const delay = Math.min(15000, 1000 * 2 ** Math.min(attempts - 1, 4));
-            setTimeout(connect, delay);
+            reconnectTimer = setTimeout(connect, delay);
         });
     }
     connect();
@@ -427,6 +472,8 @@
     function showGone(deleted) {
         if (gone) return;
         gone = true;
+        clearTimeout(checkTimer);
+        clearTimeout(reconnectTimer);
         socket?.close();
         for (const t of typers.values()) clearTimeout(t.timer);
         typers.clear();
@@ -475,9 +522,25 @@
         );
         heading.focus();
     }
-    // inbox.js found out first (after a reconnect).
-    document.addEventListener("relay:room-gone", (event) => {
-        if (event.detail.room === roomId) showGone(event.detail.deleted);
+    // inbox.js heard the room left your list (room_removed, or missing after
+    // a resync). Reconnect now: the server refuses with 4403 (not a member)
+    // or 4404 (deleted), which picks the right copy. If neither answer comes
+    // within 3 seconds (e.g. offline), say you're no longer in it.
+    const CHECK_TIMEOUT_MS = 3000;
+    document.addEventListener("relay:room-check", (event) => {
+        if (event.detail.room !== roomId || gone || checkTimer) return;
+        checkTimer = setTimeout(() => {
+            checkTimer = null;
+            showGone(false);
+        }, CHECK_TIMEOUT_MS);
+        clearTimeout(reconnectTimer);
+        attempts = 0;
+        if (socket && socket.readyState === WebSocket.CLOSED) {
+            connect();
+        } else if (socket) {
+            rechecking = true;
+            socket.close();
+        }
     });
 
     // Group changes: new name or member count in the header. inbox.js
@@ -485,9 +548,11 @@
     // Same rule as initials() in chat/presenters.py: the first letter or
     // digit of the first two words, else the first two letters or digits
     // of the only word, else "?".
+    // The characters Python's str.split() splits on (JavaScript's \s differs).
+    const PY_WHITESPACE = /[\t\n\v\f\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/u;
     function initialsOf(name) {
         const words = (name || "")
-            .split(/\s+/)
+            .split(PY_WHITESPACE)
             .map((word) => Array.from(word.replace(/[^\p{L}\p{N}]/gu, "")))
             .filter((chars) => chars.length);
         if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();

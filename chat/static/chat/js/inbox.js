@@ -10,14 +10,14 @@
         return element ? JSON.parse(element.textContent) : null;
     };
     const me = readJSON("me");
-    const currentRoom = readJSON("room-id");
+    let openRoom = readJSON("room-id"); // null once its gone pane shows
     let roomMembers = readJSON("room-members") || [];
     let baseTitle = document.title;
     const online = new Set();
 
     // Times and previews, the same way the server renders a row
 
-    const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+    const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
     const fullFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short" });
     const shortDateFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
     const PREVIEW_LENGTH = 60;
@@ -82,7 +82,7 @@
 
     // Unread badges and the tab title
 
-    function setUnread(link, n) {
+    function setUnread(link, n, { retitle = true } = {}) {
         link.dataset.unread = String(n);
         link.classList.toggle("room-link--unread", n > 0);
         const badge = link.querySelector(".room-link__unread");
@@ -90,7 +90,7 @@
             badge.hidden = n === 0;
             badge.querySelector("[data-unread-count]").textContent = n > 99 ? "99+" : String(n);
         }
-        renderTitle();
+        if (retitle) renderTitle();
     }
 
     function renderTitle() {
@@ -106,11 +106,19 @@
     const list = document.getElementById("room-list");
     const findLink = (roomId) => list.querySelector(`.room-link[data-room-id="${CSS.escape(roomId)}"]`);
 
-    // Every list change gets a sequence number, so a fetch that started
-    // before a room was removed (or added) can't undo that change.
+    // Every live change gets a sequence number. A fetch remembers the number
+    // when it started, so its (older) answer can't undo a later change:
+    // a room removed or added since, or a row whose preview a live frame
+    // updated since. Timestamps can't decide this, because a row's last
+    // message can legitimately get older (deleted, history cleared).
     let seq = 0;
-    const removedAt = new Map(); // room id -> seq of its room_removed
+    const removedAt = new Map(); // room id -> seq of its latest removal
     const addedAt = new Map(); // room id -> seq of its latest room_added
+    const touchedAt = new Map(); // room id -> seq of its latest live preview update
+    const touch = (roomId) => {
+        seq += 1;
+        touchedAt.set(roomId, seq);
+    };
 
     // Tell chat.js (search filter) that rows were added, removed or changed.
     let changedQueued = false;
@@ -137,9 +145,12 @@
         link.dataset.roomId = room.id;
         if (room.other_username) link.dataset.username = room.other_username;
         link.dataset.unread = "0";
+        if (room.id === openRoom) link.setAttribute("aria-current", "page");
 
         const wrap = el("span", "room-link__avatar-wrap");
-        wrap.append(el("span", "avatar room-link__avatar" + (room.type === "group" ? " room-link__avatar--group" : "")));
+        const avatar = el("span", "avatar room-link__avatar" + (room.type === "group" ? " room-link__avatar--group" : ""));
+        avatar.setAttribute("aria-hidden", "true");
+        wrap.append(avatar);
         if (room.other_username) {
             const dot = el("span", "presence-dot");
             dot.setAttribute("aria-hidden", "true");
@@ -172,23 +183,22 @@
         if (typeof room.initials === "string") {
             link.querySelector(".room-link__avatar").textContent = room.initials;
         }
-        if (room.id === currentRoom && Array.isArray(room.member_usernames)) {
+        if (room.id === openRoom && Array.isArray(room.member_usernames)) {
             roomMembers = room.member_usernames;
-            renderPresence();
         }
     }
 
-    // Preview, time and unread from a full room object, unless the row
-    // already shows something newer.
-    function applyActivity(link, room) {
-        const shown = lastAt(link);
-        const incoming = room.last_at ? Date.parse(room.last_at) : null;
-        if (shown !== null && (incoming === null || incoming < shown)) return;
+    // Preview, time and unread from a full room object. `startedAt` is the
+    // sequence number when a fetch began (null for a live frame): a row that
+    // a live frame updated after that keeps what it shows.
+    function applyActivity(link, room, startedAt) {
+        if (startedAt !== null && (touchedAt.get(room.id) ?? -1) > startedAt) return false;
         link.querySelector(".room-link__preview").textContent = room.last_content
             ? previewText(room.last_content, room.last_is_mine)
             : "No messages yet";
         setTime(link.querySelector(".room-link__time"), room.last_at);
-        if (room.id !== currentRoom) setUnread(link, room.unread || 0);
+        if (room.id !== openRoom) setUnread(link, room.unread || 0, { retitle: false });
+        return true;
     }
 
     // A new row grows into place, then its tint fades (see .room-list__new).
@@ -206,8 +216,14 @@
         timer = setTimeout(done, 2500);
     }
 
+    function render() {
+        renderPresence();
+        renderTitle();
+        listChanged();
+    }
+
     // Add or refresh a row from a full room object.
-    function upsertRoom(room, { moveToTop }) {
+    function upsertRoom(room, { moveToTop, startedAt = null, rerender = true }) {
         let link = findLink(room.id);
         if (!link) {
             list.querySelector(".room-list__empty")?.remove();
@@ -219,42 +235,50 @@
             list.prepend(link.parentElement);
         }
         applyIdentity(link, room);
-        applyActivity(link, room);
-        renderPresence();
-        renderTitle();
-        listChanged();
+        applyActivity(link, room, startedAt);
+        if (rerender) render();
         return link;
     }
 
-    function removeRoom(roomId) {
+    function removeRoom(roomId, { rerender = true } = {}) {
         const link = findLink(roomId);
         if (link) link.parentElement.remove();
         if (!list.querySelector(".room-link") && !list.querySelector(".room-list__empty")) {
             list.append(el("li", "room-list__empty", "No chats yet. Use New chat to message someone or start a group."));
         }
-        renderTitle();
-        listChanged();
+        if (rerender) {
+            renderTitle();
+            listChanged();
+        }
+    }
+
+    // The open room is no longer in your list (room_removed frame, or missing
+    // from a resync). Only the room socket knows whether you were removed or
+    // the room was deleted, so chat.js checks it and shows the right pane.
+    function openRoomMissing() {
+        document.dispatchEvent(new CustomEvent("relay:room-check", { detail: { room: openRoom } }));
     }
 
     // A new message (room_activity frame, or chat.js for the open room).
     function showMessage(roomId, message, { unread = null, moveToTop = true } = {}) {
         const link = findLink(roomId);
         if (!link) return false;
+        touch(roomId);
         link.querySelector(".room-link__preview").textContent = previewText(message.message, message.user === me);
         if (moveToTop) {
             setTime(link.querySelector(".room-link__time"), message.created_at);
             list.prepend(link.parentElement);
         }
-        if (unread !== null && roomId !== currentRoom) setUnread(link, unread);
+        if (unread !== null && roomId !== openRoom) setUnread(link, unread);
         listChanged();
         return true;
     }
 
     function onActivity(event) {
-        if (event.room === currentRoom && findLink(event.room)) return; // the room socket handles it
+        if (event.room === openRoom && findLink(event.room)) return; // the room socket handles it
         if (!showMessage(event.room, event.message, { unread: event.unread })) {
             // Missed the room_added frame (e.g. while reconnecting): fetch the row.
-            fetchRoom(event.room);
+            fetchRoom(event.room, { activity: event });
         }
     }
 
@@ -266,10 +290,19 @@
         return true;
     }
 
-    const pending = new Set();
-    async function fetchRoom(roomId) {
-        if (pending.has(roomId)) return;
-        pending.add(roomId);
+    // One fetch per room at a time. A request while one is in flight is
+    // remembered: the latest room_activity frame is applied once the row
+    // exists, and a refresh request fetches once more afterwards (the
+    // running fetch may predate the change).
+    const pending = new Map(); // room id -> { activity, again }
+    async function fetchRoom(roomId, { activity = null, moveToTop = true } = {}) {
+        if (pending.has(roomId)) {
+            const queued = pending.get(roomId);
+            if (activity) queued.activity = activity;
+            else queued.again = true;
+            return;
+        }
+        pending.set(roomId, { activity: null, again: false });
         const startedAt = seq;
         try {
             const response = await fetch(`/chat/rooms/${encodeURIComponent(roomId)}/summary/`, {
@@ -278,19 +311,37 @@
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const room = await response.json();
-            if (acceptFetched(room.id, startedAt)) upsertRoom(room, { moveToTop: true });
+            if (acceptFetched(room.id, startedAt)) {
+                upsertRoom(room, { moveToTop: moveToTop || !findLink(room.id), startedAt });
+                const later = pending.get(roomId).activity;
+                if (later) showMessage(roomId, later.message, { unread: later.unread });
+            }
         } catch (error) {
             console.warn(`Relay: couldn't load the room list row for ${roomId}.`, error);
         } finally {
+            const again = pending.get(roomId).again;
             pending.delete(roomId);
+            if (again) refreshRoom(roomId);
         }
     }
 
-    // After a reconnect, frames may have been missed: fetch the whole list
-    // and make the page match it.
+    // Refetch a row in place, e.g. after an edit, delete or cleared history
+    // changed its preview (room_refresh frame, or chat.js for the open room).
+    function refreshRoom(roomId) {
+        if (!roomId || (removedAt.has(roomId) && !findLink(roomId))) return;
+        fetchRoom(roomId, { moveToTop: false });
+    }
+
+    // Frames may have been missed while the inbox socket was down: fetch the
+    // whole list and make the page match it. A call while one is running
+    // queues one more run (the running fetch may predate what was missed).
     let resyncing = false;
+    let resyncAgain = false;
     async function resync() {
-        if (resyncing) return;
+        if (resyncing) {
+            resyncAgain = true;
+            return;
+        }
         resyncing = true;
         const startedAt = seq;
         try {
@@ -305,6 +356,10 @@
             console.warn("Relay: couldn't refresh the room list after reconnecting.", error);
         } finally {
             resyncing = false;
+            if (resyncAgain) {
+                resyncAgain = false;
+                resync();
+            }
         }
     }
 
@@ -312,55 +367,58 @@
         const listed = new Set(rooms.map((room) => room.id));
 
         // Rooms you've left (unless added again since the fetch started).
+        let openMissing = false;
         for (const link of [...list.querySelectorAll(".room-link")]) {
             const id = link.dataset.roomId;
             if (listed.has(id) || (addedAt.get(id) ?? -1) > startedAt) continue;
-            removeRoom(id);
-            if (id === currentRoom) {
-                document.dispatchEvent(new CustomEvent("relay:room-gone", { detail: { room: id, deleted: false } }));
-            }
+            removeRoom(id, { rerender: false });
+            if (id === openRoom) openMissing = true;
         }
 
         // Add and refresh the rest, then order them like the server does.
-        // A row that has had newer activity than the fetched list stays on top.
+        // Rows a live frame moved since the fetch started stay on top, in
+        // their current order, as do rows added since (not in the list).
         const kept = rooms.filter((room) => acceptFetched(room.id, startedAt));
         const items = kept.map((room) => {
-            const link = upsertRoom(room, { moveToTop: false });
-            return { item: link.parentElement, fresher: (lastAt(link) ?? 0) > (Date.parse(room.last_at) || 0) };
+            const link = upsertRoom(room, { moveToTop: false, startedAt, rerender: false });
+            return { item: link.parentElement, live: (touchedAt.get(room.id) ?? -1) > startedAt };
         });
-        const ordered = [
-            ...items.filter((x) => x.fresher).sort((a, b) => lastAt(b.item.firstElementChild) - lastAt(a.item.firstElementChild)),
-            ...items.filter((x) => !x.fresher),
-        ];
-        // Rows not in the fetched list (added since) stay above, in their order.
-        const fetched = new Set(ordered.map((x) => x.item));
-        const extras = [...list.children].filter((li) => li.querySelector(".room-link") && !fetched.has(li));
+        const fetched = new Set(items.filter((x) => !x.live).map((x) => x.item));
+        const top = [...list.children].filter((li) => li.querySelector(".room-link") && !fetched.has(li));
         const focused = list.contains(document.activeElement) ? document.activeElement : null;
-        list.append(...extras, ...ordered.map((x) => x.item));
+        list.append(...top, ...items.filter((x) => !x.live).map((x) => x.item));
         if (focused && focused.isConnected && document.activeElement !== focused) focused.focus();
-        listChanged();
+        render();
+        if (openMissing) openRoomMissing();
     }
 
     // Connection with reconnect and a 30-second keepalive
 
     const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+    const RESYNC_GRACE_MS = 3000; // a first connect this soon after load has missed nothing
     let attempts = 0;
     let pingTimer = null;
+    let reconnectTimer = null;
     let everConnected = false;
+    let socket = null;
+
+    const ping = () => {
+        if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "ping" }));
+    };
 
     function connect() {
-        const socket = new WebSocket(`${scheme}://${window.location.host}/inbox/`);
-        const ping = () => {
-            if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "ping" }));
-        };
-        socket.addEventListener("open", () => {
-            if (everConnected) resync();
+        socket = new WebSocket(`${scheme}://${window.location.host}/inbox/`);
+        const current = socket;
+        current.addEventListener("open", () => {
+            // Resync on every open, except a first one right after the page
+            // rendered (then the server-rendered list is current).
+            if (everConnected || performance.now() > RESYNC_GRACE_MS) resync();
             everConnected = true;
             attempts = 0;
             clearInterval(pingTimer);
             pingTimer = setInterval(ping, 30000);
         });
-        socket.addEventListener("message", (event) => {
+        current.addEventListener("message", (event) => {
             let data;
             try {
                 data = JSON.parse(event.data);
@@ -382,6 +440,7 @@
                 seq += 1;
                 addedAt.set(data.room.id, seq);
                 removedAt.delete(data.room.id);
+                touch(data.room.id);
                 upsertRoom(data.room, { moveToTop: true });
                 // New room-mates: ask for a fresh presence snapshot.
                 ping();
@@ -390,32 +449,51 @@
                 if (link) {
                     applyIdentity(link, data.room);
                     listChanged();
+                    // Members joined or left: refresh presence (and "· N online").
+                    if (Array.isArray(data.room.member_usernames)) {
+                        renderPresence();
+                        ping();
+                    }
                 } else if (!removedAt.has(data.room.id)) {
                     fetchRoom(data.room.id);
                 }
+            } else if (data.type === "room_refresh") {
+                refreshRoom(typeof data.room === "string" ? data.room : data.room?.id);
             } else if (data.type === "room_removed") {
                 seq += 1;
                 removedAt.set(data.room, seq);
                 addedAt.delete(data.room);
                 removeRoom(data.room);
+                if (data.room === openRoom) openRoomMissing();
             }
         });
-        socket.addEventListener("close", (event) => {
+        current.addEventListener("close", (event) => {
             clearInterval(pingTimer);
             if (event.code === 4401) return;
             attempts += 1;
-            setTimeout(connect, Math.min(30000, 1000 * 2 ** Math.min(attempts - 1, 5)));
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connect, Math.min(30000, 1000 * 2 ** Math.min(attempts - 1, 5)));
         });
     }
 
     // Events from other modules
 
     document.addEventListener("relay:details-loaded", renderPresence);
+    // chat.js: the open room went away (gone pane shown). It is no longer
+    // the open room: if you're added back, its row behaves like any other.
     document.addEventListener("relay:room-removed", (event) => {
+        const roomId = event.detail.room;
         seq += 1;
-        removedAt.set(event.detail.room, seq);
-        removeRoom(event.detail.room);
+        removedAt.set(roomId, seq);
+        removeRoom(roomId);
+        if (roomId === openRoom) openRoom = null;
     });
+    // chat.js: the room socket reconnected fine, so you're still a member.
+    document.addEventListener("relay:room-still-here", (event) => {
+        if (event.detail.room === openRoom && !findLink(openRoom)) fetchRoom(openRoom);
+    });
+    // chat.js: the open room's row needs the server's view (edit, delete, clear).
+    document.addEventListener("relay:room-refresh", (event) => refreshRoom(event.detail.room));
     // chat.js: a message in, or an edit to the last message of, the open room.
     document.addEventListener("relay:room-message", (event) => {
         const { room, message, moveToTop } = event.detail;
@@ -423,9 +501,9 @@
     });
     // chat.js: the open room was renamed (room socket).
     document.addEventListener("relay:room-updated", (event) => {
-        const link = currentRoom && findLink(currentRoom);
+        const link = openRoom && findLink(openRoom);
         if (link && event.detail.name && !link.dataset.username) {
-            applyIdentity(link, { id: currentRoom, title: event.detail.name, initials: event.detail.initials });
+            applyIdentity(link, { id: openRoom, title: event.detail.name, initials: event.detail.initials });
             listChanged();
         }
     });
@@ -435,9 +513,31 @@
         renderTitle();
     });
 
-    for (const time of list.querySelectorAll(".room-link__time[datetime]")) {
-        setTime(time, time.getAttribute("datetime"));
+    // Row times are relative to today: redo them at local midnight and when
+    // the tab comes back (it may have slept past midnight).
+    function refreshTimes() {
+        for (const time of list.querySelectorAll(".room-link__time[datetime]")) {
+            setTime(time, time.getAttribute("datetime"));
+        }
     }
+    let midnightTimer = null;
+    function scheduleMidnight() {
+        clearTimeout(midnightTimer);
+        const now = new Date();
+        const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+        midnightTimer = setTimeout(() => {
+            refreshTimes();
+            scheduleMidnight();
+        }, next - now);
+    }
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState !== "visible") return;
+        refreshTimes();
+        scheduleMidnight();
+    });
+
+    refreshTimes();
+    scheduleMidnight();
     renderTitle();
     connect();
 })();
