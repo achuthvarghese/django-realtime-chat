@@ -531,7 +531,9 @@
        deselects it. */
     .msg:not(.is-selected):hover:not(:focus-within) .msg__actions { opacity: 0; pointer-events: none; }
     .msg.is-selected { background: color-mix(in srgb, var(--hover) 80%, transparent); }
-    .msg.is-selected .msg__actions { display: flex; width: fit-content; position: static; margin-top: var(--space-1); box-shadow: none; opacity: 1; pointer-events: auto; }
+    /* Sticky to the bottom of the view, so on a long message the bar is
+       reachable without scrolling to its end. */
+    .msg.is-selected .msg__actions { display: flex; width: fit-content; position: sticky; bottom: var(--space-2); margin-top: var(--space-1); opacity: 1; pointer-events: auto; }
 }
 
 .msg__text--deleted { color: var(--muted); font-style: italic; }
@@ -665,6 +667,8 @@ button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
 .msg__quote-name { flex: none; font-weight: 700; color: var(--fg); }
 .msg__quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-right: 2px; }
 .msg__quote--deleted .msg__quote-text { font-style: italic; }
+/* A jump is loading older pages to find the original. */
+.msg__quote[aria-busy="true"] { cursor: progress; background: var(--hover); }
 .msg__quote--unavailable { border-left-color: var(--line); font-style: italic; }
 
 .msg:focus { outline: none; }

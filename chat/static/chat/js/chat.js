@@ -456,17 +456,18 @@
     // Load the page before the oldest loaded message. Resolves true when a
     // page was added; a call while one is loading shares that request.
     let olderRequest = null;
-    function loadOlder(limit = historyMeta.page_size) {
+    // `quiet`: the caller (a jump) says what went wrong itself.
+    function loadOlder(limit = historyMeta.page_size, { quiet = false } = {}) {
         if (olderRequest) return olderRequest;
         if (!hasMore || !messages.length) return Promise.resolve(false);
-        olderRequest = fetchOlder(limit).finally(() => { olderRequest = null; });
+        olderRequest = fetchOlder(limit, quiet).finally(() => { olderRequest = null; });
         return olderRequest;
     }
 
     // Bumped when history is cleared, so a page that was loading then is dropped.
     let clearGen = 0;
 
-    async function fetchOlder(limit) {
+    async function fetchOlder(limit, quiet) {
         loadingOlder = true;
         updateHistoryStatus();
         const before = messages[0].id;
@@ -493,7 +494,7 @@
             console.warn("Relay: couldn't load earlier messages: %s", String(error));
             loadingOlder = false;
             updateHistoryStatus();
-            showToast("Couldn't load earlier messages. Scroll up to try again.");
+            if (!quiet) showToast("Couldn't load earlier messages. Scroll up to try again.");
             return false;
         }
     }
@@ -537,27 +538,39 @@
         }, TARGET_MS);
     }
 
-    async function jumpTo(id) {
+    const FINDING = "Finding message\u2026";
+    async function jumpTo(id, quote = null) {
         if (jumping) return;
         let row = rowFor(id);
         if (row) return showTarget(row);
         jumping = true;
+        // Paging can take a while and the loading note is at the top, out
+        // of view: mark the quote busy and say so near the composer.
+        quote?.setAttribute("aria-busy", "true");
+        showToast(FINDING, { persist: true });
+        let note = "";
         try {
             for (let pages = 0; !row && hasMore && pages < JUMP_MAX_PAGES; pages += 1) {
-                if (!(await loadOlder(JUMP_PAGE_SIZE))) {
-                    if (hasMore) return; // the request failed and said so
+                if (!(await loadOlder(JUMP_PAGE_SIZE, { quiet: true }))) {
+                    if (hasMore) note = "Couldn't find that message. Try again.";
                     break;
                 }
                 row = rowFor(id);
             }
-            if (row) showTarget(row);
-            else if (hasMore) showToast("That message is too far back.");
-            else showToast("Couldn't find that message.");
+            if (!row && !note) note = hasMore ? "That message is too far back." : "Couldn't find that message.";
         } catch (error) {
             console.warn("Relay: couldn't jump to message %s: %s", id, String(error));
-            showToast("Couldn't jump to that message.");
+            note = "Couldn't find that message. Try again.";
         } finally {
             jumping = false;
+            // The quote may have been rebuilt meanwhile; clear any busy one.
+            for (const busy of transcript.querySelectorAll('.msg__quote[aria-busy="true"]')) busy.removeAttribute("aria-busy");
+            quote?.removeAttribute("aria-busy");
+        }
+        if (note) showToast(note);
+        else {
+            if (toast.textContent === FINDING) hideToast();
+            showTarget(row);
         }
     }
 
@@ -647,6 +660,10 @@
         toast.hidden = false;
         clearTimeout(toastTimer);
         if (!persist) toastTimer = setTimeout(() => { toast.hidden = true; }, 4000);
+    }
+    function hideToast() {
+        clearTimeout(toastTimer);
+        toast.hidden = true;
     }
 
     // Connection
@@ -756,7 +773,10 @@
             } else if (data.type === "room_updated") {
                 applyRoomUpdate(data);
             } else if (data.type === "error") {
-                showToast(data.message);
+                // A refused reply: its original was most likely deleted or
+                // hidden meanwhile, so say so.
+                const refusedReply = data.for === "save_message" && data.code === 400 && pendingReply;
+                showToast(refusedReply ? "You can\u2019t reply to that message \u2014 it was deleted or isn\u2019t available." : data.message);
                 // A refused send gives back the reply's text and target.
                 if (data.for === "save_message") restorePendingReply();
             }
@@ -1129,7 +1149,7 @@
         const quote = event.target.closest("button.msg__quote");
         if (quote) {
             selectRow(null);
-            jumpTo(quote.dataset.replyTo);
+            jumpTo(quote.dataset.replyTo, quote);
             return;
         }
         const button = event.target.closest(".msg__action");
