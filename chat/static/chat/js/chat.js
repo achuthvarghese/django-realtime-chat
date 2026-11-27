@@ -130,13 +130,26 @@
     // edit or delete. Each entry is [data-action, label, accessible name].
     // Buttons are named for the message ("Reply to Anika Shah"), and
     // described by the row's time so each one is distinct.
+    // Grouped React · Reply | Edit · Delete, with a separator before your
+    // own message's Edit and Delete.
     function actionsFor(data) {
         const who = data.user === me ? "your message" : data.name || data.user;
-        const items = [["reply", "Reply", `Reply to ${who}`]];
-        if (data.user === me) items.push(["edit", "Edit", "Edit your message"], ["delete", "Delete", "Delete your message"]);
+        const items = [
+            ["react", "React", `React to ${who}`],
+            ["reply", "Reply", `Reply to ${who}`],
+        ];
+        if (data.user === me) items.push(null, ["edit", "Edit", "Edit your message"], ["delete", "Delete", "Delete your message"]);
         const bar = document.createElement("span");
         bar.className = "msg__actions";
-        for (const [action, label, name] of items) {
+        for (const item of items) {
+            if (!item) {
+                const separator = document.createElement("span");
+                separator.className = "msg__actions-sep";
+                separator.setAttribute("aria-hidden", "true");
+                bar.append(separator);
+                continue;
+            }
+            const [action, label, name] = item;
             const button = document.createElement("button");
             button.type = "button";
             button.className = "msg__action";
@@ -145,11 +158,124 @@
             button.textContent = label;
             button.setAttribute("aria-label", name);
             button.setAttribute("aria-describedby", timeId(data.id));
+            if (action === "react") {
+                button.setAttribute("aria-haspopup", "true");
+                button.setAttribute("aria-expanded", "false");
+            }
             bar.append(button);
         }
         return bar;
     }
     const timeId = (id) => `msg-time-${id}`;
+
+    // Reactions: a fixed set of six, in this order. The server sends each
+    // message's `reactions` as [{emoji, count, users: [{user, name}]}].
+    const REACTIONS = [
+        ["thumbs_up", "\u{1F44D}", "Thumbs up"],
+        ["heart", "❤️", "Heart"],
+        ["laugh", "\u{1F602}", "Laughing"],
+        ["wow", "\u{1F62E}", "Surprised"],
+        ["sad", "\u{1F622}", "Sad"],
+        ["party", "\u{1F389}", "Party"],
+    ];
+    const REACTION = new Map(REACTIONS.map(([key, char, label]) => [key, { char, label }]));
+    const reactionsOf = (data) => (Array.isArray(data.reactions) ? data.reactions : []).filter((r) => REACTION.has(r.emoji) && r.count > 0);
+    const isMine = (reaction) => (reaction.users || []).some((u) => u.user === me);
+
+    // "Maya Rao", "Maya Rao and you", "Maya Rao, Lee Chen and you", and
+    // "… and 4 others" past ten names.
+    const NAMES_SHOWN = 10;
+    function reactorNames(reaction) {
+        const mine = isMine(reaction);
+        const others = (reaction.users || []).filter((u) => u.user !== me).map((u) => u.name || u.user);
+        const listed = (reaction.count || 0) - (mine ? 1 : 0);
+        const shown = others.slice(0, NAMES_SHOWN);
+        const rest = Math.max(0, listed - shown.length);
+        const parts = [...shown];
+        if (rest) parts.push(`${rest} other${rest === 1 ? "" : "s"}`);
+        if (mine) parts.push(parts.length ? "you" : "You");
+        if (parts.length <= 1) return parts.join("");
+        return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+    }
+
+    function fillChip(chip, reaction) {
+        const { char, label } = REACTION.get(reaction.emoji);
+        const mine = isMine(reaction);
+        chip.classList.toggle("reaction--mine", mine);
+        chip.setAttribute("aria-pressed", String(mine));
+        chip.setAttribute(
+            "aria-label",
+            `${label}, ${reaction.count} reaction${reaction.count === 1 ? "" : "s"}${mine ? ", including you" : ""}`
+        );
+        chip.title = reactorNames(reaction);
+        const emoji = chip.querySelector(".reaction__emoji");
+        const count = chip.querySelector(".reaction__count");
+        if (emoji.textContent !== char) emoji.textContent = char;
+        count.textContent = String(reaction.count);
+    }
+
+    function buildChip(reaction, tabIndex) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "reaction";
+        chip.dataset.reaction = reaction.emoji;
+        chip.tabIndex = tabIndex;
+        const emoji = document.createElement("span");
+        emoji.className = "reaction__emoji";
+        emoji.setAttribute("aria-hidden", "true");
+        const count = document.createElement("span");
+        count.className = "reaction__count";
+        count.setAttribute("aria-hidden", "true");
+        chip.append(emoji, count);
+        fillChip(chip, reaction);
+        return chip;
+    }
+
+    // Bring a row's chips in line with its message's reactions. Chips are
+    // updated in place (never the row), so an inline edit stays open and a
+    // focused chip keeps focus; if the focused chip goes, focus moves to its
+    // neighbour, else the React button, else the row.
+    function updateReactions(row) {
+        if (!row) return;
+        const data = messages.find((m) => m.id === row.dataset.id);
+        const list = data && actionable(data) ? reactionsOf(data) : [];
+        let box = row.querySelector(".msg__reactions");
+        if (!list.length) {
+            if (!box) return;
+            const lost = box.contains(document.activeElement);
+            box.remove();
+            if (lost) (row.querySelector('[data-action="react"]') || row).focus({ preventScroll: true });
+            return;
+        }
+        if (!box) {
+            box = document.createElement("div");
+            box.className = "msg__reactions";
+            // The transcript is a live log; chip changes aren't news.
+            box.setAttribute("aria-live", "off");
+            // Below the text, or below an open inline edit.
+            (row.querySelector(".msg__edit") || row.querySelector(".msg__text")).after(box);
+        }
+        const tabIndex = row === stopRow ? 0 : -1;
+        const keep = new Set(list.map((r) => r.emoji));
+        let lostAt = -1;
+        [...box.children].forEach((chip, i) => {
+            if (keep.has(chip.dataset.reaction)) return;
+            if (chip === document.activeElement) lostAt = i;
+            chip.remove();
+        });
+        let before = box.firstElementChild;
+        for (const reaction of list) {
+            let chip = box.querySelector(`.reaction[data-reaction="${CSS.escape(reaction.emoji)}"]`);
+            if (chip) fillChip(chip, reaction);
+            else chip = buildChip(reaction, tabIndex);
+            if (chip !== before) box.insertBefore(chip, before);
+            before = chip.nextElementSibling;
+        }
+        if (lostAt !== -1) {
+            const chips = box.children;
+            (chips[Math.min(lostAt, chips.length - 1)] || row).focus({ preventScroll: true });
+        }
+    }
 
     // The quote above a reply: a button that jumps to the original, or a
     // plain note when you can't see the original.
@@ -274,7 +400,17 @@
         text.className = "msg__text";
         fillText(text, data);
         body.append(text);
-        if (actionable(data)) body.append(actionsFor(data));
+        if (actionable(data)) {
+            const list = reactionsOf(data);
+            if (list.length) {
+                const box = document.createElement("div");
+                box.className = "msg__reactions";
+                box.setAttribute("aria-live", "off");
+                for (const reaction of list) box.append(buildChip(reaction, -1));
+                body.append(box);
+            }
+            body.append(actionsFor(data));
+        }
 
         row.append(time, node, body);
         nodes.push(row);
@@ -288,9 +424,12 @@
     let currentId = null;
     let stopRow = null;
 
+    // The reaction picker keeps its own roving tab stop.
     function setStop(row, on) {
         row.tabIndex = on ? 0 : -1;
-        for (const button of row.querySelectorAll("button")) button.tabIndex = on ? 0 : -1;
+        for (const button of row.querySelectorAll("button")) {
+            if (!button.closest(".reaction-picker")) button.tabIndex = on ? 0 : -1;
+        }
     }
 
     function updateStop() {
@@ -310,6 +449,9 @@
         if (!row) return null;
         if (el === row) return { id: row.dataset.id, part: "row" };
         if (el.matches(".msg__quote")) return { id: row.dataset.id, part: "quote" };
+        if (el.matches(".reaction")) return { id: row.dataset.id, part: `reaction:${el.dataset.reaction}` };
+        // In the picker: it closes when the row is rebuilt, so back to React.
+        if (el.closest(".reaction-picker")) return { id: row.dataset.id, part: "react" };
         if (el.dataset.action) return { id: row.dataset.id, part: el.dataset.action };
         return null;
     }
@@ -322,7 +464,10 @@
         if (!row) return;
         let el = row;
         if (key.part === "quote") el = row.querySelector("button.msg__quote") || row;
-        else if (key.part !== "row") el = row.querySelector(`[data-action="${CSS.escape(key.part)}"]`) || row;
+        else if (key.part.startsWith("reaction:")) {
+            const emoji = key.part.slice("reaction:".length);
+            el = row.querySelector(`.reaction[data-reaction="${CSS.escape(emoji)}"]`) || row.querySelector(".reaction") || row;
+        } else if (key.part !== "row") el = row.querySelector(`[data-action="${CSS.escape(key.part)}"]`) || row;
         el.focus({ preventScroll: true });
     }
 
@@ -395,9 +540,11 @@
         const index = messages.findIndex((m) => m.id === data.id);
         if (index === -1) return;
         messages[index] = data;
+        pendingReactions.delete(data.id);
         const row = rowFor(data.id);
         if (!row) return;
         const key = focusKey();
+        if (picker && picker.row === row) closePicker({ focus: false });
         const body = row.querySelector(".msg__body");
         const text = row.querySelector(".msg__text");
         fillText(text, data);
@@ -410,9 +557,167 @@
         row.querySelector(".msg__actions")?.remove();
         row.querySelector(".msg__edit")?.remove();
         if (actionable(data)) body.append(actionsFor(data));
+        updateReactions(row);
         setStop(row, row === stopRow);
         restoreFocus(key);
     }
+
+    // Reacting. A click changes the chips at once and sends the frame;
+    // `pendingReactions` keeps each changed message's last server state, so
+    // a refusal (or a lost socket) puts it back.
+    const pendingReactions = new Map(); // id -> reactions before your change
+
+    function toggleReaction(id, emoji) {
+        const data = messages.find((m) => m.id === id);
+        const info = REACTION.get(emoji);
+        if (!data || !info || !actionable(data)) return;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            showToast("Not connected yet. Try again in a moment.");
+            return;
+        }
+        const before = reactionsOf(data);
+        const current = before.find((r) => r.emoji === emoji);
+        const on = !(current && isMine(current));
+        socket.send(JSON.stringify({ type: "react", id, emoji, on }));
+        if (!pendingReactions.has(id)) pendingReactions.set(id, before);
+        data.reactions = withMine(before, emoji, on);
+        redrawReactions(id);
+        announce(on ? `Reacted with ${info.label}` : `Removed ${info.label}`);
+    }
+
+    // `list` with your reaction `emoji` added or removed, in the fixed order.
+    function withMine(list, emoji, on) {
+        const next = [];
+        let found = false;
+        for (const reaction of list) {
+            if (reaction.emoji !== emoji) {
+                next.push(reaction);
+                continue;
+            }
+            found = true;
+            const others = (reaction.users || []).filter((u) => u.user !== me);
+            const had = isMine(reaction);
+            if (on) {
+                next.push({ ...reaction, count: reaction.count + (had ? 0 : 1), users: [...others, { user: me, name: "" }] });
+            } else if (reaction.count - (had ? 1 : 0) > 0) {
+                next.push({ ...reaction, count: reaction.count - (had ? 1 : 0), users: others });
+            }
+        }
+        if (on && !found) next.push({ emoji, count: 1, users: [{ user: me, name: "" }] });
+        const order = REACTIONS.map(([key]) => key);
+        return next.sort((a, b) => order.indexOf(a.emoji) - order.indexOf(b.emoji));
+    }
+
+    function applyReactions(id, reactions) {
+        const data = messages.find((m) => m.id === id);
+        pendingReactions.delete(id);
+        if (!data) return;
+        data.reactions = Array.isArray(reactions) ? reactions : [];
+        redrawReactions(id);
+    }
+
+    // Chips can add a line; keep the newest message in view if you were
+    // at the bottom.
+    function redrawReactions(id) {
+        const stick = nearBottom();
+        updateReactions(rowFor(id));
+        if (stick) scrollToEnd();
+    }
+
+    function revertReactions() {
+        for (const [id, reactions] of [...pendingReactions]) applyReactions(id, reactions);
+    }
+
+    // The reaction picker: a small popover under (or above) the action bar
+    // with the six reactions as buttons. Left and Right move, Enter picks,
+    // Escape closes; focus goes back to React. One is open at a time.
+    let picker = null; // { el, row, opener }
+
+    function openPicker(opener) {
+        const row = opener.closest(".msg[data-id]");
+        const data = row && messages.find((m) => m.id === row.dataset.id);
+        if (!data || !actionable(data)) return;
+        if (picker) {
+            const same = picker.opener === opener;
+            closePicker({ focus: false });
+            if (same) return;
+        }
+        const mineSet = new Set(reactionsOf(data).filter(isMine).map((r) => r.emoji));
+        const el = document.createElement("div");
+        el.className = "reaction-picker";
+        el.setAttribute("role", "toolbar");
+        el.setAttribute("aria-label", "Pick a reaction");
+        REACTIONS.forEach(([key, char, label], i) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "reaction-picker__option";
+            button.dataset.pick = key;
+            button.tabIndex = i === 0 ? 0 : -1;
+            button.textContent = char;
+            button.title = label;
+            button.setAttribute("aria-label", label);
+            button.setAttribute("aria-pressed", String(mineSet.has(key)));
+            el.append(button);
+        });
+        // Open upward unless the bar is near the top of the view.
+        const room = opener.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+        if (room < 64) el.classList.add("reaction-picker--below");
+        // Right after React in the tab order; Tab moves on to Reply.
+        opener.after(el);
+        opener.setAttribute("aria-expanded", "true");
+        picker = { el, row, opener };
+        el.firstElementChild.focus({ preventScroll: true });
+        // On touch the bar is sticky inside a selected row: bring the whole
+        // row (text, chips, bar and picker) into view when it fits.
+        const selected = row.classList.contains("is-selected") && row.offsetHeight < scroller.clientHeight;
+        (selected ? row : el).scrollIntoView({ block: "nearest" });
+    }
+
+    function closePicker({ focus = true } = {}) {
+        if (!picker) return;
+        const { el, opener } = picker;
+        picker = null;
+        const hadFocus = el.contains(document.activeElement);
+        el.remove();
+        opener.setAttribute("aria-expanded", "false");
+        if ((focus || hadFocus) && opener.isConnected) opener.focus({ preventScroll: true });
+    }
+
+    transcript.addEventListener("keydown", (event) => {
+        if (!picker || !picker.el.contains(event.target)) return;
+        const options = [...picker.el.children];
+        const at = options.indexOf(event.target);
+        let next = -1;
+        if (event.key === "ArrowRight") next = (at + 1) % options.length;
+        else if (event.key === "ArrowLeft") next = (at - 1 + options.length) % options.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = options.length - 1;
+        else if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            closePicker();
+            return;
+        } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+            event.preventDefault(); // don't move between rows from here
+            return;
+        }
+        if (next === -1) return;
+        event.preventDefault();
+        options.forEach((option, i) => { option.tabIndex = i === next ? 0 : -1; });
+        options[next].focus();
+    });
+    // Tabbing (or clicking) away closes the picker.
+    transcript.addEventListener("focusout", (event) => {
+        if (!picker || !picker.el.contains(event.target)) return;
+        const to = event.relatedTarget;
+        if (to && (picker.el.contains(to) || to === picker.opener)) return;
+        closePicker({ focus: false });
+    });
+    document.addEventListener("click", (event) => {
+        if (!picker) return;
+        if (picker.el.contains(event.target) || picker.opener.contains(event.target)) return;
+        closePicker({ focus: false });
+    });
 
     // An original was edited or deleted: refresh every loaded quote of it
     // (quotes you can't see stay unavailable) and the reply bar.
@@ -601,7 +906,7 @@
     transcript.addEventListener("keydown", (event) => {
         if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-        if (event.target.closest(".msg__edit")) return;
+        if (event.target.closest(".msg__edit, .reaction-picker")) return;
         const row = event.target.closest(".msg[data-id]");
         if (!row) return;
         event.preventDefault();
@@ -767,14 +1072,23 @@
                 currentId = null;
                 cancelReply({ announce: false, focus: false });
                 pendingReply = null;
+                pendingReactions.clear();
+                closePicker({ focus: false });
                 renderAll();
                 showToast("History cleared for you.");
                 refreshRow();
+            } else if (data.type === "reactions_updated") {
+                applyReactions(data.id, data.reactions);
             } else if (data.type === "room_updated") {
                 applyRoomUpdate(data);
             } else if (data.type === "error") {
                 // A refused reply: its original was most likely deleted or
                 // hidden meanwhile, so say so.
+                if (data.for === "react") {
+                    showToast(data.message || "Couldn\u2019t change that reaction.");
+                    revertReactions();
+                    return;
+                }
                 const refusedReply = data.for === "save_message" && data.code === 400 && pendingReply;
                 showToast(refusedReply ? "You can\u2019t reply to that message \u2014 it was deleted or isn\u2019t available." : data.message);
                 // A refused send gives back the reply's text and target.
@@ -783,8 +1097,9 @@
         });
 
         socket.addEventListener("close", (event) => {
-            // Nothing will answer a reply sent on this socket now.
+            // Nothing will answer a reply or reaction sent on this socket now.
             pendingReply = null;
+            revertReactions();
             if (gone) return;
             // 4401 signed out, 4403 not a member, 4404 unknown room
             if (event.code === 4401) return window.location.assign("/account/login/");
@@ -1062,7 +1377,7 @@
 
     // Escape in the composer cancels a reply (details.js leaves it to us).
     // An open dialog or menu takes Escape first.
-    const overlayOpen = () => !!document.querySelector("dialog[open], details[data-popover][open]");
+    const overlayOpen = () => !!document.querySelector("dialog[open], details[data-popover][open], .reaction-picker");
     composer.addEventListener("keydown", (event) => {
         if (event.key !== "Escape" || !replyTarget || event.isComposing || overlayOpen()) return;
         event.preventDefault();
@@ -1111,7 +1426,7 @@
         hint.className = "msg__edit-hint";
         hint.textContent = "Enter to save · Esc to cancel";
         form.append(area, save, cancel, hint);
-        row.querySelector(".msg__body").append(form);
+        text.after(form);
         form.scrollIntoView({ block: "nearest" });
         area.focus();
         area.setSelectionRange(area.value.length, area.value.length);
@@ -1152,6 +1467,21 @@
             jumpTo(quote.dataset.replyTo, quote);
             return;
         }
+        // Reactions: a chip toggles yours; a picker option toggles it and
+        // closes the picker. Neither selects or deselects the row.
+        const chip = event.target.closest("button.reaction");
+        if (chip) {
+            toggleReaction(chip.closest(".msg[data-id]").dataset.id, chip.dataset.reaction);
+            return;
+        }
+        const option = event.target.closest(".reaction-picker__option");
+        if (option) {
+            const id = picker?.row.dataset.id;
+            closePicker();
+            if (id) toggleReaction(id, option.dataset.pick);
+            return;
+        }
+        if (event.target.closest(".reaction-picker, .msg__reactions")) return;
         const button = event.target.closest(".msg__action");
         if (!button) {
             // Touch screens: tap a message to show its actions.
@@ -1161,6 +1491,8 @@
             return;
         }
         const row = button.closest(".msg");
+        // React keeps a selected row's bar (touch) open; its picker opens there.
+        if (button.dataset.action === "react") return openPicker(button);
         row.classList.remove("is-selected");
         if (button.dataset.action === "reply") {
             const data = messages.find((m) => m.id === row.dataset.id);
