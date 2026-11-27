@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-palette="graphite" data-mode="light" data-density="compact">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap">
+<link rel="stylesheet" href="src/core/static/core/css/tokens.css">
+<link rel="stylesheet" href="src/core/static/core/css/relay.css">
+<link rel="stylesheet" href="src/chat/static/chat/css/chat.css">
+<style>
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); padding: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 16px; }
+  .panel { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); overflow: visible; }
+  .panel h3 { font: 700 var(--text-sm)/1.3 var(--font-display); padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  .panel h3 small { font-weight: 500; color: var(--muted); font-family: var(--font-body); }
+  .panel .transcript::before { left: 73px; }
+  .chat-mock .msg { position: relative; }
+  .chat-mock .msg__body { white-space: pre-wrap; }
+  h2 { font: 700 var(--text-lg) var(--font-display); margin: 8px 0 12px; }
+  .note { font-size: var(--text-sm); color: var(--muted); padding: 8px 12px; border-top: 1px solid var(--line); background: var(--surface); }
+  /* force the action bar visible for the mockup */
+  .show .msg__actions { opacity: 1; pointer-events: auto; }
+
+  /* ---- Proposed: quote contrast fix (all options) ---- */
+  .p .msg__quote { background: transparent; color: color-mix(in srgb, var(--fg) 72%, var(--bg)); padding-left: var(--space-2); }
+  .p button.msg__quote:hover { background: var(--hover); color: var(--fg); }
+
+  /* Option B: quote above the header, Discord-like connector */
+  .optB .msg__quote { grid-column: 3; grid-row: 1; margin: 0 0 1px; font-size: var(--text-xs); border-left: 0; padding: 0 6px 0 0; gap: 5px; }
+  .optB .unused { grid-column: 2 / 4; display: grid; grid-template-columns: 20px minmax(0,1fr); column-gap: var(--space-2); align-items: end; }
+  .optB .msg__curve { width: 12px; height: 8px; margin: 0 0 4px 9px; border-left: 2px solid var(--line); border-top: 2px solid var(--line); border-top-left-radius: 6px; }
+  .optB .msg__curve { grid-column: 2; grid-row: 1; }
+  .optB .msg > span:first-child { display: none; }
+  .optB .msg > .msg__time { grid-column: 1; grid-row: 2; }
+  .optB .msg > .msg__node { grid-column: 2; grid-row: 2; }
+  .optB .msg > .msg__body { grid-column: 3; grid-row: 2; }
+  .optB .msg:first-child > * { grid-row: auto; }
+
+  /* Option C: compact inline line "↩ Lee Chen  excerpt" in xs above text, no box */
+  .optC .msg__quote { font-size: var(--text-xs); border-left-width: 2px; padding: 0 6px; margin: 1px 0 1px; }
+
+  /* ---- Action bar for 4 actions ---- */
+  .bar-icons .msg__action { width: 28px; height: 26px; padding: 0; display: inline-grid; place-items: center; }
+  .bar-icons .msg__action svg { width: 16px; height: 16px; }
+  .bar-sep { width: 1px; align-self: stretch; margin: 3px 2px; background: var(--line); }
+  .tip { position: absolute; top: -30px; right: 70px; padding: 2px 8px; border-radius: var(--radius-sm); background: var(--chrome); color: var(--chrome-strong); font-size: var(--text-xs); white-space: nowrap; z-index: 3; }
+
+  /* ---- Reply bar attached to composer ---- */
+  .attached .reply-bar { margin: 0 var(--space-3); border-bottom: 0; border-radius: var(--radius-md) var(--radius-md) 0 0; border-left-width: 1px; background: var(--surface); }
+  .attached .composer { margin-top: 0 !important; border-top-left-radius: 0; border-top-right-radius: 0; }
+  .attached .reply-bar__label { font-size: var(--text-xs); }
+  .attached .reply-bar__excerpt { color: var(--muted); }
+  .composer-wrap { padding: 8px 0 0; }
+</style>
+</head>
+<body><div class="chat-mock">
+
+<h2>1. Quote placement and grouping</h2>
+<div class="grid" style="--cols:3">
+  <!-- CURRENT -->
+  <section class="panel"><h3>Current <small>reply inside a continuation row; excerpt 4.47:1</small></h3>
+    <div class="transcript">
+      <div class="msg"><time class="msg__time">04:01 PM</time><span class="msg__node avatar">AK</span><div class="msg__body"><span class="msg__name">Arjun Kumar</span><span class="msg__text">Typing indicator and unread badges are live too</span></div></div>
+      <div class="msg msg--cont"><time class="msg__time">04:02 PM</time><span></span><div class="msg__body"><button class="msg__quote" type="button"><span class="msg__quote-name">Arjun Kumar</span><span class="msg__quote-text">Pushed the new spine layout to staging</span></button><span class="msg__text">Try opening Ops in another tab</span></div></div>
+      <div class="msg msg--mine"><time class="msg__time">03:23 PM</time><span class="msg__node avatar avatar--mine">MR</span><div class="msg__body"><span class="msg__name">You</span><button class="msg__quote" type="button"><span class="msg__quote-name">Lee Chen</span><span class="msg__quote-text">Can we keep Graphite + Coral as the default?</span></button><span class="msg__text">Yes, default stays. Everyone can switch in Settings → Appearance</span></div></div>
+      <div class="msg"><time class="msg__time">04:41 PM</time><span class="msg__node avatar">MR</span><div class="msg__body"><span class="msg__name">Maya Rao</span><div class="msg__quote msg__quote--unavailable">Original message unavailable</div><span class="msg__text">Halfway through, no spoilers please!</span></div></div>
+    </div>
+  </section>
+
+  <!-- OPTION A -->
+  <section class="panel p"><h3>A. Minimal fix (recommended now) <small>reply starts its own group; no fill, text 72% fg</small></h3>
+    <div class="transcript">
+      <div class="msg"><time class="msg__time">04:01 PM</time><span class="msg__node avatar">AK</span><div class="msg__body"><span class="msg__name">Arjun Kumar</span><span class="msg__text">Typing indicator and unread badges are live too</span></div></div>
+      <div class="msg"><time class="msg__time">04:02 PM</time><span class="msg__node avatar">AK</span><div class="msg__body"><span class="msg__name">Arjun Kumar</span><button class="msg__quote" type="button"><span class="msg__quote-name">Arjun Kumar</span><span class="msg__quote-text">Pushed the new spine layout to staging</span></button><span class="msg__text">Try opening Ops in another tab</span></div></div>
+      <div class="msg msg--mine"><time class="msg__time">03:23 PM</time><span class="msg__node avatar avatar--mine">MR</span><div class="msg__body"><span class="msg__name">You</span><button class="msg__quote" type="button"><span class="msg__quote-name">Lee Chen</span><span class="msg__quote-text">Can we keep Graphite + Coral as the default?</span></button><span class="msg__text">Yes, default stays. Everyone can switch in Settings → Appearance</span></div></div>
+      <div class="msg"><time class="msg__time">04:41 PM</time><span class="msg__node avatar">MR</span><div class="msg__body"><span class="msg__name">Maya Rao</span><div class="msg__quote msg__quote--unavailable">Original message unavailable</div><span class="msg__text">Halfway through, no spoilers please!</span></div></div>
+    </div>
+    <p class="note">chat.js buildRow: <code>continues = … &amp;&amp; !data.reply_to</code>. CSS: drop the quote fill, colour mix 72% fg (≈7:1 light, ≈8:1 dark).</p>
+  </section>
+
+  <!-- OPTION B -->
+  <section class="panel p optB"><h3>B. Quote above the name (Discord) <small>name + text stay on one line, spine intact</small></h3>
+    <div class="transcript">
+      <div class="msg"><time class="msg__time">04:01 PM</time><span class="msg__node avatar">AK</span><div class="msg__body"><span class="msg__name">Arjun Kumar</span><span class="msg__text">Typing indicator and unread badges are live too</span></div></div>
+      <div class="msg"><span></span><span class="msg__curve" style="grid-column:2;align-self:end"></span><button class="msg__quote" type="button"><span class="msg__quote-name">Arjun Kumar</span><span class="msg__quote-text">Pushed the new spine layout to staging</span></button>
+        <time class="msg__time">04:02 PM</time><span class="msg__node avatar">AK</span><div class="msg__body"><span class="msg__name">Arjun Kumar</span><span class="msg__text">Try opening Ops in another tab</span></div></div>
+      <div class="msg msg--mine"><span></span><span class="msg__curve" style="grid-column:2;align-self:end"></span><button class="msg__quote" type="button"><span class="msg__quote-name">Lee Chen</span><span class="msg__quote-text">Can we keep Graphite + Coral as the default?</span></button>
+        <time class="msg__time">03:23 PM</time><span class="msg__node avatar avatar--mine">MR</span><div class="msg__body"><span class="msg__name">You</span><span class="msg__text">Yes, default stays. Everyone can switch in Settings → Appearance</span></div></div>
+      <div class="msg"><span></span><span class="msg__curve" style="grid-column:2;align-self:end"></span><div class="msg__quote msg__quote--unavailable">Original message unavailable</div>
+        <time class="msg__time">04:41 PM</time><span class="msg__node avatar">MR</span><div class="msg__body"><span class="msg__name">Maya Rao</span><span class="msg__text">Halfway through, no spoilers please!</span></div></div>
+    </div>
+    <p class="note">Most compact and closest to Discord. Costs a grid change (quote row spans cols 2–3) and a second reading order decision (quote before name). L-ish; better for a later polish pass.</p>
+  </section>
+</div>
+
+<h2 style="margin-top:28px">2. Action bar with four actions (P10b adds React)</h2>
+<div class="grid show" style="--cols:3">
+  <section class="panel"><h3>Current + React as text <small>~190px; Delete next to Edit</small></h3>
+    <div class="transcript" style="padding-top:28px">
+      <div class="msg msg--mine"><time class="msg__time">03:23 PM</time><span class="msg__node avatar avatar--mine">MR</span><div class="msg__body"><span class="msg__name">You</span><span class="msg__text">Yes, default stays.</span>
+        <span class="msg__actions"><button class="msg__action">React</button><button class="msg__action">Reply</button><button class="msg__action">Edit</button><button class="msg__action" data-action="delete">Delete</button></span></div></div>
+      <div class="msg"><time class="msg__time">03:24 PM</time><span class="msg__node avatar">LC</span><div class="msg__body"><span class="msg__name">Lee Chen</span><span class="msg__text">Perfect, thanks</span></div></div>
+    </div>
+  </section>
+  <section class="panel"><h3>A. Text, grouped (recommended) <small>React · Reply | Edit · Delete</small></h3>
+    <div class="transcript" style="padding-top:28px">
+      <div class="msg msg--mine"><time class="msg__time">03:23 PM</time><span class="msg__node avatar avatar--mine">MR</span><div class="msg__body"><span class="msg__name">You</span><span class="msg__text">Yes, default stays.</span>
+        <span class="msg__actions"><button class="msg__action">React</button><button class="msg__action">Reply</button><span class="bar-sep" aria-hidden="true"></span><button class="msg__action">Edit</button><button class="msg__action" data-action="delete">Delete</button></span></div></div>
+      <div class="msg"><time class="msg__time">03:24 PM</time><span class="msg__node avatar">LC</span><div class="msg__body"><span class="msg__name">Lee Chen</span><span class="msg__text">Perfect, thanks</span>
+        <span class="msg__actions" style="top:auto;bottom:-14px"><button class="msg__action">React</button><button class="msg__action">Reply</button></span></div></div>
+    </div>
+    <p class="note">Keeps the system's text-first buttons; one separator between "talk to it" and "change it" actions, destructive last. Phone: add <code>flex-wrap: wrap</code>.</p>
+  </section>
+  <section class="panel bar-icons"><h3>B. Icons with tooltip <small>~130px; Slack/Discord/Linear</small></h3>
+    <div class="transcript" style="padding-top:28px">
+      <div class="msg msg--mine"><time class="msg__time">03:23 PM</time><span class="msg__node avatar avatar--mine">MR</span><div class="msg__body"><span class="msg__name">You</span><span class="msg__text">Yes, default stays.</span>
+        <span class="tip">Reply</span>
+        <span class="msg__actions">
+          <button class="msg__action" aria-label="React"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg></button>
+          <button class="msg__action" aria-label="Reply" style="background:var(--hover)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg></button>
+          <span class="bar-sep" aria-hidden="true"></span>
+          <button class="msg__action" aria-label="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+          <button class="msg__action" data-action="delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+        </span></div></div>
+      <div class="msg"><time class="msg__time">03:24 PM</time><span class="msg__node avatar">LC</span><div class="msg__body"><span class="msg__name">Lee Chen</span><span class="msg__text">Perfect, thanks</span></div></div>
+    </div>
+    <p class="note">Smaller, scales past four, but adds an icon set and a tooltip component the system doesn't have yet; labels must stay visible on touch.</p>
+  </section>
+</div>
+
+<h2 style="margin-top:28px">3. "Replying to" bar</h2>
+<div class="grid" style="--cols:2">
+  <section class="panel"><h3>Current <small>separate card above the composer; pushes last message out of view</small></h3>
+    <div class="composer-wrap">
+      <div class="reply-bar"><svg class="reply-bar__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg><div class="reply-bar__text"><span class="reply-bar__label">Replying to <span class="reply-bar__name">Anika Shah</span></span><span class="reply-bar__excerpt">Shipping it after lunch 🚀 (2pm)</span></div><button class="btn btn--ghost btn--icon btn--sm reply-bar__cancel">×</button></div>
+      <form class="composer"><textarea class="composer__input" rows="1" placeholder="Message Design team"></textarea><span class="kbd composer__hint">↑ edit last · Shift ↵ new line</span><button class="btn btn--primary btn--icon" type="button">↵</button></form>
+    </div>
+  </section>
+  <section class="panel attached"><h3>Proposed (later) <small>one unit with the composer, like Slack/Signal/iMessage</small></h3>
+    <div class="composer-wrap">
+      <div class="reply-bar"><svg class="reply-bar__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg><div class="reply-bar__text"><span class="reply-bar__label">Replying to <span class="reply-bar__name">Anika Shah</span></span><span class="reply-bar__excerpt">Shipping it after lunch 🚀 (2pm)</span></div><button class="btn btn--ghost btn--icon btn--sm reply-bar__cancel">×</button></div>
+      <form class="composer"><textarea class="composer__input" rows="1" placeholder="Reply to Anika Shah"></textarea><span class="kbd composer__hint">Esc cancel reply · Shift ↵ new line</span><button class="btn btn--primary btn--icon" type="button">↵</button></form>
+    </div>
+    <p class="note">Shared border, 1px left edge (the accent stays on the icon and the composer's focus border), excerpt muted, hint swaps to "Esc cancel reply" while replying.</p>
+  </section>
+</div>
+</div></body>
+</html>

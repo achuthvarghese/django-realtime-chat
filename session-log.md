@@ -39,6 +39,7 @@
 | #21 | dev-agents | Claude Code agents (11), CLAUDE.md orchestrator playbook |
 | #22 | dev-live-rooms-fixes | Phase 9c: live-room fixes (first agent-team phase) |
 | #23 | dev-agent-sessions | Builders run as sub sessions; git author read from history |
+| #24 | dev-replies | Phase 10a: replies (first phase with builder sub sessions) |
 
 ## Key decisions
 
@@ -75,11 +76,15 @@
   resync on every inbox connect, `/chat/?room=` redirect with a notice,
   SQLite `timeout` 20 + `IMMEDIATE` transactions, redesigned gone pane and
   new-row animation. Details in `phases/live-rooms-fixes/`.
+- **Phase 10a (replies):** live, privacy-safe quotes (`Message.reply_to`
+  SET_NULL, one check constraint), per-viewer `reply_to` objects and split
+  sends, fixed reply error, error frames carry `for`, history 1 query/page,
+  `before=` rejects hidden ids; action bar with roving keyboard navigation
+  (transcript = one Tab stop), reply bar joined to the composer, jump to the
+  original (≤10×100 pages). Details in `phases/replies/`.
 
 ## Roadmap
 
-- P10a `dev-replies` (plan drafted by idea-planner; see
-  `agent-trials/reports.md`).
 - P10b `dev-reactions`; P10c `dev-mentions-notifications` (+ mute,
   Settings → Notifications; notifications need HTTPS); P10d
   `dev-command-palette` (⌘K, search, `/clear` `/invite` `/leave` `/me`).
@@ -94,6 +99,9 @@
   "Added to X"; 44 px phone back button; per-user unread counter at very
   large volumes; retake README screenshots (times now "9:41", no gone
   pane shot).
+- Deferred from 10a: four-action bar grouping/wrap (P10b), `?around=<id>`
+  history for one-request jumps, per-user variant sends for split replies,
+  lighter quote on touch, retake README screenshots with replies.
 
 ## Open questions for the user
 

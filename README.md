@@ -27,3 +27,4 @@ Raw session transcripts are not stored here: they contain account details.
 | Phase | Folder | PR |
 | --- | --- | --- |
 | 9c live-room fixes | `phases/live-rooms-fixes/` (contract and notes, condensed agent reports, builder/designer/tester screenshots, design mockups) | #22 |
+| 10a replies | `phases/replies/` (contract and notes, condensed reports, design and QA screenshots, design mockup) | #24 |
