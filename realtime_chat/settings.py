@@ -126,7 +126,10 @@ DATABASES = {
         "NAME": os.environ.get("SQLITE_PATH", BASE_DIR / "db.sqlite3"),
         # Wait up to 20 s for a write lock instead of failing at once with
         # "database is locked" when sockets and requests write together.
-        "OPTIONS": {"timeout": 20},
+        # IMMEDIATE transactions take the write lock up front, so a
+        # read-then-write (update_or_create) waits instead of failing when
+        # it can't upgrade its read lock.
+        "OPTIONS": {"timeout": 20, "transaction_mode": "IMMEDIATE"},
     }
 }
 

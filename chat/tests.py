@@ -2367,6 +2367,7 @@ class TestBusyDatabase:
         db = settings.DATABASES["default"]
         assert db["ENGINE"] == "django.db.backends.sqlite3"
         assert db["OPTIONS"]["timeout"] == 20
+        assert db["OPTIONS"]["transaction_mode"] == "IMMEDIATE"
 
 
 @pytest.mark.django_db
