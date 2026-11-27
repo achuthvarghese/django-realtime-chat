@@ -15,6 +15,8 @@ from chat.presenters import (
     display_name,
     initials,
     message_data,
+    reaction_emoji_table,
+    reactions_for_messages,
     room_summaries,
     room_summary,
     rooms_for,
@@ -55,9 +57,10 @@ def history_page(room, user, before=None, limit=PAGE_SIZE):
     """Up to `limit` messages the user can see, oldest first, ending just
     before `before` (a Message) when given. Returns (messages, has_more).
 
-    One query per page however many messages are replies: each reply's
-    original and its author come joined in, and whether the user can see the
-    original is an EXISTS on its visibility rows."""
+    Two queries per page however many messages are replies or have
+    reactions: each reply's original and its author come joined in, whether
+    the user can see the original is an EXISTS on its visibility rows, and
+    every reaction on the page comes in one more query."""
     can_see_original = Message.visible_for.through.objects.filter(
         message_id=OuterRef("reply_to_id"),
         message__room_id=OuterRef("room_id"),  # never quote across rooms
@@ -76,7 +79,13 @@ def history_page(room, user, before=None, limit=PAGE_SIZE):
         )
     page = list(qs.order_by("-created_at", "-id")[: limit + 1])
     has_more = len(page) > limit
-    return [message_data(m) for m in reversed(page[:limit])], has_more
+    page = page[:limit]
+    reactions = reactions_for_messages(
+        m.pk for m in page if not m.is_deleted and not m.is_system
+    )
+    return [
+        message_data(m, reactions=reactions.get(m.pk, [])) for m in reversed(page)
+    ], has_more
 
 
 def room_url(room):
@@ -126,6 +135,7 @@ def chat(request):
         "history": {"has_more": has_more, "page_size": PAGE_SIZE},
         "me": {"username": request.user.username, "name": me, "initials": initials(me)},
         "max_group_name": MAX_GROUP_NAME,
+        "reaction_emoji": reaction_emoji_table(),
     }
     return render(request, "chat/chat.html", context)
 

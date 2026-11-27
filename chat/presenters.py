@@ -3,7 +3,7 @@
 from django.contrib.auth import get_user_model
 from django.db.models import Count, F, Max, OuterRef, Q, Subquery
 
-from chat.models import Message, ReadState, Room
+from chat.models import Message, Reaction, ReactionEmoji, ReadState, Room
 from chat.presence import unread_counts
 
 User = get_user_model()
@@ -242,14 +242,83 @@ def reply_data(message, visible):
     return data
 
 
-def message_data(message, reply_visible=None):
+# Names for the fixed reaction set (aria labels and tooltips), in display
+# order. The keys match ReactionEmoji.
+REACTION_NAMES = {
+    ReactionEmoji.THUMBS_UP: "Thumbs up",
+    ReactionEmoji.HEART: "Heart",
+    ReactionEmoji.LAUGH: "Laughing",
+    ReactionEmoji.WOW: "Surprised",
+    ReactionEmoji.SAD: "Sad",
+    ReactionEmoji.PARTY: "Party",
+}
+_REACTION_ORDER = {key: i for i, key in enumerate(ReactionEmoji.values)}
+
+
+def reaction_emoji_table():
+    """The reaction picker's data: [{key, char, label}] in display order."""
+    return [
+        {"key": key, "char": char, "label": REACTION_NAMES[key]}
+        for key, char in ReactionEmoji.choices
+    ]
+
+
+def reactions_for_messages(message_ids):
+    """{message id: `reactions` list} for these messages in one query.
+    Messages without reactions are left out (use .get(id, []))."""
+    message_ids = list(message_ids)
+    if not message_ids:
+        return {}
+    rows = (
+        Reaction.objects.filter(message_id__in=message_ids)
+        .select_related("user")
+        .only(
+            "message_id",
+            "emoji",
+            "user__username",
+            "user__first_name",
+            "user__last_name",
+        )
+        .order_by("created_at", "id")
+    )
+    # message id -> emoji -> [{user, name}], in reaction time order.
+    grouped = {}
+    for reaction in rows:
+        per_emoji = grouped.setdefault(reaction.message_id, {})
+        per_emoji.setdefault(reaction.emoji, []).append(
+            {"user": reaction.user.username, "name": display_name(reaction.user)}
+        )
+    return {
+        message_id: [
+            {"emoji": emoji, "count": len(users), "users": users}
+            for emoji, users in sorted(
+                per_emoji.items(), key=lambda item: _REACTION_ORDER[item[0]]
+            )
+        ]
+        for message_id, per_emoji in grouped.items()
+    }
+
+
+def reactions_for_message(message):
+    """The `reactions` list for one message ([] for deleted and system
+    messages, which can't have any)."""
+    if message.is_deleted or message.is_system:
+        return []
+    return reactions_for_messages([message.pk]).get(message.pk, [])
+
+
+def message_data(message, reply_visible=None, reactions=None):
     """The shape sent to the browser for one message (also used over the
     WebSocket; see docs/websocket-protocol.md).
 
     `reply_visible` says whether the viewer can see the message this one
     replies to; when None it comes from a `reply_visible` annotation (see
     views.history_page), and without one the quote is shown as unavailable,
-    so nothing leaks by default."""
+    so nothing leaks by default.
+
+    `reactions` is the message's `reactions` list (see
+    reactions_for_messages); None means none, as for a new message. Deleted
+    and system messages always get []."""
     if reply_visible is None:
         reply_visible = getattr(message, "reply_visible", False)
     name = display_name(message.user)
@@ -264,4 +333,9 @@ def message_data(message, reply_visible=None):
         "deleted": message.is_deleted,
         "kind": message.kind,
         "reply_to": reply_data(message, bool(reply_visible)),
+        "reactions": (
+            []
+            if reactions is None or message.is_deleted or message.is_system
+            else reactions
+        ),
     }
