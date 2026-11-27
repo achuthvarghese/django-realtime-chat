@@ -50,12 +50,14 @@ what a doc says, or two docs disagree about behaviour), report it instead of
 
 ## Git and team rules
 
-Follow the "Working as a team" section in `.claude/agents/backend-dev.md`:
-commit on your own branch only, check `git config user.email` is
-`acvknr@gmail.com` and `user.name` is `achuthvarghese`, **never add
-`Co-Authored-By` or other trailer lines**, never push to `master` or `dev`,
-never open or merge pull requests. Docs-only commits; message like
-"Document <thing>".
+You run as a **sub agent** of the orchestrator (not a sub session): it gives
+you the phase branch, the notes file in its scratchpad and your branch
+(`dev-<feature>-docs`) in a git worktree. Commit on that branch only, with
+the same author as the project's existing commits (check `git config
+user.name` matches `git log -1 --no-merges --format=%an origin/master`; never
+write an email address into a file). **Never add `Co-Authored-By` or other
+trailer lines**, never push, never open or merge pull requests.
+Docs-only commits; message like "Document <thing>".
 
 ## Report format
 

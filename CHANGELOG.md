@@ -3,6 +3,17 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Agent sessions
+
+### Changed
+- Builders (`backend-dev`, `frontend-dev`, `devops-dev`) run as Claude Code
+  sub sessions: own container, `send_message` to the orchestrator and each
+  other, and they push their own branch. Reviewers, `idea-planner`,
+  `database-designer` and `docs-writer` stay sub agents. See
+  docs/agents.md and CLAUDE.md.
+- Agents and the orchestrator take the git author from the project's
+  existing commits instead of a value written in the files.
+
 ## Phase 9c: live-room fixes
 
 Fixes to the live room list from Phase 9b, plus one privacy fix. This is the
