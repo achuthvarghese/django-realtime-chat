@@ -1838,6 +1838,21 @@ class TestRefusedSocketFrames:
         consumer.receive(text_data="not json")
         assert sent == []
 
+    def test_room_events_on_a_refused_socket_are_ignored(self):
+        from types import SimpleNamespace
+
+        from chat.channels.consumers import ChatConsumer
+
+        consumer = ChatConsumer()
+        consumer.user = SimpleNamespace(pk=1, is_authenticated=True)
+        sent = []
+        consumer.send = lambda *args, **kwargs: sent.append((args, kwargs))
+        consumer.close = lambda *args, **kwargs: sent.append(("close", kwargs))
+        consumer.membership_revoked({"user_id": 1})
+        consumer.room_deleted({})
+        consumer.chat_response({"data": {"type": "typing"}})
+        assert sent == []
+
 
 @pytest.mark.django_db(transaction=True)
 class TestStaleRoomSocket:

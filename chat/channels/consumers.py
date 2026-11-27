@@ -291,10 +291,14 @@ class ChatConsumer(WebsocketConsumer):
 
     def membership_revoked(self, event):
         """Sent when someone is removed or leaves; only their sockets close."""
+        if self.room_group_name is None:
+            return  # already refused and closing
         if event["user_id"] == self.user.pk:
             self.reject_open(403, "You're no longer in this chat", CloseCode.FORBIDDEN)
 
     def room_deleted(self, event):
+        if self.room_group_name is None:
+            return  # already refused and closing
         self.reject_open(404, "This chat was deleted", CloseCode.NOT_FOUND)
 
     # Helpers
