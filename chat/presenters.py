@@ -209,9 +209,47 @@ def room_changed_data(room):
     }
 
 
-def message_data(message):
+REPLY_EXCERPT_LENGTH = 200
+
+
+def reply_excerpt(content):
+    """The quoted original on one line: whitespace runs collapsed to one
+    space, trimmed, at most REPLY_EXCERPT_LENGTH characters."""
+    return " ".join((content or "").split())[:REPLY_EXCERPT_LENGTH]
+
+
+def reply_data(message, visible):
+    """The `reply_to` object for `message` as seen by a viewer who can
+    (`visible`) or can't see the original. None for plain messages and for
+    deleted replies. A viewer who can't see the original learns only its id.
+    `message.reply_to.user` should be loaded (select_related)."""
+    if message.reply_to_id is None or message.is_deleted:
+        return None
+    original = message.reply_to
+    if original is None or not visible:
+        return {"id": str(message.reply_to_id), "available": False}
+    data = {
+        "id": str(original.id),
+        "available": True,
+        "deleted": original.is_deleted,
+        "user": original.user.username,
+        "name": display_name(original.user),
+    }
+    if not original.is_deleted:
+        data["excerpt"] = reply_excerpt(original.content)
+    return data
+
+
+def message_data(message, reply_visible=None):
     """The shape sent to the browser for one message (also used over the
-    WebSocket; see docs/websocket-protocol.md)."""
+    WebSocket; see docs/websocket-protocol.md).
+
+    `reply_visible` says whether the viewer can see the message this one
+    replies to; when None it comes from a `reply_visible` annotation (see
+    views.history_page), and without one the quote is shown as unavailable,
+    so nothing leaks by default."""
+    if reply_visible is None:
+        reply_visible = getattr(message, "reply_visible", False)
     name = display_name(message.user)
     return {
         "id": str(message.id),
@@ -223,4 +261,5 @@ def message_data(message):
         "edited": message.edited_at is not None and not message.is_deleted,
         "deleted": message.is_deleted,
         "kind": message.kind,
+        "reply_to": reply_data(message, bool(reply_visible)),
     }

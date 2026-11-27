@@ -2404,3 +2404,392 @@ class TestLeaveNotice:
         )
         assert response.json()["ok"] is True
         assert list(get_messages(response.wsgi_request)) == []
+
+
+# Replies (P10a)
+
+
+def visible_text(room, user, text, visible=None):
+    """A text message from `user`, visible to `visible` (default: members)."""
+    message = Message.objects.create(content=text, room=room, user=user)
+    message.visible_for.add(*(visible if visible is not None else room.members.all()))
+    return message
+
+
+def reply(room, user, original, text="re", visible=None):
+    message = Message.objects.create(
+        content=text, room=room, user=user, reply_to=original
+    )
+    message.visible_for.add(*(visible if visible is not None else room.members.all()))
+    return message
+
+
+@pytest.mark.django_db(transaction=True)
+class TestReplyMigration:
+    def test_migration_applies_and_reverses(self):
+        from django.db import connection
+        from django.db.migrations.executor import MigrationExecutor
+
+        def columns():
+            with connection.cursor() as cursor:
+                return {
+                    c.name
+                    for c in connection.introspection.get_table_description(
+                        cursor, "chat_message"
+                    )
+                }
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([("chat", "0004_group_admins")])
+        assert "reply_to_id" not in columns()
+        executor = MigrationExecutor(connection)
+        executor.migrate([("chat", "0005_message_reply_to")])
+        assert "reply_to_id" in columns()
+
+
+@pytest.mark.django_db
+class TestReplyConstraints:
+    def test_system_messages_cannot_reply(self, maya, room):
+        from django.db import IntegrityError, transaction
+
+        original = visible_text(room, maya, "hi")
+        with pytest.raises(IntegrityError), transaction.atomic():
+            Message.objects.create(
+                content="x",
+                room=room,
+                user=maya,
+                kind=Message.Kinds.SYSTEM,
+                reply_to=original,
+            )
+
+    def test_message_cannot_reply_to_itself(self, maya, room):
+        from django.db import IntegrityError, transaction
+
+        message = visible_text(room, maya, "hi")
+        with pytest.raises(IntegrityError), transaction.atomic():
+            Message.objects.filter(pk=message.pk).update(reply_to=message.pk)
+
+    def test_original_removed_from_db_makes_reply_plain(self, maya, arjun, room):
+        from chat.presenters import message_data
+
+        original = visible_text(room, arjun, "hi")
+        answer = reply(room, maya, original)
+        arjun.delete()  # cascades to arjun's messages
+        answer.refresh_from_db()
+        assert answer.reply_to_id is None
+        assert message_data(answer)["reply_to"] is None
+
+
+@pytest.mark.django_db
+class TestReplyPresenter:
+    def test_plain_message(self, maya, room):
+        from chat.presenters import message_data
+
+        assert message_data(visible_text(room, maya, "hi"))["reply_to"] is None
+
+    def test_visible_original(self, maya, arjun, room):
+        from chat.presenters import message_data
+
+        arjun.first_name = "Arjun"
+        arjun.save()
+        original = visible_text(room, arjun, "  line one\n\n\tline   two  " + "x" * 300)
+        data = message_data(reply(room, maya, original), reply_visible=True)
+        quote = data["reply_to"]
+        assert quote == {
+            "id": str(original.id),
+            "available": True,
+            "deleted": False,
+            "user": "arjun",
+            "name": "Arjun",
+            "excerpt": ("line one line two " + "x" * 300)[:200],
+        }
+        assert len(quote["excerpt"]) == 200
+
+    def test_deleted_original(self, maya, arjun, room):
+        from django.utils import timezone
+
+        from chat.presenters import message_data
+
+        original = visible_text(room, arjun, "secret")
+        answer = reply(room, maya, original)
+        Message.objects.filter(pk=original.pk).update(
+            content="", deleted_at=timezone.now()
+        )
+        answer = Message.objects.select_related("reply_to__user").get(pk=answer.pk)
+        assert message_data(answer, reply_visible=True)["reply_to"] == {
+            "id": str(original.id),
+            "available": True,
+            "deleted": True,
+            "user": "arjun",
+            "name": "arjun",
+        }
+
+    def test_unavailable_original_and_safe_default(self, maya, arjun, room):
+        from chat.presenters import message_data
+
+        original = visible_text(room, arjun, "secret")
+        answer = reply(room, maya, original)
+        expected = {"id": str(original.id), "available": False}
+        assert message_data(answer, reply_visible=False)["reply_to"] == expected
+        assert message_data(answer)["reply_to"] == expected  # no annotation
+
+    def test_deleted_reply_has_no_quote(self, maya, arjun, room):
+        from django.utils import timezone
+
+        from chat.presenters import message_data
+
+        answer = reply(room, maya, visible_text(room, arjun, "hi"))
+        answer.deleted_at = timezone.now()
+        assert message_data(answer, reply_visible=True)["reply_to"] is None
+
+
+@pytest.mark.django_db
+class TestReplyHistory:
+    def test_history_carries_per_viewer_quotes(self, client, maya, arjun, lee, group):
+        original = visible_text(group, maya, "before lee", visible=[maya, arjun])
+        answer = reply(group, arjun, original, "answer")
+        for user, available in ((arjun, True), (lee, False)):
+            client.force_login(user)
+            data = client.get(reverse("chat:history", args=[group.id])).json()
+            row = next(m for m in data["messages"] if m["id"] == str(answer.id))
+            assert row["reply_to"]["available"] is available
+            if not available:
+                assert row["reply_to"] == {"id": str(original.id), "available": False}
+            else:
+                assert row["reply_to"]["excerpt"] == "before lee"
+
+    def test_initial_page_carries_quotes(self, client, maya, arjun, room):
+        original = visible_text(room, arjun, "question")
+        answer = reply(room, maya, original, "answer")
+        client.force_login(maya)
+        response = client.get(reverse("chat:chat"), {"room": room.id})
+        row = next(
+            m for m in response.context["room_messages"] if m["id"] == str(answer.id)
+        )
+        assert row["reply_to"]["excerpt"] == "question"
+        assert row["reply_to"]["available"] is True
+
+    def test_history_queries_do_not_grow_with_replies(self, client, maya, arjun, room):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        client.force_login(maya)
+        url = reverse("chat:history", args=[room.id])
+        counts = []
+        for total in (1, 20):
+            while Message.objects.filter(room=room).count() < total * 2:
+                users = (maya, arjun)
+                n = Message.objects.count()
+                original = visible_text(room, users[n % 2], f"q{n}")
+                reply(room, users[(n + 1) % 2], original, f"a{n}")
+            with CaptureQueriesContext(connection) as ctx:
+                assert client.get(url).status_code == 200
+            counts.append(len(ctx.captured_queries))
+        assert counts[0] == counts[1]
+
+
+@pytest.mark.django_db(transaction=True)
+class TestReplySockets:
+    async def connect(self, room, *users):
+        sockets = []
+        for user in users:
+            socket = make_communicator(room.id, user)
+            assert (await socket.connect())[0]
+            sockets.append(socket)
+        return sockets
+
+    async def close(self, *sockets):
+        for socket in sockets:
+            await socket.disconnect()
+
+    async def test_reply_is_saved_and_quoted(self, maya, arjun, room):
+        original = await database_sync_to_async(visible_text)(room, arjun, "q?")
+        maya_socket, arjun_socket = await self.connect(room, maya, arjun)
+        await maya_socket.send_json_to(
+            {"type": "save_message", "message": "yes", "reply_to": str(original.id)}
+        )
+        for socket in (maya_socket, arjun_socket):
+            frame = await socket.receive_json_from()
+            assert frame["type"] == "save_message"
+            assert frame["reply_to"]["excerpt"] == "q?"
+            assert frame["reply_to"]["id"] == str(original.id)
+        saved = await database_sync_to_async(Message.objects.get)(content="yes")
+        assert saved.reply_to_id == original.id
+        await self.close(maya_socket, arjun_socket)
+
+    async def test_plain_message_has_null_reply(self, maya, room):
+        (socket,) = await self.connect(room, maya)
+        await socket.send_json_to({"type": "save_message", "message": "hi"})
+        assert (await socket.receive_json_from())["reply_to"] is None
+        await self.close(socket)
+
+    async def test_rejected_targets(self, maya, arjun, lee, room):
+        from django.utils import timezone
+
+        def build():
+            other = Room.objects.create(name="other", type=Room.RoomTypes.PRIVATE)
+            other.members.add(maya, lee)
+            elsewhere = visible_text(other, lee, "elsewhere")
+            system = Message.objects.create(
+                content="event", room=room, user=arjun, kind=Message.Kinds.SYSTEM
+            )
+            system.visible_for.add(maya, arjun)
+            deleted = visible_text(room, arjun, "gone")
+            Message.objects.filter(pk=deleted.pk).update(
+                content="", deleted_at=timezone.now()
+            )
+            hidden = visible_text(room, arjun, "cleared", visible=[arjun])
+            return [elsewhere.id, system.id, deleted.id, hidden.id]
+
+        ids = await database_sync_to_async(build)()
+        maya_socket, arjun_socket = await self.connect(room, maya, arjun)
+        targets = [str(i) for i in ids] + [
+            "not-a-uuid",
+            "00000000-0000-0000-0000-000000000000",
+            123,
+            {"id": str(ids[0])},
+            "",
+        ]
+        for target in targets:
+            await maya_socket.send_json_to(
+                {"type": "save_message", "message": "x", "reply_to": target}
+            )
+            frame = await maya_socket.receive_json_from()
+            assert (frame["type"], frame["code"], frame["message"]) == (
+                "error",
+                400,
+                "You can't reply to that message",
+            ), target
+        assert await arjun_socket.receive_nothing(timeout=0.2)
+        count = await database_sync_to_async(
+            Message.objects.filter(content="x").count
+        )()
+        assert count == 0
+        await self.close(maya_socket, arjun_socket)
+
+    async def test_vanished_target_is_refused(self, maya, arjun, room, monkeypatch):
+        from django.db import IntegrityError
+
+        from chat.channels import consumers
+
+        original = await database_sync_to_async(visible_text)(room, arjun, "q")
+
+        def boom(*args, **kwargs):
+            raise IntegrityError("FOREIGN KEY constraint failed")
+
+        monkeypatch.setattr(consumers.Message.objects, "create", boom)
+        (socket,) = await self.connect(room, maya)
+        await socket.send_json_to(
+            {"type": "save_message", "message": "x", "reply_to": str(original.id)}
+        )
+        frame = await socket.receive_json_from()
+        assert frame["message"] == "You can't reply to that message"
+        await self.close(socket)
+
+    async def setup_split(self, maya, arjun, lee):
+        """A group where kai joined after `original`, so kai can't see it."""
+        from chat.models import Membership
+        from chat.services import create_group_room
+
+        def build():
+            g = create_group_room(maya, "Team", ["arjun", "lee"])
+            original = visible_text(g, maya, "private plan")
+            kai = User.objects.create_user("kai", password="pw")
+            Membership.objects.create(room=g, user=kai)
+            return g, original, kai
+
+        return await database_sync_to_async(build)()
+
+    async def test_new_reply_split_by_who_sees_original(self, maya, arjun, lee):
+        group, original, kai = await self.setup_split(maya, arjun, lee)
+        sockets = await self.connect(group, maya, arjun, lee, kai)
+        await sockets[1].send_json_to(
+            {"type": "save_message", "message": "ok", "reply_to": str(original.id)}
+        )
+        for socket in sockets[:3]:
+            frame = await socket.receive_json_from()
+            assert frame["reply_to"]["excerpt"] == "private plan"
+        frame = await sockets[3].receive_output()
+        assert "private plan" not in frame["text"]
+        data = json.loads(frame["text"])
+        assert data["message"] == "ok"
+        assert data["reply_to"] == {"id": str(original.id), "available": False}
+        for socket in sockets:
+            assert await socket.receive_nothing(timeout=0.1)
+        await self.close(*sockets)
+
+    async def test_reply_edit_split_and_keeps_target(self, maya, arjun, lee):
+        group, original, kai = await self.setup_split(maya, arjun, lee)
+
+        def make_reply():
+            members = list(group.members.all())
+            return reply(group, arjun, original, "first", visible=members)
+
+        answer = await database_sync_to_async(make_reply)()
+        sockets = await self.connect(group, maya, arjun, lee, kai)
+        await sockets[1].send_json_to(
+            {
+                "type": "edit_message",
+                "id": str(answer.id),
+                "message": "second",
+                "reply_to": None,
+            }
+        )
+        for socket in sockets[:3]:
+            frame = await socket.receive_json_from()
+            assert frame["type"] == "message_updated"
+            assert frame["reply_to"]["excerpt"] == "private plan"
+        output = await sockets[3].receive_output()
+        assert "private plan" not in output["text"]
+        frame = json.loads(output["text"])
+        assert (frame["type"], frame["message"]) == ("message_updated", "second")
+        assert frame["reply_to"] == {"id": str(original.id), "available": False}
+        await database_sync_to_async(answer.refresh_from_db)()
+        assert answer.reply_to_id == original.id
+        await self.close(*sockets)
+
+    async def test_inbox_activity_has_null_reply(self, maya, arjun, room):
+        original = await database_sync_to_async(visible_text)(room, arjun, "q")
+        inbox = make_inbox(arjun)
+        await inbox.connect()
+        await inbox.receive_json_from()  # presence snapshot
+        (socket,) = await self.connect(room, maya)
+        await socket.send_json_to(
+            {"type": "save_message", "message": "a", "reply_to": str(original.id)}
+        )
+        frame = await next_frame_of_type(inbox, "room_activity")
+        assert frame["message"]["reply_to"] is None
+        await self.close(socket, inbox)
+
+
+@pytest.mark.django_db
+class TestReplyDemoData:
+    @pytest.fixture(autouse=True)
+    def seeded(self, settings):
+        from django.core.management import call_command
+
+        settings.DEBUG = True
+        call_command("seed_demo", stdout=__import__("io").StringIO())
+
+    def test_seeded_chats_have_replies(self):
+        replies = Message.objects.exclude(reply_to=None).select_related("reply_to")
+        rooms = {m.room.type for m in replies.select_related("room")}
+        assert rooms == {Room.RoomTypes.GROUP, Room.RoomTypes.PRIVATE}
+        for m in replies:
+            assert m.reply_to.room_id == m.room_id
+            assert m.reply_to.created_at < m.created_at
+
+    def test_priya_cannot_see_the_quoted_original(self, client):
+        priya = User.objects.get(username="priya")
+        books = Room.objects.get(name="Book club")
+        client.force_login(priya)
+        data = client.get(reverse("chat:history", args=[books.id])).json()
+        quoted = [m["reply_to"] for m in data["messages"] if m["reply_to"]]
+        assert quoted and all(set(q) == {"id", "available"} for q in quoted)
+        assert not any(q["available"] for q in quoted)
+        client.force_login(User.objects.get(username="maya"))
+        data = client.get(reverse("chat:history", args=[books.id])).json()
+        quoted = [m["reply_to"] for m in data["messages"] if m["reply_to"]]
+        assert [q["excerpt"] for q in quoted] == [
+            "Next pick: The Left Hand of Darkness?"
+        ]

@@ -3,7 +3,7 @@ import uuid
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -34,8 +34,19 @@ PAGE_SIZE = 50
 
 def history_page(room, user, before=None, limit=PAGE_SIZE):
     """Up to `limit` messages the user can see, oldest first, ending just
-    before `before` (a Message) when given. Returns (messages, has_more)."""
-    qs = Message.objects.filter(room=room, visible_for=user).select_related("user")
+    before `before` (a Message) when given. Returns (messages, has_more).
+
+    One query per page however many messages are replies: each reply's
+    original and its author come joined in, and whether the user can see the
+    original is an EXISTS on its visibility rows."""
+    can_see_original = Message.visible_for.through.objects.filter(
+        message_id=OuterRef("reply_to_id"), user_id=user.pk
+    )
+    qs = (
+        Message.objects.filter(room=room, visible_for=user)
+        .select_related("user", "reply_to__user")
+        .annotate(reply_visible=Exists(can_see_original))
+    )
     if before is not None:
         qs = qs.filter(
             Q(created_at__lt=before.created_at)
