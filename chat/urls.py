@@ -6,6 +6,7 @@ from chat.views import (
     people,
     room_details,
     room_history,
+    room_summaries_view,
     room_summary_view,
     start_direct,
     start_group,
@@ -16,6 +17,7 @@ app_name = "chat"
 urlpatterns = [
     path("chat/", chat, name="chat"),
     path("chat/people/", people, name="people"),
+    path("chat/rooms/summaries/", room_summaries_view, name="summaries"),
     path("chat/rooms/<uuid:room_id>/messages/", room_history, name="history"),
     path("chat/rooms/<uuid:room_id>/details/", room_details, name="details"),
     path("chat/rooms/<uuid:room_id>/summary/", room_summary_view, name="summary"),
