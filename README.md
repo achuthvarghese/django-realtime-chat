@@ -21,3 +21,9 @@ the team's working notes, agent reports, design mockups and screenshots.
 | `screenshots/` | Screenshots taken while building phases 3–9 |
 
 Raw session transcripts are not stored here: they contain account details.
+
+## Phases recorded
+
+| Phase | Folder | PR |
+| --- | --- | --- |
+| 9c live-room fixes | `phases/live-rooms-fixes/` (contract and notes, condensed agent reports, builder/designer/tester screenshots, design mockups) | #22 |

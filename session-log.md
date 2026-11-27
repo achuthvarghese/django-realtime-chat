@@ -36,7 +36,7 @@
 | #19 | dev-group-admins | Phase 9a: group admins |
 | #20 | dev-live-rooms | Phase 9b: live rooms |
 | #21 | dev-agents | Claude Code agents (11), CLAUDE.md orchestrator playbook |
-| (open) | dev-live-rooms-fixes | Phase 9c: live-room fixes (team phase) |
+| #22 | dev-live-rooms-fixes | Phase 9c: live-room fixes (first agent-team phase) |
 
 ## Key decisions
 
@@ -63,10 +63,16 @@
   worktrees on `dev-<phase>-<role>` branches, and one PR per phase.
   Builders have no SendMessage tool, so the orchestrator relays messages
   between them.
+- **Phase 9c (live-room fixes):** per-socket visibility (`visible_to`),
+  join-then-check room sockets, group events after commit, one
+  `room_changed` frame (also on add/remove/leave), grouped-query
+  summaries, `room_refresh` inbox frame, `/chat/rooms/summaries/` with a
+  resync on every inbox connect, `/chat/?room=` redirect with a notice,
+  SQLite `timeout` 20 + `IMMEDIATE` transactions, redesigned gone pane and
+  new-row animation. Details in `phases/live-rooms-fixes/`.
 
 ## Roadmap
 
-- Phase 9c `dev-live-rooms-fixes` (in progress, team phase).
 - P10a `dev-replies` (plan drafted by idea-planner; see
   `agent-trials/reports.md`).
 - P10b `dev-reactions`; P10c `dev-mentions-notifications` (+ mute,
@@ -77,8 +83,15 @@
   P11d `dev-group-colours` (8 preset colours).
 - Kept in mind: hide direct chats, rate limits, password reset, browser
   tests in CI, production deploy, hardening.
+- Deferred from 9c: editing/deleting your own messages after clearing
+  history (user: decide later); day dividers at midnight in an open chat;
+  room-check timing edge cases (re-review items 3, 4, 7); live-region
+  "Added to X"; 44 px phone back button; per-user unread counter at very
+  large volumes; retake README screenshots (times now "9:41", no gone
+  pane shot).
 
 ## Open questions for the user
 
-- Should `typing` and `room_updated` frames also skip a just-removed
-  member's socket? (security-auditor asked for a verdict.)
+- (none open) The typing/room_updated question was settled by the
+  security audit: room_updated goes to current members; typing is covered
+  by the join-then-check order and after-commit revokes.
