@@ -124,6 +124,9 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": os.environ.get("SQLITE_PATH", BASE_DIR / "db.sqlite3"),
+        # Wait up to 20 s for a write lock instead of failing at once with
+        # "database is locked" when sockets and requests write together.
+        "OPTIONS": {"timeout": 20},
     }
 }
 

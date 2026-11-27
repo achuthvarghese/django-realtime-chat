@@ -9,6 +9,7 @@ nothing is sent if it rolls back).
 | `room_added`   | people who gain a room         | new direct chat, new group, added to one  |
 | `room_changed` | members (not the newly added)  | group renamed, people added, removed, left |
 | `room_removed` | people who lose a room         | removed, left (their other tabs), deleted |
+| `room_refresh` | people who can see the message | a message was edited or deleted           |
 
 Building the frames takes a fixed number of queries however many people
 get them. A send that fails is skipped (the change is already saved and the
@@ -105,3 +106,12 @@ def room_removed(room_id, user_pks):
     event = {"type": "inbox.room_removed", "room": str(room_id)}
     events = [(pk, event) for pk in user_pks]
     transaction.on_commit(lambda: _send_all("room_removed", room_id, events))
+
+
+def room_refresh(room_id, user_pks):
+    """A message was edited or deleted, so the room's preview may have
+    changed: ask these people's lists to refetch its row. Pass only people
+    who can see the message."""
+    event = {"type": "inbox.room_refresh", "room": str(room_id)}
+    events = [(pk, event) for pk in user_pks]
+    transaction.on_commit(lambda: _send_all("room_refresh", room_id, events))
