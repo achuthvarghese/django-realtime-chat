@@ -602,7 +602,7 @@
     color: var(--muted);
 }
 .chat-gone__heading { font-size: var(--text-xl); }
-.chat-gone__heading:focus { outline: none; }
+.chat-gone__heading:focus, .chat-gone__heading:focus-visible { outline: none; box-shadow: none; }
 @media (pointer: coarse), (max-width: 599px) {
     .chat-gone__back { min-height: 44px; }
 }
