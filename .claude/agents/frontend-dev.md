@@ -84,7 +84,15 @@ git config --global user.name "$(git log -1 --no-merges --format=%an origin/mast
 git config --global user.email "$(git log -1 --no-merges --format=%ae origin/master)"
 ```
 The last two lines give your commits the same author as the project's own
-commits. Never write an email address into a file.
+commits. The container can reset the identity at any time, so **check it
+before every commit** and rerun those two lines if it differs:
+
+```sh
+[ "$(git config user.email)" = "$(git log -1 --no-merges --format=%ae origin/master)" ] || echo "identity reset: rerun the two git config lines"
+```
+Never write an email address into a file. If a commit still goes out under
+the wrong author, don't force-push: tell the orchestrator, which re-authors
+it when merging.
 
 ### Rules
 
