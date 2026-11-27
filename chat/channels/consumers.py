@@ -130,6 +130,7 @@ class ChatConsumer(WebsocketConsumer):
                 user=self.user,
                 deleted_at__isnull=True,
                 kind=Message.Kinds.TEXT,
+                visible_for=self.user,
             )
             .select_related("user")
             .first()
@@ -141,6 +142,8 @@ class ChatConsumer(WebsocketConsumer):
         return message
 
     def broadcast_update(self, message):
+        """Send the edit or delete only to people who can see the message
+        (not those who cleared it or joined after it)."""
         async_to_sync(self.channel_layer.group_send)(
             self.room_group_name,
             {
@@ -149,6 +152,7 @@ class ChatConsumer(WebsocketConsumer):
                     "type": WSChatType.MESSAGE_UPDATED.value,
                     **message_data(message),
                 },
+                "visible_to": list(message.visible_for.values_list("pk", flat=True)),
             },
         )
 
@@ -194,6 +198,7 @@ class ChatConsumer(WebsocketConsumer):
                     "type": WSChatType.SAVE_MESSAGE.value,
                     **message_data(message),
                 },
+                "visible_to": [m.pk for m in members],
             },
         )
         self.notify_inboxes(message, members)
@@ -243,6 +248,11 @@ class ChatConsumer(WebsocketConsumer):
     # Channel layer events
 
     def chat_response(self, event):
+        # Events about one message carry the pks of the people who may see it
+        # (never sent on to the client); everything else goes to every socket.
+        visible_to = event.get("visible_to")
+        if visible_to is not None and self.user.pk not in visible_to:
+            return
         self.send_json(event["data"])
 
     def membership_revoked(self, event):
