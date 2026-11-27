@@ -649,8 +649,9 @@
     border: 0;
     border-left: 2px solid var(--accent);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-    background: color-mix(in srgb, var(--hover) 70%, transparent);
-    color: var(--muted);
+    /* No fill at rest (a fill would cut the excerpt's contrast). */
+    background: transparent;
+    color: color-mix(in srgb, var(--fg) 72%, var(--bg));
     font: inherit;
     font-size: var(--text-sm);
     line-height: 1.45;
@@ -659,7 +660,8 @@
     width: fit-content;
 }
 button.msg__quote { cursor: pointer; }
-button.msg__quote:hover { background: var(--hover); color: var(--fg); }
+button.msg__quote:hover,
+button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
 .msg__quote-name { flex: none; font-weight: 700; color: var(--fg); }
 .msg__quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-right: 2px; }
 .msg__quote--deleted .msg__quote-text { font-style: italic; }
@@ -667,6 +669,7 @@ button.msg__quote:hover { background: var(--hover); color: var(--fg); }
 
 .msg:focus { outline: none; }
 .msg:focus-visible { outline: none; box-shadow: inset var(--focus-ring); }
+/* A focused row (keyboard roving) shows a ring; its bar opens on Tab. */
 .msg--target { animation: msg-target 1600ms ease-out both; }
 @keyframes msg-target {
     from { background: color-mix(in srgb, var(--accent) 22%, transparent); }
@@ -674,21 +677,30 @@ button.msg__quote:hover { background: var(--hover); color: var(--fg); }
 }
 @media (prefers-reduced-motion: reduce) {
     /* No fade: a still tint for the same time (chat.js removes the class). */
-    .msg--target { animation: none !important; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+    /* A focused row (keyboard roving) shows a ring; its bar opens on Tab. */
+.msg--target { animation: none !important; background: color-mix(in srgb, var(--accent) 16%, transparent); }
 }
 
+/* The reply bar and the composer read as one unit: the bar sits on top
+   with its top corners rounded, the composer's top border divides them. */
 .reply-bar {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    margin: 0 var(--space-3) var(--space-1);
-    padding: 4px 4px 4px var(--space-3);
+    margin: 0 var(--space-3);
+    padding: 4px 6px 4px var(--space-3);
     border: 1px solid var(--line);
-    border-left: 3px solid var(--accent);
-    border-radius: var(--radius-md);
+    border-bottom: 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     background: var(--surface);
     font-size: var(--text-sm);
 }
+.chat-main:has(.reply-bar:not([hidden])) .composer {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-top-color: var(--line);
+}
+.chat-main:has(.composer:focus-within) .reply-bar { border-color: var(--accent); }
 .reply-bar[hidden] { display: none; }
 .reply-bar__icon { flex: none; color: var(--accent); }
 .reply-bar__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -698,7 +710,7 @@ button.msg__quote:hover { background: var(--hover); color: var(--fg); }
 .reply-bar__cancel { flex: none; font-size: 18px; }
 
 @media (max-width: 599px) {
-    .reply-bar { margin: 0 var(--space-2) var(--space-1); }
+    .reply-bar { margin: 0 var(--space-2); }
 }
 @media (pointer: coarse) {
     .reply-bar__cancel { min-width: 44px; min-height: 44px; }

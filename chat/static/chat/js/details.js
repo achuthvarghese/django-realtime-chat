@@ -65,6 +65,8 @@
             if (event.key !== "Escape" || panel.hidden) return;
             if (document.querySelector("dialog[open], details[data-popover][open]")) return;
             if (replying()) return;
+            // Escape in an inline message edit cancels the edit (chat.js).
+            if (document.activeElement?.closest(".msg__edit")) return;
             close();
         },
         true

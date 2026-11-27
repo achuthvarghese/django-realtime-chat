@@ -85,7 +85,13 @@
     // Transcript
     //
     // `messages` holds every loaded message, oldest first. Appending renders
-    // one row; loading older history re-renders so grouping stays right.
+    // one row; loading older history prepends its rows and rebuilds the row
+    // at the old boundary so grouping and day markers stay right.
+    //
+    // Keyboard: the transcript is one tab stop (roving tabindex). One row,
+    // the newest unless you moved, has tabindex 0 and so do its quote and
+    // action buttons; every other row and button has -1. Up and Down move
+    // between rows, Home and End go to the first and last loaded.
 
     const transcript = document.getElementById("messages");
     const scroller = document.getElementById("chat-scroll");
@@ -122,9 +128,12 @@
 
     // The per-message action bar. Everyone can reply; only the author can
     // edit or delete. Each entry is [data-action, label, accessible name].
+    // Buttons are named for the message ("Reply to Anika Shah"), and
+    // described by the row's time so each one is distinct.
     function actionsFor(data) {
-        const items = [["reply", "Reply", "Reply to message"]];
-        if (data.user === me) items.push(["edit", "Edit", "Edit message"], ["delete", "Delete", "Delete message"]);
+        const who = data.user === me ? "your message" : data.name || data.user;
+        const items = [["reply", "Reply", `Reply to ${who}`]];
+        if (data.user === me) items.push(["edit", "Edit", "Edit your message"], ["delete", "Delete", "Delete your message"]);
         const bar = document.createElement("span");
         bar.className = "msg__actions";
         for (const [action, label, name] of items) {
@@ -132,12 +141,15 @@
             button.type = "button";
             button.className = "msg__action";
             button.dataset.action = action;
+            button.tabIndex = -1;
             button.textContent = label;
             button.setAttribute("aria-label", name);
+            button.setAttribute("aria-describedby", timeId(data.id));
             bar.append(button);
         }
         return bar;
     }
+    const timeId = (id) => `msg-time-${id}`;
 
     // The quote above a reply: a button that jumps to the original, or a
     // plain note when you can't see the original.
@@ -146,11 +158,13 @@
             const note = document.createElement("div");
             note.className = "msg__quote msg__quote--unavailable";
             note.textContent = "Original message unavailable";
+            note.title = "Sent before you joined, or not visible to you";
             return note;
         }
         const quote = document.createElement("button");
         quote.type = "button";
         quote.className = "msg__quote";
+        quote.tabIndex = -1;
         quote.dataset.replyTo = reply.id;
         fillQuote(quote, reply);
         return quote;
@@ -193,6 +207,7 @@
             const row = document.createElement("div");
             row.className = "msg msg--system";
             row.dataset.id = data.id;
+            row.tabIndex = -1;
             const time = document.createElement("time");
             time.className = "msg__time";
             time.dateTime = data.created_at;
@@ -213,13 +228,19 @@
         }
 
         const continues =
-            prev && prev.kind !== "system" && prev.user === data.user && date - prevDate < GROUP_GAP_MS;
+            prev &&
+            prev.kind !== "system" &&
+            prev.user === data.user &&
+            date - prevDate < GROUP_GAP_MS &&
+            !data.reply_to; // a reply always starts a new group
 
         const row = document.createElement("div");
         row.className = "msg" + (continues ? " msg--cont" : "") + (mine ? " msg--mine" : "");
         row.dataset.id = data.id;
+        row.tabIndex = -1;
 
         const time = document.createElement("time");
+        time.id = timeId(data.id);
         time.className = "msg__time";
         time.dateTime = data.created_at;
         time.title = fullFormat.format(date);
@@ -260,22 +281,62 @@
         return nodes;
     }
 
+    const rowFor = (id) => transcript.querySelector(`.msg[data-id="${CSS.escape(id)}"]`);
+
+    // Roving tabindex. `currentId` is the row you moved to; null means the
+    // newest row, so the tab stop follows new messages.
+    let currentId = null;
+    let stopRow = null;
+
+    function setStop(row, on) {
+        row.tabIndex = on ? 0 : -1;
+        for (const button of row.querySelectorAll("button")) button.tabIndex = on ? 0 : -1;
+    }
+
+    function updateStop() {
+        const last = transcript.lastElementChild;
+        const row = (currentId && rowFor(currentId)) || (last && last.matches(".msg") ? last : null);
+        if (stopRow && stopRow !== row && stopRow.isConnected) setStop(stopRow, false);
+        if (row) setStop(row, true);
+        stopRow = row;
+    }
+
+    // Where focus is inside the transcript, so it can come back after a
+    // row is rebuilt: the row itself, its quote or one of its actions.
+    function focusKey() {
+        const el = document.activeElement;
+        if (!el || !transcript.contains(el)) return null;
+        const row = el.closest(".msg[data-id]");
+        if (!row) return null;
+        if (el === row) return { id: row.dataset.id, part: "row" };
+        if (el.matches(".msg__quote")) return { id: row.dataset.id, part: "quote" };
+        if (el.dataset.action) return { id: row.dataset.id, part: el.dataset.action };
+        return null;
+    }
+
+    function restoreFocus(key) {
+        if (!key) return;
+        const active = document.activeElement;
+        if (active && active !== document.body && active.isConnected) return; // focus didn't get lost
+        const row = rowFor(key.id);
+        if (!row) return;
+        let el = row;
+        if (key.part === "quote") el = row.querySelector("button.msg__quote") || row;
+        else if (key.part !== "row") el = row.querySelector(`[data-action="${CSS.escape(key.part)}"]`) || row;
+        el.focus({ preventScroll: true });
+    }
+
     function renderAll() {
-        // Keep focus and the jump tint on the same message (e.g. a jump
-        // target near the top that makes older history load).
-        const focused = transcript.contains(document.activeElement) ? document.activeElement.closest(".msg[data-id]") : null;
+        const key = focusKey();
         const targetId = transcript.querySelector(".msg--target")?.dataset.id;
         const nodes = [];
         messages.forEach((data, i) => nodes.push(...buildRow(data, messages[i - 1] || null)));
         transcript.replaceChildren(...nodes);
-        if (focused) {
-            const row = transcript.querySelector(`.msg[data-id="${CSS.escape(focused.dataset.id)}"]`);
-            if (row) {
-                row.tabIndex = -1;
-                row.focus({ preventScroll: true });
-            }
-        }
-        if (targetId) transcript.querySelector(`.msg[data-id="${CSS.escape(targetId)}"]`)?.classList.add("msg--target");
+        stopRow = null;
+        if (currentId && !rowFor(currentId)) currentId = null;
+        updateStop();
+        restoreFocus(key);
+        if (targetId) rowFor(targetId)?.classList.add("msg--target");
         emptyNote.hidden = messages.length > 0;
         updateHistoryStatus();
     }
@@ -285,24 +346,72 @@
         transcript.append(...buildRow(data, messages[messages.length - 1] || null));
         messages.push(data);
         emptyNote.hidden = true;
+        updateStop();
+    }
+
+    // Older messages go above the loaded ones. Only the old first row is
+    // rebuilt (its day marker and grouping depend on the row before it),
+    // unless you're editing it, when it is left as it is.
+    function prependOlder(older) {
+        if (!older.length) return;
+        const boundary = messages[0] || null;
+        const nodes = [];
+        older.forEach((data, i) => nodes.push(...buildRow(data, older[i - 1] || null)));
+        const oldFirst = boundary ? rowFor(boundary.id) : null;
+        if (oldFirst) {
+            // Drop the old first row's day marker; the rebuilt row adds one
+            // back if the day changes there.
+            let marker = oldFirst.previousElementSibling;
+            while (marker && marker.classList.contains("transcript__day")) {
+                const before = marker.previousElementSibling;
+                marker.remove();
+                marker = before;
+            }
+            const last = older[older.length - 1];
+            if (oldFirst.querySelector(".msg__edit")) {
+                if (dayKey(new Date(last.created_at)) !== dayKey(new Date(boundary.created_at))) {
+                    oldFirst.before(buildRow(boundary, null)[0]);
+                }
+            } else {
+                const key = focusKey();
+                const tinted = oldFirst.classList.contains("msg--target");
+                const selected = oldFirst.classList.contains("is-selected");
+                const fresh = buildRow(boundary, last);
+                oldFirst.replaceWith(...fresh);
+                const row = fresh[fresh.length - 1];
+                row.classList.toggle("msg--target", tinted);
+                row.classList.toggle("is-selected", selected);
+                if (stopRow === oldFirst) stopRow = null;
+                restoreFocus(key);
+            }
+        }
+        transcript.prepend(...nodes);
+        messages.unshift(...older);
+        emptyNote.hidden = messages.length > 0;
+        updateStop();
     }
 
     function updateMessage(data) {
         const index = messages.findIndex((m) => m.id === data.id);
         if (index === -1) return;
         messages[index] = data;
-        const row = transcript.querySelector(`.msg[data-id="${CSS.escape(data.id)}"]`);
+        const row = rowFor(data.id);
         if (!row) return;
+        const key = focusKey();
+        const body = row.querySelector(".msg__body");
         const text = row.querySelector(".msg__text");
         fillText(text, data);
         text.hidden = false;
-        if (data.deleted) {
-            row.querySelector(".msg__quote")?.remove();
-            row.classList.remove("is-selected");
-        }
+        // The quote follows reply_to, as in buildRow: none on a deleted
+        // message or when the original is gone (reply_to null).
+        row.querySelector(".msg__quote")?.remove();
+        if (data.reply_to && !data.deleted) text.before(buildQuote(data.reply_to));
+        if (data.deleted) row.classList.remove("is-selected");
         row.querySelector(".msg__actions")?.remove();
         row.querySelector(".msg__edit")?.remove();
-        if (actionable(data)) row.querySelector(".msg__body").append(actionsFor(data));
+        if (actionable(data)) body.append(actionsFor(data));
+        setStop(row, row === stopRow);
+        restoreFocus(key);
     }
 
     // An original was edited or deleted: refresh every loaded quote of it
@@ -354,22 +463,30 @@
         return olderRequest;
     }
 
+    // Bumped when history is cleared, so a page that was loading then is dropped.
+    let clearGen = 0;
+
     async function fetchOlder(limit) {
         loadingOlder = true;
         updateHistoryStatus();
         const before = messages[0].id;
+        const gen = clearGen;
         try {
             const url = `/chat/rooms/${encodeURIComponent(roomId)}/messages/?before=${encodeURIComponent(before)}&limit=${encodeURIComponent(limit)}`;
             const response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } });
             if (!response.ok) throw new Error(String(response.status));
             const page = await response.json();
+            loadingOlder = false;
+            if (gen !== clearGen) {
+                updateHistoryStatus();
+                return false;
+            }
             const known = new Set(messages.map((m) => m.id));
             const older = page.messages.filter((m) => !known.has(m.id));
             const fromBottom = scroller.scrollHeight - scroller.scrollTop;
-            messages.unshift(...older);
             hasMore = page.has_more;
-            loadingOlder = false;
-            renderAll();
+            prependOlder(older);
+            updateHistoryStatus();
             scroller.scrollTop = scroller.scrollHeight - fromBottom;
             return true;
         } catch (error) {
@@ -390,14 +507,26 @@
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let jumping = false;
     let targetTimer = null;
-
-    const rowFor = (id) => transcript.querySelector(`.msg[data-id="${CSS.escape(id)}"]`);
+    // True while a jump's smooth scroll runs, so it doesn't load older pages.
+    let scrollHold = false;
+    let holdTimer = null;
 
     function showTarget(row) {
         for (const old of transcript.querySelectorAll(".msg--target")) old.classList.remove("msg--target");
         clearTimeout(targetTimer);
-        row.scrollIntoView({ block: "center", behavior: reducedMotion.matches ? "auto" : "smooth" });
-        row.tabIndex = -1;
+        const smooth = !reducedMotion.matches;
+        if (smooth) {
+            scrollHold = true;
+            clearTimeout(holdTimer);
+            const release = () => {
+                scrollHold = false;
+                clearTimeout(holdTimer);
+            };
+            scroller.addEventListener("scrollend", release, { once: true });
+            holdTimer = setTimeout(release, 800);
+        }
+        row.scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
+        // Focusing it makes it the transcript's tab stop (see focusin below).
         row.focus({ preventScroll: true });
         // Restart the tint if the same message is the target again.
         void row.offsetWidth;
@@ -433,7 +562,51 @@
     }
 
     scroller.addEventListener("scroll", () => {
-        if (scroller.scrollTop < 80 && !jumping) loadOlder();
+        if (scroller.scrollTop < 80 && !jumping && !scrollHold) loadOlder();
+    });
+
+    // Roving tabindex: whatever row gets focus (Up/Down, a click on its
+    // quote, a jump) becomes the tab stop.
+    transcript.addEventListener("focusin", (event) => {
+        const row = event.target.closest(".msg[data-id]");
+        if (!row) return;
+        currentId = row === transcript.lastElementChild ? null : row.dataset.id;
+        updateStop();
+    });
+
+    const isRow = (node) => node && node.matches(".msg[data-id]");
+    function siblingRow(row, step) {
+        let node = step < 0 ? row.previousElementSibling : row.nextElementSibling;
+        while (node && !isRow(node)) node = step < 0 ? node.previousElementSibling : node.nextElementSibling;
+        return node;
+    }
+    function moveTo(row) {
+        row.focus({ preventScroll: true });
+        row.scrollIntoView({ block: "nearest" });
+    }
+
+    transcript.addEventListener("keydown", (event) => {
+        if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        if (event.target.closest(".msg__edit")) return;
+        const row = event.target.closest(".msg[data-id]");
+        if (!row) return;
+        event.preventDefault();
+        let next = null;
+        if (event.key === "ArrowUp") next = siblingRow(row, -1);
+        else if (event.key === "ArrowDown") next = siblingRow(row, 1);
+        else if (event.key === "Home") next = transcript.querySelector(".msg[data-id]");
+        else next = transcript.lastElementChild;
+        if (next && next !== row) return moveTo(next);
+        // Up from the oldest loaded row loads the page before it.
+        if (event.key === "ArrowUp" && hasMore) {
+            const id = row.dataset.id;
+            loadOlder().then((added) => {
+                const fresh = rowFor(id);
+                const above = added && fresh ? siblingRow(fresh, -1) : null;
+                if (above) moveTo(above);
+            });
+        }
     });
 
     renderAll();
@@ -541,7 +714,16 @@
                 return;
             }
             if (data.type === "save_message") {
-                if (data.user === me) pendingReply = null;
+                // Your reply arrived, so it wasn't refused.
+                if (
+                    pendingReply &&
+                    data.user === me &&
+                    data.reply_to &&
+                    data.reply_to.id === pendingReply.target.id &&
+                    data.message === pendingReply.text
+                ) {
+                    pendingReply = null;
+                }
                 const stick = nearBottom() || data.user === me;
                 appendMessage(data);
                 // Previews show conversation, not group events (matches the server).
@@ -562,8 +744,12 @@
                 // The server's row may differ (e.g. a deleted last message); refetch it.
                 refreshRow();
             } else if (data.type === "clear_room" && data.for === me) {
+                clearGen += 1;
                 messages.length = 0;
                 hasMore = false;
+                currentId = null;
+                cancelReply({ announce: false, focus: false });
+                pendingReply = null;
                 renderAll();
                 showToast("History cleared for you.");
                 refreshRow();
@@ -577,6 +763,8 @@
         });
 
         socket.addEventListener("close", (event) => {
+            // Nothing will answer a reply sent on this socket now.
+            pendingReply = null;
             if (gone) return;
             // 4401 signed out, 4403 not a member, 4404 unknown room
             if (event.code === 4401) return window.location.assign("/account/login/");
@@ -729,7 +917,8 @@
             title.textContent = data.name;
             const headAvatar = document.querySelector(".chat-head .avatar");
             if (headAvatar) headAvatar.textContent = initials;
-            input.placeholder = `Message ${data.name}`;
+            basePlaceholder = `Message ${data.name}`;
+            if (!replyTarget) input.placeholder = basePlaceholder;
             document.querySelector('label[for="message"]').textContent = `Message ${data.name}`;
             document.dispatchEvent(new CustomEvent("relay:base-title", { detail: { title: `${data.name} \u00b7 Relay` } }));
         }
@@ -773,6 +962,9 @@
     const replyName = replyBar.querySelector("[data-reply-name]");
     const replyExcerpt = replyBar.querySelector("[data-reply-excerpt]");
     const replyStatus = document.getElementById("reply-status");
+    const hint = composer.querySelector(".composer__hint");
+    let basePlaceholder = input.placeholder;
+    const baseHint = hint ? hint.textContent : "";
     let replyTarget = null; // { id, name, excerpt } while replying
     // A reply just sent: if the server refuses it, its text and target come back.
     let pendingReply = null;
@@ -783,12 +975,22 @@
         setTimeout(() => { replyStatus.textContent = text; }, 50);
     }
 
+    // Showing or hiding the bar shrinks or grows the transcript; keep the
+    // newest message in view if you were at the bottom.
+    function toggleBar(show) {
+        const stick = nearBottom();
+        replyBar.hidden = !show;
+        if (stick) scrollToEnd();
+    }
+
     function setReply(data, { announce: say = true, focus = true } = {}) {
         const name = data.user === me ? "yourself" : data.name || data.user;
         replyTarget = { id: data.id, user: data.user, name, excerpt: excerptOf(data.message) };
         replyName.textContent = name;
         replyExcerpt.textContent = replyTarget.excerpt;
-        replyBar.hidden = false;
+        input.placeholder = `Reply to ${name}`;
+        if (hint) hint.textContent = "Esc cancel reply \u00b7 Shift \u21b5 new line";
+        toggleBar(true);
         if (say) announce(`Replying to ${name}`);
         if (focus) input.focus();
     }
@@ -796,25 +998,27 @@
     function cancelReply({ announce: say = true, focus = true } = {}) {
         if (!replyTarget) return;
         replyTarget = null;
-        replyBar.hidden = true;
+        toggleBar(false);
         replyName.textContent = "";
         replyExcerpt.textContent = "";
+        input.placeholder = basePlaceholder;
+        if (hint) hint.textContent = baseHint;
         if (say) announce("Reply cancelled");
         if (focus) input.focus();
     }
 
+    // The server refused the reply you sent: put its text and target back,
+    // unless you've started writing something else.
     function restorePendingReply() {
         if (!pendingReply) return;
         const { text, target } = pendingReply;
         pendingReply = null;
-        if (input.value === "") {
-            input.value = text;
-            autosize();
-        }
-        if (!replyTarget) {
-            const original = messages.find((m) => m.id === target.id);
-            if (original && actionable(original)) setReply(original, { announce: false, focus: false });
-        }
+        if (input.value.trim() !== "") return;
+        input.value = text;
+        autosize();
+        const original = messages.find((m) => m.id === target.id);
+        if (original && actionable(original)) setReply(original, { announce: false, focus: false });
+        else cancelReply({ announce: false, focus: false });
     }
 
     replyBar.querySelector("[data-reply-cancel]").addEventListener("click", () => cancelReply());
@@ -826,7 +1030,9 @@
         const payload = { type: "save_message", message: text };
         if (replyTarget) payload.reply_to = replyTarget.id;
         if (send(payload)) {
-            pendingReply = replyTarget ? { text, target: replyTarget } : null;
+            // A plain send keeps an earlier reply's pending state, so if that
+            // reply is refused its text still comes back.
+            if (replyTarget) pendingReply = { text, target: replyTarget };
             input.value = "";
             autosize();
             cancelReply({ announce: false, focus: false });
@@ -835,13 +1041,15 @@
     });
 
     // Escape in the composer cancels a reply (details.js leaves it to us).
+    // An open dialog or menu takes Escape first.
+    const overlayOpen = () => !!document.querySelector("dialog[open], details[data-popover][open]");
     composer.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape" || !replyTarget || event.isComposing) return;
+        if (event.key !== "Escape" || !replyTarget || event.isComposing || overlayOpen()) return;
         event.preventDefault();
         cancelReply();
     });
     replyBar.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape" || !replyTarget) return;
+        if (event.key !== "Escape" || !replyTarget || overlayOpen()) return;
         event.preventDefault();
         cancelReply();
     });
