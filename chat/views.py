@@ -53,7 +53,7 @@ def room_url(room):
 # Shown for a room id the user can't open, whether it never existed, was
 # deleted, or they were removed: the same words, so nothing leaks.
 ROOM_UNAVAILABLE = (
-    "That chat isn't available. You may have been removed, or it was deleted."
+    "That chat isn’t available. You may have been removed, or it was deleted."
 )
 
 
