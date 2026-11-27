@@ -198,13 +198,19 @@ def room_details(request, room_id):
     return render(request, "chat/partials/details.html", context)
 
 
-def _group_response(request, room, error=None, gone=False, notice=None):
-    """JSON for the panel's scripts; redirects with a notice otherwise."""
+def _group_response(
+    request, room, error=None, gone=False, notice=None, notice_for_json=False
+):
+    """JSON for the panel's scripts; redirects with a notice otherwise.
+    `notice_for_json` also queues the notice for JSON callers, who follow
+    the returned redirect and see it on the next page."""
     wants_json = "application/json" in request.headers.get("Accept", "")
     target = reverse("chat:chat") if gone else room_url(room)
     if wants_json:
         if error:
             return JsonResponse({"ok": False, "error": error}, status=400)
+        if notice and notice_for_json:
+            messages.success(request, notice)
         return JsonResponse({"ok": True, "redirect": target if gone else None})
     if error:
         messages.error(request, error)
@@ -232,7 +238,13 @@ def group_action(request, room_id, action):
         elif action == "leave":
             name = room.name
             groups.leave(room, user)
-            return _group_response(request, room, gone=True, notice=f"You left {name}.")
+            return _group_response(
+                request,
+                room,
+                gone=True,
+                notice=f"You left {name}.",
+                notice_for_json=True,
+            )
         elif action == "delete":
             name = room.name
             groups.delete_group(room, user)
