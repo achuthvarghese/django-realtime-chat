@@ -71,6 +71,7 @@ Start with the [documentation index](./docs/README.md).
 - [Design system](./docs/design-system.md): Signal tokens, palettes, components
 - [Demo data](./docs/demo-data.md): sample users, chats and sign-in details
 - [Testing](./docs/testing.md): running the suite, CI
+- [Claude Code agents](./docs/agents.md): reviewer and builder agents, and how they work as a team
 - [Contributing](./CONTRIBUTING.md): branches, commits, checks, what to update
 - [Changelog](./CHANGELOG.md)
 
@@ -87,6 +88,7 @@ chat/presence.py    online status and unread counts
 core/               design system, base template, home page, error pages
 realtime_chat/      settings, URL and WebSocket routing, ASGI/WSGI
 docs/               documentation and screenshots
+.claude/agents/     Claude Code subagents (reviewers and builders)
 readme/             background notes on Channels and static files
 ```
 

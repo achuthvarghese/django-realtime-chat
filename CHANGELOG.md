@@ -3,6 +3,22 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Claude Code agents
+
+### Added
+- Reviewer subagents in `.claude/agents/`: `ui-ux-designer`,
+  `code-reviewer`, `user-tester` and `idea-planner`. They report and never
+  edit project files.
+- Three more reviewers: `security-auditor`, `performance-profiler` and
+  `database-designer`.
+- Four builder subagents: `backend-dev`, `frontend-dev`, `devops-dev` and
+  `docs-writer` (Markdown docs only).
+  They commit on their own branches and work in parallel on one phase
+  through a shared contract; the lead session merges their work into one
+  pull request. See docs/agents.md.
+- `CLAUDE.md`: the orchestrator playbook for the main session (standing
+  rules, git identity, running a phase with the team).
+
 ## Phase 9b: live rooms
 
 ### Added
