@@ -52,9 +52,10 @@ session plans, delegates, merges and opens pull requests. Agents live in
    `isolation: "worktree"`; each creates and commits on
    `dev-<feature>-<role>` (backend, frontend, devops) in its worktree.
    Give each the plan, the notes file path, its files and the scratchpad.
-4. **Relay.** Builders can't reach each other unless given agent ids, so
-   pass contract changes and questions between them (SendMessage to their
-   ids) and ask the user what only the user can decide.
+4. **Relay.** Builders have no SendMessage tool and can't reach each other,
+   so the orchestrator passes contract changes and questions between them
+   (SendMessage to each builder's agent id resumes it with the message) and
+   asks the user what only the user can decide.
 5. **Merge.** Merge each builder branch into the phase branch, resolve
    conflicts, run `black --check . && isort --check-only .`,
    `DJANGO_DEBUG=true python manage.py makemigrations --check --dry-run`
