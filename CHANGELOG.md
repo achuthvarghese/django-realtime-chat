@@ -6,10 +6,13 @@ into `master`.
 ## Claude Code agents
 
 ### Added
-- Four reviewer subagents in `.claude/agents/`: `ui-ux-designer`,
+- Reviewer subagents in `.claude/agents/`: `ui-ux-designer`,
   `code-reviewer`, `user-tester` and `idea-planner`. They report and never
   edit project files.
-- Three builder subagents: `backend-dev`, `frontend-dev` and `devops-dev`.
+- Three more reviewers: `security-auditor`, `performance-profiler` and
+  `database-designer`.
+- Four builder subagents: `backend-dev`, `frontend-dev`, `devops-dev` and
+  `docs-writer` (Markdown docs only).
   They commit on their own branches and work in parallel on one phase
   through a shared contract; the lead session merges their work into one
   pull request. See docs/agents.md.
