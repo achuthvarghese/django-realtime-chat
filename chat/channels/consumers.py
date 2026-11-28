@@ -621,8 +621,9 @@ class InboxConsumer(WebsocketConsumer):
         self.send(text_data=json.dumps({"type": "room_refresh", "room": event["room"]}))
 
     def inbox_message(self, event):
-        """New message in one of this user's rooms: their counts for it (one
-        query, the room isn't loaded) and whether it's for them."""
+        """New message in one of this user's rooms: their capped counts for
+        it (at most three small queries; the room isn't loaded) and whether
+        it's for them."""
         unread, mention_count = presence.room_counts(
             self.user, uuid.UUID(event["room"]), bool(event.get("group"))
         )
