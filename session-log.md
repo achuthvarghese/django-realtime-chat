@@ -40,6 +40,7 @@
 | #22 | dev-live-rooms-fixes | Phase 9c: live-room fixes (first agent-team phase) |
 | #23 | dev-agent-sessions | Builders run as sub sessions; git author read from history |
 | #24 | dev-replies | Phase 10a: replies (first phase with builder sub sessions) |
+| #25 | dev-reactions | Phase 10b: reactions |
 
 ## Key decisions
 
@@ -82,10 +83,16 @@
   `before=` rejects hidden ids; action bar with roving keyboard navigation
   (transcript = one Tab stop), reply bar joined to the composer, jump to the
   original (≤10×100 pages). Details in `phases/replies/`.
+- **Phase 10b (reactions):** fixed set of 6 emoji (keys, not characters),
+  several per person, names shown to viewers, kept after leave/clear;
+  `Reaction` model + 0006; `react` / `reactions_updated` frames, per-user rate
+  limit 10/5 s in the cache (Redis cache when REDIS_URL is set), 503 on a busy
+  DB; chips with tooltips and a names line on touch, picker, grouped action
+  bar; 32px phone chips with a 44px tap area. Details in `phases/reactions/`.
 
 ## Roadmap
 
-- P10b `dev-reactions`; P10c `dev-mentions-notifications` (+ mute,
+- P10c `dev-mentions-notifications` (+ mute,
   Settings → Notifications; notifications need HTTPS); P10d
   `dev-command-palette` (⌘K, search, `/clear` `/invite` `/leave` `/me`).
 - P11a `dev-reading-aids` (new-messages line, jump to latest, drafts);
@@ -102,6 +109,10 @@
 - Deferred from 10a: four-action bar grouping/wrap (P10b), `?around=<id>`
   history for one-request jumps, per-user variant sends for split replies,
   lighter quote on touch, retake README screenshots with replies.
+- Deferred from 10b: smaller reactions_updated frames (delta / people map),
+  near-bottom stick-to-newest snap on reactions, channels_redis 4.3 +
+  redis-py 8.2 TimeoutError with REDIS_URL (pre-existing; check before
+  production Redis), README screenshots with reactions.
 
 ## Open questions for the user
 
