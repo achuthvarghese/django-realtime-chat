@@ -150,6 +150,7 @@
         {{ history|json_script:"history-meta" }}
         {{ room_summary.member_usernames|json_script:"room-members" }}
         {{ room_summary.id|json_script:"room-id" }}
+        {{ reaction_emoji|json_script:"reaction-emoji" }}
 
         {# Shown by chat.js when the room goes away while open; text is filled in as text. #}
         <template id="gone-template">

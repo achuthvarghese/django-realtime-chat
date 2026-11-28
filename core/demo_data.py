@@ -151,6 +151,22 @@ SYSTEM = [
 EDITED = [("design", "Shipping it after lunch 🚀", "Shipping it after lunch 🚀 (2pm)")]
 DELETED = [("ops", "Database backups verified this morning.")]
 
+# Reactions: (room, exact text of a text message, emoji key, [usernames]),
+# the people in the order they reacted. Emoji keys are chat.models.ReactionEmoji
+# values. Matched after edits, so use a message's final text.
+REACTIONS = [
+    # Several people, several emoji.
+    ("design", "Palette cards are in, six of them", "thumbs_up", ["maya", "lee"]),
+    ("design", "Palette cards are in, six of them", "party", ["arjun", "maya", "lee"]),
+    ("design", "Palette cards are in, six of them", "heart", ["anika"]),  # her own
+    ("design", "Typing indicator and unread badges are live too", "wow", ["lee"]),
+    # A direct chat.
+    ("maya-arjun", "Sure, sending notes in a bit", "heart", ["arjun"]),
+    # Priya cleared this part of the history, so she never sees these.
+    ("books", "Next pick: The Left Hand of Darkness?", "heart", ["sofia", "omar"]),
+    ("books", "Next pick: The Left Hand of Darkness?", "laugh", ["maya"]),
+]
+
 # Read state: username -> {room: minutes before now when last read}.
 # Rooms not listed have never been opened, so all messages from others count
 # as unread.

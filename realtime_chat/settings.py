@@ -179,6 +179,13 @@ if REDIS_URL:
             "CONFIG": {"hosts": [REDIS_URL]},
         },
     }
+    # Shared cache, so per-user limits (e.g. reactions) hold across processes.
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+        },
+    }
 else:
     CHANNEL_LAYERS = {
         "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},

@@ -9,6 +9,8 @@ erDiagram
     User ||--o{ Message : "sends"
     User }o--o{ Message : "can see (visible_for)"
     Message |o--o{ Message : "replied to by (reply_to)"
+    Message ||--o{ Reaction : "has"
+    User ||--o{ Reaction : "reacts with"
     User ||--o{ ReadState : "has"
     Room ||--o{ ReadState : "tracked by"
     User ||--o{ Connection : "has open"
@@ -81,6 +83,51 @@ needs no data migration.
 
 `chat/presenters.py: message_data` turns a message into the JSON shape used by
 the page and the socket.
+
+## `chat.Reaction`
+
+One person's emoji on one text message. A person can add several emoji to a
+message, but only one of each.
+
+| Field | Notes |
+| --- | --- |
+| `message` | Foreign key to `Message` (`message.reactions`), `on_delete=CASCADE`. No separate index: the unique constraint starts with `message` |
+| `user` | Foreign key to `User` (`user.reactions`), `on_delete=CASCADE` |
+| `emoji` | One of the six `ReactionEmoji` keys, up to 16 characters. The key is stored, never the character |
+| `created_at` | Set on creation; reactions are ordered by it (then `id`) |
+
+`ReactionEmoji` (in `chat/models.py`) is the fixed set, in display order. Its
+label is the emoji character; the names used in labels and tooltips live in
+`chat/presenters.py: REACTION_NAMES`.
+
+| Key | Character | Name |
+| --- | --- | --- |
+| `thumbs_up` | 👍 | Thumbs up |
+| `heart` | ❤️ | Heart |
+| `laugh` | 😂 | Laughing |
+| `wow` | 😮 | Surprised |
+| `sad` | 😢 | Sad |
+| `party` | 🎉 | Party |
+
+Two constraints:
+
+- `unique_reaction`: one row per `message`, `user` and `emoji`.
+- `reaction_emoji_valid`: `emoji` is one of the six keys.
+
+Reactions stay when the person who reacted leaves the room, is removed or
+clears their history (after clearing, they can no longer change a reaction on
+a message they cleared). Deleting a message removes its reactions in the same
+transaction. Deleting the user, or removing the message row, removes them
+through the cascade. Only text messages can have reactions; system and
+deleted messages never do.
+
+`chat/presenters.py: reactions_for_messages` builds the `reactions` list of
+every message object (see
+[the protocol](./websocket-protocol.md#reactions-and-the-reactions-list)) for
+a page of messages in one query.
+
+Migration `chat/0006_reaction` creates the table and its constraints. It
+changes no data and can be reversed.
 
 ## `chat.ReadState`
 

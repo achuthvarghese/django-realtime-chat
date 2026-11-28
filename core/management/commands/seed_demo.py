@@ -18,7 +18,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from account.models import Preference
-from chat.models import Membership, Message, ReadState, Room
+from chat.models import Membership, Message, Reaction, ReadState, Room
 from core import demo_data as data
 
 User = get_user_model()
@@ -185,6 +185,8 @@ class Command(BaseCommand):
                 content="", deleted_at=now
             )
 
+        self.seed_reactions(rooms, users, now)
+
         for username, per_room in data.READ.items():
             for room_key, minutes in per_room.items():
                 ReadState.objects.create(
@@ -198,3 +200,35 @@ class Command(BaseCommand):
                 room=rooms[room_key], created_at__lt=now - timedelta(minutes=minutes)
             )
             users[username].visible_for.remove(*older)
+
+    def seed_reactions(self, rooms, users, now):
+        """data.REACTIONS, a few seconds apart after each message, oldest
+        first. Run before CLEARED, after edits and deletes."""
+        for room_key, text, emoji, usernames in data.REACTIONS:
+            room = rooms[room_key]
+            matches = list(
+                Message.objects.filter(
+                    room=room,
+                    content=text,
+                    kind=Message.Kinds.TEXT,
+                    deleted_at__isnull=True,
+                )
+            )
+            if len(matches) != 1:
+                raise CommandError(
+                    f"Demo reaction in {room_key} needs exactly one message with "
+                    f"the text {text!r} (found {len(matches)})"
+                )
+            message = matches[0]
+            for order, username in enumerate(usernames, start=1):
+                user = users[username]
+                if not message.visible_for.filter(pk=user.pk).exists():
+                    raise CommandError(
+                        f"Demo reaction by {username} in {room_key} is on a "
+                        f"message they can't see: {text!r}"
+                    )
+                reaction = Reaction.objects.create(
+                    message=message, user=user, emoji=emoji
+                )
+                when = min(message.created_at + timedelta(seconds=20 * order), now)
+                Reaction.objects.filter(pk=reaction.pk).update(created_at=when)

@@ -9,9 +9,9 @@ from channels.generic.websocket import WebsocketConsumer
 from django.db import IntegrityError, OperationalError, transaction
 from django.utils import timezone
 
-from chat import live_rooms, presence
-from chat.models import Message, Room
-from chat.presenters import display_name, message_data
+from chat import live_rooms, presence, reactions
+from chat.models import Message, Reaction, Room
+from chat.presenters import display_name, message_data, reactions_for_message
 from chat.realtime import inbox_group, room_group
 
 MAX_MESSAGE_LENGTH = 4000
@@ -37,6 +37,7 @@ class WSChatType(str, Enum):
     MESSAGE_UPDATED = "message_updated"
     READ = "read"
     TYPING = "typing"
+    REACT = "react"
     ERROR = "error"
 
 
@@ -121,6 +122,7 @@ class ChatConsumer(WebsocketConsumer):
             WSChatType.DELETE_MESSAGE.value: self.handle_delete_message,
             WSChatType.READ.value: self.handle_read,
             WSChatType.TYPING.value: self.handle_typing,
+            WSChatType.REACT.value: self.handle_react,
         }
         handler = handlers.get(payload.get("type"))
         if handler is None:
@@ -170,11 +172,11 @@ class ChatConsumer(WebsocketConsumer):
             self.send_error("You can only change your own messages", code=403)
         return message
 
-    def send_message_frame(self, frame_type, message, visible_to):
+    def send_message_frame(self, frame_type, message, visible_to, reactions=None):
         """Send `message` as a `frame_type` frame to the room sockets of the
         users in `visible_to`. For a reply, those who can also see the
         original get its quote; the rest get only {"id", "available": false}
-        (one extra query)."""
+        (one extra query). `reactions` as for message_data."""
         visible_to = list(visible_to)
         # Deleted replies carry no quote (see presenters.reply_data).
         if message.reply_to_id is not None and not message.is_deleted:
@@ -200,7 +202,11 @@ class ChatConsumer(WebsocketConsumer):
                     "type": WSChatType.CHAT_RESPONSE.value,
                     "data": {
                         "type": frame_type,
-                        **message_data(message, reply_visible=reply_visible),
+                        **message_data(
+                            message,
+                            reply_visible=reply_visible,
+                            reactions=reactions,
+                        ),
                     },
                     "visible_to": pks,
                 },
@@ -217,7 +223,12 @@ class ChatConsumer(WebsocketConsumer):
                 "pk", flat=True
             )
         )
-        self.send_message_frame(WSChatType.MESSAGE_UPDATED.value, message, visible_to)
+        self.send_message_frame(
+            WSChatType.MESSAGE_UPDATED.value,
+            message,
+            visible_to,
+            reactions=reactions_for_message(message),
+        )
         live_rooms.room_refresh(self.room.id, visible_to)
 
     def handle_edit_message(self, payload):
@@ -237,9 +248,12 @@ class ChatConsumer(WebsocketConsumer):
         message = self.own_message(payload)
         if message is None:
             return
-        message.deleted_at = timezone.now()
-        message.content = ""
-        message.save(update_fields=["deleted_at", "content"])
+        # A deleted message keeps no reactions.
+        with transaction.atomic():
+            message.deleted_at = timezone.now()
+            message.content = ""
+            message.save(update_fields=["deleted_at", "content"])
+            Reaction.objects.filter(message=message).delete()
         self.broadcast_update(message)
 
     def reply_target(self, payload):
@@ -344,6 +358,37 @@ class ChatConsumer(WebsocketConsumer):
                 },
             },
         )
+
+    def handle_react(self, payload):
+        if reactions.rate_limited(self.user.pk):
+            self.send_error("Slow down", code=429)
+            return
+        try:
+            frame, changed = reactions.set_reaction(
+                self.user,
+                self.room,
+                payload.get("id"),
+                payload.get("emoji"),
+                payload.get("on"),
+            )
+        except reactions.CantReact:
+            self.send_error(reactions.CANT_REACT)
+            return
+        except OperationalError as error:
+            # A busy database (SQLite locked) shouldn't close the socket; the
+            # client may try again.
+            logger.warning(
+                "Couldn't save a reaction in room %s for user %s (%s)",
+                self.room.id,
+                self.user.pk,
+                type(error).__name__,
+            )
+            self.send_error("Try again", code=503)
+            return
+        if not changed:
+            # Already as asked: nobody else needs to hear, but this socket
+            # gets the current state so it can settle its chips.
+            self.send_json(frame)
 
     def handle_clear_room(self, payload):
         # Clearing only hides messages for the requesting user, so only that

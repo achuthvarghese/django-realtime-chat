@@ -16,8 +16,8 @@ hasher. No `.env` or Redis is needed.
 | File | Covers |
 | --- | --- |
 | `account/tests.py` | Login, signup, logout, `next` redirects, validation, the auth screens, settings sections, saved appearance, username rules and the rename migration, case-insensitive sign-in, account menu |
-| `core/tests.py` | Theme options, palette keys in sync across Python/CSS/JS, base template, error pages, home page, demo data seeding |
-| `chat/tests.py` | Chat view access, room list order and previews, history limit, initials, WebSocket auth, membership, message handling, broadcast shape, people search, direct and group creation, history paging, edit and delete, unread counts, presence, typing, the inbox socket, the chat page query budget, group rules and actions, removal over sockets, the group admin migration, room summaries, live room-list frames (added, renamed, removed, left, deleted), the live-room fixes and replies listed below |
+| `core/tests.py` | Theme options, palette keys in sync across Python/CSS/JS, base template, error pages, home page, demo data seeding (including the seeded reactions) |
+| `chat/tests.py` | Chat view access, room list order and previews, history limit, initials, WebSocket auth, membership, message handling, broadcast shape, people search, direct and group creation, history paging, edit and delete, unread counts, presence, typing, the inbox socket, the chat page query budget, group rules and actions, removal over sockets, the group admin migration, room summaries, live room-list frames (added, renamed, removed, left, deleted), the live-room fixes, replies and reactions listed below |
 
 New in `chat/tests.py` for the live-room fixes:
 
@@ -50,6 +50,19 @@ New in `chat/tests.py` for replies:
 | `TestReplyReviewFixes` | `?before=` must be a message you can see; a cross-room `reply_to` never quotes; history loads only the user fields it shows |
 | `TestReplyReviewSockets` | Error frames carry `for` with the client frame type, and no `for` for an unknown type; `message_updated` for an original keeps its shape |
 | `TestReplyDemoData`, `TestReplyDemoDeleted` | Seeded replies are in groups and a direct chat, same room, after their original; Priya sees the Book club quote as unavailable; the Ops reply quotes the deleted message |
+
+New in `chat/tests.py` for reactions (an autouse fixture clears the cache
+before and after each test, since rate-limit windows are keyed by user id):
+
+| Class | Covers |
+| --- | --- |
+| `TestReactionModel` | `unique_reaction` (one of each emoji per person) and `reaction_emoji_valid`; reactions go with the message and stay when the reactor leaves; the emoji table |
+| `TestReactionPayload` | The `reactions` list: emoji in the fixed order, people by reaction time; none on deleted, system and new messages; the grouped query matches building from model objects; a no-op writes nothing; history and the initial page carry reactions; history takes one extra query however many reactions (`CaptureQueriesContext`) |
+| `TestReactionSockets` | On and off reach everyone and are idempotent (a no-op answers only the sender); other-room, hidden, deleted, system, unknown and malformed ids, unknown emoji (including the emoji character instead of its key), a non-boolean `on` and missing keys all get the one fixed error and save nothing; `429` after 10 frames in 5 seconds, shared by a user's sockets and reconnects but not by other users; a locked database gets `503` and keeps the socket; `reactions_updated` skips people who cleared the message, joined later or were removed; edits carry reactions and deletes clear them; new messages and inbox `room_activity` carry `"reactions": []` and reacting sends nothing to the inbox |
+| `TestReactRateLimitWindow` | The 5-second window slides and is kept per user |
+
+`TestReplyMigration` now migrates back to the latest schema when it's done,
+so later tests see every table.
 
 The `?room=` redirect tests (non-member, malformed id, unknown, removed,
 deleted, other endpoints keep their 404s) sit with the chat view tests.

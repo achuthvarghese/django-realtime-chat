@@ -49,7 +49,8 @@ Inside `chat`, each module has one job:
 | `groups.py` | Group rules: add, remove, rename, admins, leave, delete; writes group events |
 | `live_rooms.py` | After a commit, tell each affected person's inbox sockets that a room was added, changed, removed or needs a refresh. `room_changed` is one frame for every member; `room_added` summaries for any number of people are built with a fixed number of queries. A failed send is skipped and logged once per action (frame type, room id, failed user ids, count), so it never breaks the request |
 | `realtime.py` | Channel layer group names and helpers for sending to room and inbox sockets from views. The `*_after_commit` helpers queue room events until the transaction commits, keep their order, send nothing on rollback, and log failed sends |
-| `presenters.py` | Turn rooms and messages into plain data for templates, JSON and sockets |
+| `reactions.py` | Reactions: check and save a `react` frame (`set_reaction`), the per-user rate limit (`rate_limited`), and who gets `reactions_updated` (current members who can still see the message) |
+| `presenters.py` | Turn rooms and messages into plain data for templates, JSON and sockets, including every message's `reactions` list |
 | `presence.py` | Online status (`Connection`) and unread counts (`ReadState`) |
 | `views.py` | HTTP: chat page, people search, start chats, history pages, Details panel, group actions |
 | `channels/consumers.py` | WebSockets: `ChatConsumer` (one room) and `InboxConsumer` (everything else) |
@@ -107,15 +108,46 @@ those get the full quote, and the rest get only `{"id", "available": false}`.
 The inbox `room_activity` frame always carries `"reply_to": null`.
 
 History pages (`views.history_page`, used by the chat page and
-`GET /chat/rooms/<uuid>/messages/`) stay at one query per page however many
-messages are replies: the original and its author are joined in with
+`GET /chat/rooms/<uuid>/messages/`) take two queries per page however many
+messages are replies or have reactions. The first loads the messages: the
+original and its author are joined in with
 `select_related("user", "reply_to__user")`, `.only(...)` limits the columns
 to what `message_data` reads (no password hashes or other user fields), and
 an `Exists` on the original's `visible_for` rows (same room only) is
 annotated as `reply_visible`. `message_data` treats a missing annotation as
-"can't see", so nothing leaks by default. Typing events go
-only to the room group. See
+"can't see", so nothing leaks by default. The second,
+`presenters.reactions_for_messages`, loads every reaction on the page's text
+messages as plain tuples (message id, emoji, username, first and last name)
+and groups them in Python; it is skipped when the page has no text messages
+that aren't deleted. Typing events go only to the room group. See
 [websocket-protocol.md](./websocket-protocol.md) for every frame.
+
+### Reactions
+
+A `react` frame goes to `ChatConsumer.handle_react`, which first checks the
+rate limit and then calls `chat/reactions.py: set_reaction`:
+
+1. The frame's `id`, `emoji` and `on` are checked before any query. Anything
+   wrong raises `CantReact`, and the sender gets the one fixed error "You
+   can't react to that message".
+2. Reads alone settle refusals and no-ops: the message must be in this room,
+   a text message, not deleted and visible to the sender, and if the
+   reaction is already as asked, the sender's socket gets the current state
+   and nothing is written.
+3. Otherwise the check runs again inside one `IMMEDIATE` transaction, which
+   holds the write lock, so a delete can't slip in between and leave a
+   reaction on a deleted message. The row is added or removed, and the
+   `reactions_updated` frame is queued with `broadcast_frame_after_commit`
+   to current members who can still see the message.
+
+Deleting a message removes its reactions in the same transaction, and the
+deleted message's `message_updated` carries `"reactions": []`.
+
+The rate limit (`rate_limited`) keeps each user's recent `react` times in
+the Django cache under `react:<user id>`: at most 10 frames in 5 seconds,
+shared by all of the user's sockets, so reconnecting or opening more tabs
+doesn't reset it. A locked database answers `503` instead of closing the
+socket.
 
 ### Presence
 
@@ -135,6 +167,7 @@ process simply expire.
 | Message visibility | Room events about messages carry the ids of the people allowed to see them (`visible_to`); each socket drops the frame unless its user is listed. People who cleared their history, joined later or were just removed don't get the text. See [websocket-protocol.md](./websocket-protocol.md#who-gets-room-frames) |
 | Group permissions | `chat/groups.py` checks admin rights server-side for rename, remove, admin changes and delete; the panel only hides controls |
 | Reply quotes | A quote's author and text go only to people who can see the original. Everyone else gets only its id with `"available": false`, on the page, in history and in every frame; inbox frames carry no quote. A refused reply gets one fixed error whatever the reason, and `?before=` in history accepts only messages you can see, since hidden ids now reach the client as `reply_to.id` |
+| Reactions | Reactions and the names of who reacted go only to people who can see the message: on the page, in history and in `reactions_updated` (current members in the message's `visible_for`). A refused `react` gets one fixed error whatever the reason, and each user may send at most 10 `react` frames in 5 seconds |
 | Message ownership | Edit and delete only match the sender's own, undeleted, non-system messages |
 | Cross-site WebSockets | `AllowedHostsOriginValidator` checks the `Origin` header against `ALLOWED_HOSTS` |
 | XSS | Templates autoescape; scripts build messages with text nodes, never `innerHTML`; initial data uses `json_script` |
@@ -166,3 +199,7 @@ each with a system-font fallback. See [design-system.md](./design-system.md).
 - History is paged and room lists are built with a fixed number of queries,
   so page cost does not grow with message count. Unread counts use one
   grouped query per page load and one count per inbox notification.
+- The `react` rate limit lives in the Django cache. With `REDIS_URL` set the
+  cache is Redis, shared by every process, so each user has one window;
+  without it the cache is in-memory per process (see
+  [setup.md](./setup.md#production-notes)).

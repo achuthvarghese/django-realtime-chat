@@ -127,6 +127,62 @@ Sending a message also marks the room read.
 Tells others you are typing. The page sends it at most every 2.5 seconds
 while you type; the server forwards at most one per second per socket.
 
+### `react`
+
+```json
+{"type": "react", "id": "8f5c…", "emoji": "thumbs_up", "on": true}
+```
+
+Adds (`"on": true`) or removes (`"on": false`) your reaction `emoji` on a
+message. `emoji` is one of the six keys `thumbs_up`, `heart`, `laugh`,
+`wow`, `sad`, `party` (see [the data model](./data-model.md#chatreaction)).
+You can react to your own messages, and add several different emoji to one
+message.
+
+The message must be:
+
+- in this room,
+- a text message (not a group event),
+- not deleted, and
+- visible to you (not hidden by your **Clear history**, not sent before you
+  joined).
+
+`id` must be a string holding a UUID and `on` must be `true` or `false`.
+Anything else, including an unknown emoji, is refused with one fixed error
+and nothing is saved:
+
+```json
+{"type": "error", "code": 400, "message": "You can't react to that message", "ts": "…", "for": "react"}
+```
+
+The text is the same for every reason, so the error doesn't reveal whether a
+message you can't see exists.
+
+The frame is idempotent. Turning on a reaction that is already on, or off one
+that is already off, is not an error: nothing changes, nobody else is told,
+and the socket that sent it alone gets a `reactions_updated` frame with the
+message's current state, so the page can settle its chips. A real change
+sends `reactions_updated` to everyone who can see the message (see below),
+including you.
+
+Each user may send at most 10 `react` frames in 5 seconds, across all their
+sockets and reconnects. Frames refused with `400` count too. Past that the
+server answers, saves nothing, and doesn't count the frame:
+
+```json
+{"type": "error", "code": 429, "message": "Slow down", "ts": "…", "for": "react"}
+```
+
+If the database is busy (SQLite locked), the server logs a warning, keeps the
+socket open and answers:
+
+```json
+{"type": "error", "code": 503, "message": "Try again", "ts": "…", "for": "react"}
+```
+
+Reactions don't change the room list, previews, unread counts or the inbox
+socket.
+
 ### `clear_room`
 
 ```json
@@ -150,6 +206,7 @@ to the client.
 | `save_message` (yours) | People who were members when it was sent; a reply is split by who can see the original (see [Replies](#replies-and-the-reply_to-object)) |
 | `save_message` (group event) | People who were members when it happened, so a removed member doesn't see "Maya removed Lee" |
 | `message_updated` | Current members who can still see the message: not people who cleared their history or joined after it. Edits and deletes of a reply are split the same way as new replies |
+| `reactions_updated` | Current members who can still see the message (the same people as `message_updated`). For a `react` frame that changed nothing, only the socket that sent it |
 | `room_updated` | Current members |
 | `typing` | Every socket in the room |
 | `clear_room`, `error` | The requesting socket only |
@@ -173,7 +230,8 @@ sends `room_updated`. A failed send is logged and skipped.
   "edited": false,
   "deleted": false,
   "kind": "text",
-  "reply_to": null
+  "reply_to": null,
+  "reactions": []
 }
 ```
 
@@ -216,6 +274,49 @@ usual one. Clients update every loaded quote whose `reply_to.id` matches it:
 the new excerpt (computed from `message` with the same rule) or the deleted
 state. Quotes shown as unavailable stay unavailable.
 
+#### Reactions and the `reactions` list
+
+Every message object (the page's initial JSON, `GET /chat/rooms/<uuid>/messages/`,
+`save_message` and `message_updated`) has a `reactions` key:
+
+```json
+"reactions": [
+  {"emoji": "thumbs_up", "count": 2, "users": [
+    {"user": "maya", "name": "Maya Rao"},
+    {"user": "lee", "name": "Lee Chen"}
+  ]},
+  {"emoji": "party", "count": 1, "users": [{"user": "arjun", "name": "Arjun Kumar"}]}
+]
+```
+
+- Only emoji with at least one reaction are listed, in the fixed order
+  (`thumbs_up`, `heart`, `laugh`, `wow`, `sad`, `party`).
+- `users` are in the order they reacted; `count` is the length of `users`.
+  `user` is the username and `name` the full name, or the username when no
+  name is set. Both are plain text.
+- Names go to everyone who can see the message.
+- Deleted messages, system messages and new messages (`save_message`) have
+  `"reactions": []`, and so does the message in inbox `room_activity` frames.
+- Clients work out which reactions are yours by comparing `user` with your
+  own username.
+
+The page gets the six emoji from `<script id="reaction-emoji">` (Django's
+`json_script`): `[{"key": "thumbs_up", "char": "👍", "label": "Thumbs up"}, …]`
+in display order.
+
+### `reactions_updated` (to people who can see the message)
+
+```json
+{"type": "reactions_updated", "id": "8f5c…", "reactions": [{"emoji": "heart", "count": 1, "users": [{"user": "arjun", "name": "Arjun Kumar"}]}]}
+```
+
+Sent after each change made with `react`, once the change commits. It holds
+the message's whole `reactions` list (the same shape as above), not just the
+change. It goes to current members who can still see the message, so people
+who cleared it, joined after it or were removed don't get it. A no-op `react`
+sends it to the sender's socket only. It is never sent as `message_updated`,
+and nothing goes to the inbox socket.
+
 ### `typing` (to every socket in the room, including yours)
 
 ```json
@@ -238,8 +339,9 @@ if it's open.
 ### `message_updated` (to people who can see the message)
 
 Sent after an edit or delete, with the same fields as `save_message`. A deleted
-message has `"deleted": true`, an empty `message` and `"reply_to": null`; an
-edited one has `"edited": true`. The same people also get a `room_refresh` frame on their
+message has `"deleted": true`, an empty `message`, `"reply_to": null` and
+`"reactions": []` (deleting a message removes its reactions); an edited one
+has `"edited": true` and keeps its current `reactions`. The same people also get a `room_refresh` frame on their
 inbox socket (see below).
 
 You can only edit or delete your own messages that you can still see. After
@@ -260,12 +362,14 @@ you (the server answers `403`).
 
 Sent for invalid JSON, a non-object payload, an unknown `type`, an empty or
 over-long message, a refused reply, editing or deleting a message you can't
-change, and when a connection is refused (`403`, `404`).
+change, a refused, rate-limited or failed reaction (`400`, `429`, `503`), and
+when a connection is refused (`403`, `404`).
 
 `for` is the `type` of the client frame the error answers (`save_message`,
-`edit_message`, `delete_message`, …), so the page can tell which request
-failed: it puts a refused reply's text and target back only for
-`"for": "save_message"`. `for` is absent when the error doesn't answer a
+`edit_message`, `delete_message`, `react`, …), so the page can tell which
+request failed: it puts a refused reply's text and target back only for
+`"for": "save_message"`, and takes back an unconfirmed reaction only for
+`"for": "react"`. `for` is absent when the error doesn't answer a
 known frame type: invalid JSON, a non-object payload, an unknown `type`, and
 refusals (on connect, or when membership is checked on a frame).
 
@@ -308,15 +412,16 @@ connection) or goes offline (their last connection closes).
 **`room_activity`**, to every member when a message is sent in one of their
 rooms, with their unread count for that room. The page uses it to update the
 preview, move the room to the top and show the unread badge, except for the
-room already open. The embedded message always has `"reply_to": null`: the
-room list shows a reply's own text, never its quote.
+room already open. The embedded message always has `"reply_to": null` and
+`"reactions": []`: the room list shows a reply's own text, never its quote,
+and never shows reactions.
 
 ```json
 {
   "type": "room_activity",
   "room": "<room uuid>",
   "unread": 3,
-  "message": {"id": "…", "message": "standup in 5", "user": "anika", "…": "…", "reply_to": null}
+  "message": {"id": "…", "message": "standup in 5", "user": "anika", "…": "…", "reply_to": null, "reactions": []}
 }
 ```
 
