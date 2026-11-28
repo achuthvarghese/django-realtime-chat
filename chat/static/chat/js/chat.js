@@ -107,29 +107,54 @@
     const speaker = (data) => (data.user === me ? "You" : data.name || data.user);
 
     // Mentions: the server lists who a message mentions (`mentions`:
-    // [{user, name}], current members only). Only those `@username`s are
-    // highlighted, matched like the server: case-insensitive, not right
-    // after a letter, digit or underscore, and the whole username.
-    const MENTION = /(?<![\p{L}\p{N}_])@([a-z0-9_]+)/giu;
-    const mentionsOf = (data) => (Array.isArray(data.mentions) ? data.mentions : []).filter((m) => m && typeof m.user === "string");
+    // [{user, name}], current members only). Only those are highlighted,
+    // found the way chat/mentions.py finds them: "@" not right after a
+    // letter, digit or underscore, then the exact username (any case) not
+    // followed by more of a handle ("@lee." names lee, "@lee.chen" and
+    // "@leech" don't); the longest username wins at one "@".
+    const mentionsOf = (data) => (Array.isArray(data.mentions) ? data.mentions : []).filter((m) => m && typeof m.user === "string" && m.user);
+    const WORD_CHAR = /[\p{L}\p{N}_]/u;
+    const HANDLE_PUNCTUATION = "@.+-_";
+    const isWordChar = (char) => !!char && WORD_CHAR.test(char);
+    function endsHandle(text, end) {
+        if (end >= text.length) return true;
+        const char = text[end];
+        if (isWordChar(char)) return false;
+        if (HANDLE_PUNCTUATION.includes(char)) {
+            const following = text[end + 1];
+            return !(following && (isWordChar(following) || following === "@"));
+        }
+        return true;
+    }
 
     // Text nodes and <span class="mention"> for `text`; never HTML.
     function mentionNodes(text, mentions) {
-        const names = new Map(mentions.map((m) => [m.user.toLowerCase(), m]));
-        if (!names.size) return [document.createTextNode(text)];
+        const byName = mentions
+            .map((m) => [m.user.toLowerCase(), m])
+            .sort((a, b) => b[0].length - a[0].length);
+        if (!byName.length || !text.includes("@")) return [document.createTextNode(text)];
         const nodes = [];
         let at = 0;
-        for (const match of text.matchAll(MENTION)) {
-            const who = names.get(match[1].toLowerCase());
-            if (!who) continue;
-            if (match.index > at) nodes.push(document.createTextNode(text.slice(at, match.index)));
-            const span = document.createElement("span");
-            span.className = "mention" + (who.user === me ? " mention--me" : "");
-            span.dataset.user = who.user;
-            span.textContent = match[0];
-            if (who.name) span.title = who.user === me ? "You" : who.name;
-            nodes.push(span);
-            at = match.index + match[0].length;
+        let position = text.indexOf("@");
+        while (position !== -1) {
+            if (position === 0 || !isWordChar(text[position - 1])) {
+                const start = position + 1;
+                for (const [name, who] of byName) {
+                    const end = start + name.length;
+                    if (text.slice(start, end).toLowerCase() !== name || !endsHandle(text, end)) continue;
+                    if (position > at) nodes.push(document.createTextNode(text.slice(at, position)));
+                    const span = document.createElement("span");
+                    span.className = "mention" + (who.user === me ? " mention--me" : "");
+                    span.dataset.user = who.user;
+                    span.textContent = text.slice(position, end);
+                    if (who.name) span.title = who.user === me ? "You" : who.name;
+                    nodes.push(span);
+                    at = end;
+                    position = end - 1;
+                    break;
+                }
+            }
+            position = text.indexOf("@", position + 1);
         }
         if (at < text.length) nodes.push(document.createTextNode(text.slice(at)));
         return nodes;
@@ -1489,9 +1514,9 @@
         if (input.selectionStart !== input.selectionEnd) return null;
         const caret = input.selectionStart;
         const before = input.value.slice(0, caret);
-        const match = /(?<![\p{L}\p{N}_])@([a-z0-9_]*)$/iu.exec(before);
+        const match = /(?<![\p{L}\p{N}_])@([\p{L}\p{N}_.+-]*)$/iu.exec(before);
         if (!match) return null;
-        const after = /^[a-z0-9_]*/i.exec(input.value.slice(caret))[0];
+        const after = /^[\p{L}\p{N}_.+-]*/u.exec(input.value.slice(caret))[0];
         return { start: match.index, end: caret + after.length, query: match[1].toLowerCase() };
     }
 
