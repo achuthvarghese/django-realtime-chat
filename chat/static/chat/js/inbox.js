@@ -93,6 +93,19 @@
         if (retitle) renderTitle();
     }
 
+    // The "@" badge: mentions of you and replies to you in a group, unread.
+    // Never on direct chats. Each row keeps its count in data-mentions
+    // (the tab title counts unread only).
+    function setMentions(link, n) {
+        const count = link.dataset.username ? 0 : Math.max(0, Number(n) || 0);
+        link.dataset.mentions = String(count);
+        const badge = link.querySelector(".room-link__mentions");
+        if (badge) {
+            badge.hidden = count === 0;
+            badge.querySelector("[data-mention-count]").textContent = String(count);
+        }
+    }
+
     function renderTitle() {
         const total = [...document.querySelectorAll(".room-link")].reduce(
             (sum, link) => sum + Number(link.dataset.unread || 0),
@@ -146,6 +159,7 @@
         link.dataset.roomId = room.id;
         if (room.other_username) link.dataset.username = room.other_username;
         link.dataset.unread = "0";
+        link.dataset.mentions = "0";
         if (room.id === openRoom) link.setAttribute("aria-current", "page");
 
         const wrap = el("span", "room-link__avatar-wrap");
@@ -160,13 +174,24 @@
         const text = el("span", "room-link__text");
         text.append(el("span", "room-link__title"), el("span", "room-link__preview"));
         const meta = el("span", "room-link__meta");
+        const badges = el("span", "room-link__badges");
+        const at = el("span", "badge room-link__mentions");
+        at.hidden = true;
+        at.append(el("span", null, "@"));
+        at.firstChild.setAttribute("aria-hidden", "true");
+        const atText = el("span", "visually-hidden", "Mentions: ");
+        const atCount = el("span", null, "0");
+        atCount.dataset.mentionCount = "";
+        atText.append(atCount);
+        at.append(atText);
         const badge = el("span", "badge room-link__unread");
         badge.hidden = true;
         badge.append(el("span", "visually-hidden", "Unread: "));
         const count = el("span", null, "0");
         count.dataset.unreadCount = "";
         badge.append(count);
-        meta.append(el("time", "room-link__time"), badge);
+        badges.append(at, " ", badge);
+        meta.append(el("time", "room-link__time"), badges);
         link.append(wrap, text, meta);
 
         const item = el("li");
@@ -186,6 +211,10 @@
         }
         if (room.id === openRoom && Array.isArray(room.member_usernames)) {
             roomMembers = room.member_usernames;
+            // chat.js keeps the mention autocomplete's members in step.
+            document.dispatchEvent(
+                new CustomEvent("relay:room-members", { detail: { room: openRoom, usernames: [...room.member_usernames] } })
+            );
         }
     }
 
@@ -198,7 +227,12 @@
             ? previewText(room.last_content, room.last_is_mine)
             : "No messages yet";
         setTime(link.querySelector(".room-link__time"), room.last_at);
-        if (room.id !== openRoom) setUnread(link, room.unread || 0, { retitle: false });
+        if (room.id !== openRoom) {
+            setUnread(link, room.unread || 0, { retitle: false });
+            setMentions(link, room.mentions || 0);
+        } else {
+            setMentions(link, 0); // you're reading it
+        }
         return true;
     }
 
@@ -262,7 +296,7 @@
     }
 
     // A new message (room_activity frame, or chat.js for the open room).
-    function showMessage(roomId, message, { unread = null, moveToTop = true } = {}) {
+    function showMessage(roomId, message, { unread = null, mentions = null, moveToTop = true } = {}) {
         const link = findLink(roomId);
         if (!link) return false;
         touch(roomId);
@@ -271,6 +305,7 @@
             setTime(link.querySelector(".room-link__time"), message.created_at);
             list.prepend(link.parentElement);
         }
+        if (mentions !== null && roomId !== openRoom) setMentions(link, mentions);
         if (unread !== null && roomId !== openRoom) setUnread(link, unread);
         listChanged();
         return true;
@@ -278,7 +313,8 @@
 
     function onActivity(event) {
         if (event.room === openRoom && findLink(event.room)) return; // the room socket handles it
-        if (!showMessage(event.room, event.message, { unread: event.unread })) {
+        const mentions = typeof event.mentions === "number" ? event.mentions : null;
+        if (!showMessage(event.room, event.message, { unread: event.unread, mentions })) {
             // Missed the room_added frame (e.g. while reconnecting): fetch the row.
             fetchRoom(event.room, { activity: event });
         }
@@ -317,7 +353,10 @@
                 if (!findLink(room.id)) fetchedAt.set(room.id, startedAt);
                 upsertRoom(room, { moveToTop: moveToTop || !findLink(room.id), startedAt });
                 const later = pending.get(roomId).activity;
-                if (later) showMessage(roomId, later.message, { unread: later.unread });
+                if (later) {
+                    const mentions = typeof later.mentions === "number" ? later.mentions : null;
+                    showMessage(roomId, later.message, { unread: later.unread, mentions });
+                }
             }
         } catch (error) {
             console.warn("Relay: couldn't load the room list row for %s.", roomId, error);
@@ -546,6 +585,9 @@
         refreshTimes();
         scheduleMidnight();
     });
+
+    // Opening a chat reads it: its "@" badge clears.
+    if (openRoom && findLink(openRoom)) setMentions(findLink(openRoom), 0);
 
     refreshTimes();
     scheduleMidnight();

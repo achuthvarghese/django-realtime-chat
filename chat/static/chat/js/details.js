@@ -49,10 +49,10 @@
     panel.addEventListener("click", (event) => {
         if (event.target.closest("[data-details-close]")) close();
     });
-    // Escape closes the innermost thing only: an open menu, dialog,
-    // reaction picker or chip tooltip first, then a reply being written
-    // (when you're in the composer; chat.js cancels it), the panel on the
-    // next press. Capture phase, so this sees the menu before theme.js
+    // Escape closes the innermost thing only: the mention list, then an
+    // open menu, dialog, reaction picker or chip tooltip, then a reply
+    // being written (when you're in the composer; chat.js cancels it), the
+    // panel on the next press. Capture phase, so this sees the menu before theme.js
     // closes it.
     const replying = () => {
         const bar = document.getElementById("reply-bar");
@@ -64,7 +64,7 @@
         "keydown",
         (event) => {
             if (event.key !== "Escape" || panel.hidden) return;
-            if (document.querySelector("dialog[open], details[data-popover][open], .reaction-picker, button.reaction:focus .reaction__tip:not([hidden])")) return;
+            if (document.querySelector(".mention-list:not([hidden]), dialog[open], details[data-popover][open], .reaction-picker, button.reaction:focus .reaction__tip:not([hidden])")) return;
             if (replying()) return;
             // Escape in an inline message edit cancels the edit (chat.js).
             if (document.activeElement?.closest(".msg__edit")) return;

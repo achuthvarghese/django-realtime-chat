@@ -25,7 +25,7 @@
             {% for r in rooms %}
             <li>
                 <a class="room-link{% if r.unread %} room-link--unread{% endif %}" href="{% url 'chat:chat' %}?room={{ r.id }}" data-room-id="{{ r.id }}" data-title="{{ r.title|lower }}"
-                   {% if r.other_username %}data-username="{{ r.other_username }}"{% endif %} data-unread="{{ r.unread }}"
+                   {% if r.other_username %}data-username="{{ r.other_username }}"{% endif %} data-unread="{{ r.unread }}" data-mentions="{{ r.mentions|default:0 }}"
                    title="{{ r.title }}" {% if room and r.id == room_summary.id %}aria-current="page"{% endif %}>
                     <span class="room-link__avatar-wrap">
                         <span class="avatar room-link__avatar{% if r.type == 'group' %} room-link__avatar--group{% endif %}" aria-hidden="true">{{ r.initials }}</span>
@@ -37,7 +37,10 @@
                     </span>
                     <span class="room-link__meta">
                         <time class="room-link__time" {% if r.last_at %}datetime="{{ r.last_at|date:'c' }}" data-relative{% endif %}>{% if r.last_at %}{{ r.last_at|date:"H:i" }}{% endif %}</time>
-                        <span class="badge room-link__unread" {% if not r.unread %}hidden{% endif %}><span class="visually-hidden">Unread: </span><span data-unread-count>{{ r.unread }}</span></span>
+                        <span class="room-link__badges">
+                            <span class="badge room-link__mentions" {% if not r.mentions %}hidden{% endif %}><span aria-hidden="true">@</span><span class="visually-hidden">Mentions: <span data-mention-count>{{ r.mentions|default:0 }}</span></span></span>
+                            <span class="badge room-link__unread" {% if not r.unread %}hidden{% endif %}><span class="visually-hidden">Unread: </span><span data-unread-count>{{ r.unread }}</span></span>
+                        </span>
                     </span>
                 </a>
             </li>
@@ -105,6 +108,11 @@
 
         <p class="chat-toast" id="chat-toast" role="status" hidden></p>
 
+        {# Mention autocomplete (chat.js): above the reply bar and composer; options are built as text. #}
+        <div class="mention-anchor">
+            <ul class="mention-list" id="mention-list" role="listbox" aria-label="Mention someone" hidden></ul>
+        </div>
+
         {# Shown by chat.js while you reply to a message; text is filled in as text. #}
         <div class="reply-bar" id="reply-bar" hidden>
             <svg class="reply-bar__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
@@ -149,6 +157,7 @@
         {{ room_messages|json_script:"initial-messages" }}
         {{ history|json_script:"history-meta" }}
         {{ room_summary.member_usernames|json_script:"room-members" }}
+        {{ room_members|json_script:"room-member-list" }}
         {{ room_summary.id|json_script:"room-id" }}
         {{ reaction_emoji|json_script:"reaction-emoji" }}
 
