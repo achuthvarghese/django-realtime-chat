@@ -864,27 +864,41 @@ button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
 }
 
 /* Mentions: highlighted @usernames, the "for you" emphasis on a row, the
-   autocomplete above the composer and the "@" badge on room rows. */
+   autocomplete above the composer and the "@" badge on room rows.
+   "Yours" uses the same language as .reaction--mine: a darker accent edge
+   (--you-edge, 3:1 against the page in every palette) on an accent fill. */
+
+.chat-main,
+.chat-side { --you-edge: color-mix(in srgb, var(--accent) 70%, var(--fg)); }
 
 .mention {
     font-weight: 600;
     color: color-mix(in srgb, var(--accent) 55%, var(--fg));
     white-space: nowrap;
 }
+/* You: the strongest of the three (mention, reaction, row). */
 .mention--me {
     padding: 0 3px;
     border-radius: 4px;
-    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    box-shadow: inset 0 0 0 1px var(--you-edge);
     color: var(--fg);
 }
-/* A message that mentions you or replies to you (groups): an accent edge
-   on the left and a faint tint. */
-.msg--for-you {
-    background: color-mix(in srgb, var(--accent) 6%, transparent);
-    box-shadow: inset 2px 0 0 var(--accent);
+/* A message that mentions you or replies to you (groups): a 3px edge drawn
+   by a pseudo-element (no layout shift, survives forced colours) and a
+   faint tint; its time gets a little more contrast on the tint. */
+.msg--for-you { background: color-mix(in srgb, var(--accent) 3%, transparent); }
+.msg--for-you::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--you-edge);
+    pointer-events: none;
 }
-.msg--for-you:hover { background: color-mix(in srgb, var(--accent) 9%, var(--hover)); }
-.msg--for-you:focus-visible { box-shadow: inset 2px 0 0 var(--accent), inset var(--focus-ring); }
+.msg--for-you:hover { background: color-mix(in srgb, var(--accent) 6%, var(--hover)); }
+.msg--for-you .msg__time,
+.msg--for-you .msg__inline-time { color: color-mix(in srgb, var(--muted) 88%, var(--fg)); }
 
 /* The list grows upward from just above the reply bar (or the composer). */
 .mention-anchor { position: relative; height: 0; margin: 0 var(--space-3); z-index: 30; }
@@ -905,6 +919,7 @@ button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
 }
 .mention-list[hidden] { display: none; }
 .mention-option {
+    position: relative;
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -917,11 +932,22 @@ button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
 .mention-option:hover { background: var(--hover); }
 .mention-option[aria-selected="true"] {
     background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    box-shadow: inset 2px 0 0 var(--accent);
+    box-shadow: inset 3px 0 0 var(--you-edge);
 }
 .mention-option__avatar { flex: none; width: 24px; height: 24px; border-radius: 7px; font-size: 10px; }
-.mention-option__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.mention-option__handle { flex: none; margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.mention-option__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.mention-option__handle {
+    flex: 0 1 auto;
+    max-width: 45%;
+    min-width: 0;
+    margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--muted);
+}
 .mention-option[aria-selected="true"] .mention-option__handle { color: color-mix(in srgb, var(--fg) 78%, var(--surface)); }
 @media (max-width: 599px) {
     .mention-anchor { margin: 0 var(--space-2); }
@@ -929,12 +955,37 @@ button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
 }
 @media (pointer: coarse) {
     .mention-option { min-height: 44px; }
-}
-@media (forced-colors: active) {
-    .mention-option[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
-    .msg--for-you { border-left: 2px solid CanvasText; }
+    .mention-list { max-height: min(calc(4.5 * 44px + 8px), 45dvh); }
 }
 
+/* Room rows: an outlined "@" chip before the filled unread count. */
 .room-link__badges { display: flex; align-items: center; gap: 3px; }
-.room-link__mentions { font-weight: 700; }
+.room-link__mentions {
+    background: transparent;
+    color: var(--chrome-strong);
+    border: 1px solid var(--accent);
+    font-weight: 700;
+}
 .room-link__mentions[hidden] { display: none; }
+/* Tablet rail: only the "@" when there is one; the unread count stays in
+   the link's accessible name. */
+@media (min-width: 600px) and (max-width: 1023px) {
+    .room-link__meta { right: 2px; }
+    .room-link__badges:has(.room-link__mentions:not([hidden])) .room-link__unread {
+        position: absolute;
+        width: 1px;
+        min-width: 0;
+        height: 1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+}
+
+@media (forced-colors: active) {
+    .msg--for-you::before { forced-color-adjust: none; background: CanvasText; }
+    .mention--me { outline: 1px solid CanvasText; }
+    .mention-option[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+    .room-link__mentions { border-color: CanvasText; }
+}
