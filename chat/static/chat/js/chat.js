@@ -106,15 +106,56 @@
     const scrollToEnd = () => { scroller.scrollTop = scroller.scrollHeight; };
     const speaker = (data) => (data.user === me ? "You" : data.name || data.user);
 
+    // Mentions: the server lists who a message mentions (`mentions`:
+    // [{user, name}], current members only). Only those `@username`s are
+    // highlighted, matched like the server: case-insensitive, not right
+    // after a letter, digit or underscore, and the whole username.
+    const MENTION = /(?<![\p{L}\p{N}_])@([a-z0-9_]+)/giu;
+    const mentionsOf = (data) => (Array.isArray(data.mentions) ? data.mentions : []).filter((m) => m && typeof m.user === "string");
+
+    // Text nodes and <span class="mention"> for `text`; never HTML.
+    function mentionNodes(text, mentions) {
+        const names = new Map(mentions.map((m) => [m.user.toLowerCase(), m]));
+        if (!names.size) return [document.createTextNode(text)];
+        const nodes = [];
+        let at = 0;
+        for (const match of text.matchAll(MENTION)) {
+            const who = names.get(match[1].toLowerCase());
+            if (!who) continue;
+            if (match.index > at) nodes.push(document.createTextNode(text.slice(at, match.index)));
+            const span = document.createElement("span");
+            span.className = "mention" + (who.user === me ? " mention--me" : "");
+            span.dataset.user = who.user;
+            span.textContent = match[0];
+            if (who.name) span.title = who.user === me ? "You" : who.name;
+            nodes.push(span);
+            at = match.index + match[0].length;
+        }
+        if (at < text.length) nodes.push(document.createTextNode(text.slice(at)));
+        return nodes;
+    }
+
+    // In groups, a message that mentions you or replies to yours (not your
+    // own) is "for you" and gets a subtle emphasis. Direct chats are all
+    // for you, so they don't.
+    const isDirect = !!document.querySelector(".chat-head__title[data-private]");
+    const forYou = (data) =>
+        !isDirect &&
+        data.kind !== "system" &&
+        !data.deleted &&
+        data.user !== me &&
+        (mentionsOf(data).some((m) => m.user === me) || (!!data.reply_to && data.reply_to.available && data.reply_to.user === me));
+
     function fillText(container, data) {
         container.replaceChildren();
+        container.closest(".msg")?.classList.toggle("msg--for-you", forYou(data));
         if (data.deleted) {
             container.classList.add("msg__text--deleted");
             container.textContent = "Message deleted";
             return;
         }
         container.classList.remove("msg__text--deleted");
-        container.append(document.createTextNode(data.message));
+        container.append(...mentionNodes(data.message, mentionsOf(data)));
         if (data.edited) {
             const edited = document.createElement("span");
             edited.className = "msg__edited";
@@ -425,7 +466,7 @@
             !data.reply_to; // a reply always starts a new group
 
         const row = document.createElement("div");
-        row.className = "msg" + (continues ? " msg--cont" : "") + (mine ? " msg--mine" : "");
+        row.className = "msg" + (continues ? " msg--cont" : "") + (mine ? " msg--mine" : "") + (forYou(data) ? " msg--for-you" : "");
         row.dataset.id = data.id;
         row.tabIndex = -1;
 
@@ -1418,6 +1459,185 @@
         }
     });
 
+    // Mention autocomplete. Typing "@" (not right after a letter, digit or
+    // underscore) and the start of a username or name opens a listbox of
+    // matching members (not you), at most 8. Up and Down move, Enter or Tab
+    // inserts "@username ", Escape closes; while it is open those keys do
+    // nothing else (no send, no edit-last, no cancelling the reply). A
+    // click or tap picks.
+
+    const MENTION_MAX = 8;
+    const mentionList = document.getElementById("mention-list");
+    // [{username, name, initials}], current members sorted by name.
+    let members = (readJSON("room-member-list") || []).filter((m) => m && typeof m.username === "string");
+    // Members joined or left (inbox.js, from room_changed): keep who is
+    // still here; newcomers have only a username until the next load.
+    document.addEventListener("relay:room-members", (event) => {
+        if (event.detail.room !== roomId || !Array.isArray(event.detail.usernames)) return;
+        const known = new Map(members.map((m) => [m.username, m]));
+        members = event.detail.usernames
+            .map((u) => known.get(u) || { username: u, name: u, initials: initialsOf(u) })
+            .sort((a, b) => a.name.localeCompare(b.name));
+        if (mention) refreshMention();
+    });
+
+    let mention = null; // { start, end, query, items, active } while open
+    let dismissed = null; // "start:query" of a token you closed with Escape
+
+    // The "@token" the caret is in or right after, or null.
+    function tokenAtCaret() {
+        if (input.selectionStart !== input.selectionEnd) return null;
+        const caret = input.selectionStart;
+        const before = input.value.slice(0, caret);
+        const match = /(?<![\p{L}\p{N}_])@([a-z0-9_]*)$/iu.exec(before);
+        if (!match) return null;
+        const after = /^[a-z0-9_]*/i.exec(input.value.slice(caret))[0];
+        return { start: match.index, end: caret + after.length, query: match[1].toLowerCase() };
+    }
+
+    function matchMembers(query) {
+        const byUser = [];
+        const byName = [];
+        for (const m of members) {
+            if (m.username === me) continue;
+            const words = (m.name || "").toLowerCase().split(PY_WHITESPACE).filter(Boolean);
+            if (m.username.startsWith(query)) byUser.push(m);
+            else if ((m.name || "").toLowerCase().startsWith(query) || words.some((w) => w.startsWith(query))) byName.push(m);
+        }
+        return [...byUser, ...byName].slice(0, MENTION_MAX);
+    }
+
+    const optionId = (i) => `mention-option-${i}`;
+
+    function renderMention() {
+        const options = mention.items.map((m, i) => {
+            const option = document.createElement("li");
+            option.className = "mention-option";
+            option.id = optionId(i);
+            option.setAttribute("role", "option");
+            option.setAttribute("aria-selected", String(i === mention.active));
+            option.dataset.username = m.username;
+            const avatar = document.createElement("span");
+            avatar.className = "avatar mention-option__avatar";
+            avatar.setAttribute("aria-hidden", "true");
+            avatar.textContent = m.initials || initialsOf(m.name || m.username);
+            const name = document.createElement("span");
+            name.className = "mention-option__name";
+            name.textContent = m.name || m.username;
+            const handle = document.createElement("span");
+            handle.className = "mention-option__handle";
+            handle.textContent = `@${m.username}`;
+            option.append(avatar, name, " ", handle);
+            return option;
+        });
+        mentionList.replaceChildren(...options);
+        mentionList.hidden = false;
+        input.setAttribute("aria-activedescendant", optionId(mention.active));
+        mentionList.children[mention.active]?.scrollIntoView({ block: "nearest" });
+    }
+
+    function closeMention() {
+        if (!mention) return;
+        mention = null;
+        mentionList.hidden = true;
+        mentionList.replaceChildren();
+        input.removeAttribute("aria-activedescendant");
+    }
+
+    // Open, update or close the list for where the caret is now.
+    function refreshMention() {
+        const token = tokenAtCaret();
+        if (!token || dismissed === `${token.start}:${token.query}`) return closeMention();
+        const items = matchMembers(token.query);
+        if (!items.length) return closeMention();
+        const keep = mention && mention.start === token.start ? mention.items[mention.active]?.username : null;
+        const active = Math.max(0, items.findIndex((m) => m.username === keep));
+        mention = { ...token, items, active };
+        renderMention();
+    }
+
+    function moveMention(step) {
+        const count = mention.items.length;
+        mention.active = (mention.active + step + count) % count;
+        for (const [i, option] of [...mentionList.children].entries()) {
+            option.setAttribute("aria-selected", String(i === mention.active));
+        }
+        input.setAttribute("aria-activedescendant", optionId(mention.active));
+        mentionList.children[mention.active].scrollIntoView({ block: "nearest" });
+    }
+
+    // Replace the typed token with "@username " (one space, unless one
+    // follows already), keeping undo where the browser supports it.
+    function pickMention(index) {
+        const picked = mention && mention.items[index];
+        if (!picked) return;
+        const { start, end } = mention;
+        closeMention();
+        const spaced = /^\s/.test(input.value.slice(end));
+        const text = `@${picked.username}${spaced ? "" : " "}`;
+        input.focus();
+        input.setSelectionRange(start, end);
+        let done = false;
+        try {
+            done = document.execCommand("insertText", false, text);
+        } catch (error) {
+            console.warn("Relay: insertText failed: %s", String(error));
+        }
+        if (!done || input.value.slice(start, start + text.length) !== text) {
+            input.setRangeText(text, start, end, "end");
+        }
+        const caret = start + text.length + (spaced ? 1 : 0);
+        input.setSelectionRange(caret, caret);
+        dismissed = null;
+        closeMention();
+        autosize();
+    }
+
+    // A textarea can't take role="combobox" (so not aria-expanded either);
+    // aria-activedescendant makes screen readers read the active option.
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", "mention-list");
+
+    input.addEventListener("input", () => {
+        dismissed = null;
+        refreshMention();
+    });
+    // The caret moved without typing (arrows, a click): follow it.
+    input.addEventListener("keyup", (event) => {
+        if (["ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(event.key)) refreshMention();
+    });
+    input.addEventListener("click", refreshMention);
+    input.addEventListener("blur", closeMention);
+
+    // Capture: runs before the composer's own keys (send, edit last,
+    // cancel reply), which an open list takes over.
+    composer.addEventListener(
+        "keydown",
+        (event) => {
+            if (!mention || event.target !== input || event.isComposing) return;
+            if (event.altKey || event.ctrlKey || event.metaKey) return;
+            let handled = true;
+            if (event.key === "ArrowDown") moveMention(1);
+            else if (event.key === "ArrowUp") moveMention(-1);
+            else if ((event.key === "Enter" && !event.shiftKey) || (event.key === "Tab" && !event.shiftKey)) pickMention(mention.active);
+            else if (event.key === "Escape") {
+                dismissed = `${mention.start}:${mention.query}`;
+                closeMention();
+            } else handled = false;
+            if (!handled) return;
+            event.preventDefault();
+            event.stopPropagation();
+        },
+        true
+    );
+    // Keep focus in the textarea; the click picks.
+    mentionList.addEventListener("mousedown", (event) => event.preventDefault());
+    mentionList.addEventListener("click", (event) => {
+        const option = event.target.closest(".mention-option");
+        if (!option || !mention) return;
+        pickMention([...mentionList.children].indexOf(option));
+    });
+
     // Replying: the bar above the composer says to whom; sending clears it.
 
     const replyBar = document.getElementById("reply-bar");
@@ -1503,9 +1723,11 @@
     });
 
     // Escape in the composer cancels a reply (details.js leaves it to us).
-    // An open dialog or menu takes Escape first.
+    // The mention list, then an open dialog or menu, take Escape first.
     const overlayOpen = () =>
-        !!document.querySelector("dialog[open], details[data-popover][open], .reaction-picker, button.reaction:focus .reaction__tip:not([hidden])");
+        !!document.querySelector(
+            ".mention-list:not([hidden]), dialog[open], details[data-popover][open], .reaction-picker, button.reaction:focus .reaction__tip:not([hidden])"
+        );
     composer.addEventListener("keydown", (event) => {
         if (event.key !== "Escape" || !replyTarget || event.isComposing || overlayOpen()) return;
         event.preventDefault();

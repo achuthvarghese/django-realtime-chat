@@ -862,3 +862,79 @@ button.msg__quote:focus-visible { background: var(--hover); color: var(--fg); }
     .reaction::before { content: ""; position: absolute; inset: -6px 0; }
     .reaction-picker__option { width: 44px; height: 44px; }
 }
+
+/* Mentions: highlighted @usernames, the "for you" emphasis on a row, the
+   autocomplete above the composer and the "@" badge on room rows. */
+
+.mention {
+    font-weight: 600;
+    color: color-mix(in srgb, var(--accent) 55%, var(--fg));
+    white-space: nowrap;
+}
+.mention--me {
+    padding: 0 3px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--fg);
+}
+/* A message that mentions you or replies to you (groups): an accent edge
+   on the left and a faint tint. */
+.msg--for-you {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+.msg--for-you:hover { background: color-mix(in srgb, var(--accent) 9%, var(--hover)); }
+.msg--for-you:focus-visible { box-shadow: inset 2px 0 0 var(--accent), inset var(--focus-ring); }
+
+/* The list grows upward from just above the reply bar (or the composer). */
+.mention-anchor { position: relative; height: 0; margin: 0 var(--space-3); z-index: 30; }
+.mention-list {
+    position: absolute;
+    left: 0;
+    bottom: 4px;
+    width: min(100%, 340px);
+    max-height: min(320px, 50vh);
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-float);
+}
+.mention-list[hidden] { display: none; }
+.mention-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 32px;
+    padding: 4px var(--space-2);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--text-sm);
+}
+.mention-option:hover { background: var(--hover); }
+.mention-option[aria-selected="true"] {
+    background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+.mention-option__avatar { flex: none; width: 24px; height: 24px; border-radius: 7px; font-size: 10px; }
+.mention-option__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.mention-option__handle { flex: none; margin-left: auto; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
+.mention-option[aria-selected="true"] .mention-option__handle { color: color-mix(in srgb, var(--fg) 78%, var(--surface)); }
+@media (max-width: 599px) {
+    .mention-anchor { margin: 0 var(--space-2); }
+    .mention-list { width: 100%; }
+}
+@media (pointer: coarse) {
+    .mention-option { min-height: 44px; }
+}
+@media (forced-colors: active) {
+    .mention-option[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+    .msg--for-you { border-left: 2px solid CanvasText; }
+}
+
+.room-link__badges { display: flex; align-items: center; gap: 3px; }
+.room-link__mentions { font-weight: 700; }
+.room-link__mentions[hidden] { display: none; }
