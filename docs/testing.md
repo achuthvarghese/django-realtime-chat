@@ -16,8 +16,8 @@ hasher. No `.env` or Redis is needed.
 | File | Covers |
 | --- | --- |
 | `account/tests.py` | Login, signup, logout, `next` redirects, validation, the auth screens, settings sections, saved appearance, username rules and the rename migration, case-insensitive sign-in, account menu |
-| `core/tests.py` | Theme options, palette keys in sync across Python/CSS/JS, base template, error pages, home page, demo data seeding (including the seeded reactions) |
-| `chat/tests.py` | Chat view access, room list order and previews, history limit, initials, WebSocket auth, membership, message handling, broadcast shape, people search, direct and group creation, history paging, edit and delete, unread counts, presence, typing, the inbox socket, the chat page query budget, group rules and actions, removal over sockets, the group admin migration, room summaries, live room-list frames (added, renamed, removed, left, deleted), the live-room fixes, replies and reactions listed below |
+| `core/tests.py` | Theme options, palette keys in sync across Python/CSS/JS, base template, error pages, home page, demo data seeding (including the seeded reactions, mentions and "@" counts) |
+| `chat/tests.py` | Chat view access, room list order and previews, history limit, initials, WebSocket auth, membership, message handling, broadcast shape, people search, direct and group creation, history paging, edit and delete, unread counts, presence, typing, the inbox socket, the chat page query budget, group rules and actions, removal over sockets, the group admin migration, room summaries, live room-list frames (added, renamed, removed, left, deleted), the live-room fixes, replies, reactions and mentions listed below |
 
 New in `chat/tests.py` for the live-room fixes:
 
@@ -60,6 +60,21 @@ before and after each test, since rate-limit windows are keyed by user id):
 | `TestReactionPayload` | The `reactions` list: emoji in the fixed order, people by reaction time; none on deleted, system and new messages; the grouped query matches building from model objects; a no-op writes nothing; history and the initial page carry reactions; history takes one extra query however many reactions (`CaptureQueriesContext`) |
 | `TestReactionSockets` | On and off reach everyone and are idempotent (a no-op answers only the sender); other-room, hidden, deleted, system, unknown and malformed ids, unknown emoji (including the emoji character instead of its key), a non-boolean `on` and missing keys all get the one fixed error and save nothing; `429` after 10 frames in 5 seconds, shared by a user's sockets and reconnects but not by other users; a locked database gets `503` and keeps the socket; `reactions_updated` skips people who cleared the message, joined later or were removed; edits carry reactions and deletes clear them; new messages and inbox `room_activity` carry `"reactions": []` and reacting sends nothing to the inbox |
 | `TestReactRateLimitWindow` | The 5-second window slides and is kept per user |
+
+New in `chat/tests.py` for mentions:
+
+| Class | Covers |
+| --- | --- |
+| `TestFindMentions` | The parser table: start and middle of text, case, punctuation after the name (`@lee,`, `@lee.`, `@lee...`), email-like and after a letter, digit or underscore, longer words and handles (`@mayabee`, `@lee.chenx`), the longer username winning (`@lee.chen`), usernames with `+` and `-`, `@@maya`, unknown names, each person once in order; only candidates match |
+| `TestFindMentionsFolding` | Case folding that changes length (`İlker`, `straße`); crafted 4,000-character texts stay under 20 ms; only the first 200 `@` signs are scanned |
+| `TestMentionsOnSave` | Saving stores mentions and sends them in order; yourself, unknown names, non-members and emails stay plain; a removed member isn't mentioned; superuser-style usernames; direct chats store mentions |
+| `TestMentionsOnEditDelete` | Edits add and remove mentions; edit mentions don't reveal who cleared their history; an unchanged edit keeps them; deleting removes them; removing the row cascades |
+| `TestMentionsInHistory` | History and the initial page carry `mentions`; none on deleted messages; history takes three queries per page however many mentions (`CaptureQueriesContext`); the page's `room-member-list` is sorted by name |
+| `TestMentionCounts` | Mentions and replies to you count, a reply that mentions you counts once; your own and hidden messages don't; direct chats are always 0; reading clears the count; the summaries endpoint and `room_summaries_for_users` agree; no extra query, and query counts stay flat for `rooms_for` and `room_summaries_for_users` |
+| `TestMentionCountsRound2` | Unread and mention counts stop at 100 everywhere; the grouped counts match `room_counts` room by room in a mixed scenario; a reply counts only while you can see your original |
+| `TestMentionInboxFrames` | `room_activity` `for_you` and `mentions` per recipient (`"mention"`, `"reply"`, `null` for the sender); direct chats are never for you; `inbox_message` takes three queries and never reads the room |
+| `TestMentionSocketsRound2` | A reply to an original you cleared isn't for you; **Clear history** forgets your mentions; an edit racing a delete changes nothing |
+| `TestMentionMigration` | `chat/0007_mention` applies and reverses |
 
 `TestReplyMigration` now migrates back to the latest schema when it's done,
 so later tests see every table.

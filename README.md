@@ -20,6 +20,9 @@ when the speaker changes.
 - **Reactions**: react to any text message with one of six emoji
   (👍 ❤️ 😂 😮 😢 🎉). Chips show the count and who reacted, and update live
   for everyone who can see the message.
+- **Mentions**: type `@` to pick a member from a list; their name is
+  highlighted in the message. Group chats with unread mentions of you, or
+  replies to you, show an "@" next to the unread count.
 - **Infinite scroll** through history, 50 messages at a time.
 - **Presence, typing and unread**: online dots, "… is typing…", per-room unread
   badges and a count in the tab title.
@@ -90,7 +93,8 @@ Background notes: [Channels setup][config_channels.md],
 account/            sign in, create account, sign out, settings, Preference model
 chat/               rooms, messages, chat screen, starting chats, history
 chat/channels/      ChatConsumer (one room) and InboxConsumer (presence, activity)
-chat/presence.py    online status and unread counts
+chat/presence.py    online status, unread and mention counts
+chat/mentions.py    finding @username mentions in message text
 core/               design system, base template, home page, error pages
 realtime_chat/      settings, URL and WebSocket routing, ASGI/WSGI
 docs/               documentation and screenshots

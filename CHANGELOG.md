@@ -3,6 +3,70 @@
 Changes are grouped by rework phase. Each phase lands as its own pull request
 into `master`.
 
+## Phase 10c: mentions
+
+Mention a member with `@username`. The name is highlighted in the message,
+the composer suggests people as you type, and group chats with unread
+mentions of you or replies to you show an "@" next to the unread count.
+Notifications and muting chats come next, in their own phase (10d); this
+phase has no notification list, and no `@everyone` or `@here`.
+
+### Added
+- `chat.Mention`: one member named in one text message (`message`, `user`),
+  with the constraint `unique_mention`, and `Message.mentions`, a
+  many-to-many to `User` through it. Migration `chat/0007_mention` adds the
+  field to the model state only, so SQLite doesn't rebuild the message
+  table. Mentions are in the Django admin.
+- `chat/mentions.py`: finds mentions in message text and keeps the `Mention`
+  rows in step. A mention is `@` and the exact username (any case, compared
+  with `casefold()`) of a current member other than the author, not right
+  after a letter, digit or underscore and not running on into a longer
+  handle; the longest username wins at one `@`; at most 200 `@` signs are
+  looked at. Anything else stays plain text and nobody is told.
+- Every message object has a `mentions` list (`user`, `name`) in the order
+  the text names them; deleted and system messages have `"mentions": []`.
+- Room objects (the page, summaries, `room_added`) have `mentions`: unread
+  messages that mention you or reply to one of your messages you can still
+  see. Always 0 for direct chats.
+- Inbox `room_activity` frames have `mentions` (your count for the room) and
+  `for_you` (`"mention"`, `"reply"` or `null`).
+- Highlighted mentions in messages, stronger for mentions of you, and a
+  subtle "for you" edge and tint on group messages that mention or reply to
+  you (`.mention`, `.mention--me`, `.msg--for-you`).
+- Mention autocomplete in the composer: `@` opens a list of up to 8 members,
+  searched by username or name (any word, any part of a hyphenated word,
+  any script). ↑ and ↓ move, Enter or Tab inserts `@username `, Escape
+  closes it first, before dialogs, the reply and the Details panel. A polite
+  status tells screen readers how many people match, and the composer hint
+  changes while the list is open.
+- An outlined "@" chip on group rows in the room list, before the unread
+  count ("Mentions and replies: N. Unread: M" for screen readers). On the
+  tablet rail it shows alone. Room rows carry `data-room-type` and
+  `data-mentions`.
+- Demo mentions in Design team, Ops and Book club (seven in the script, six
+  stored: Priya's cleared history drops one) and a reply to Maya, so `maya`
+  sees "@" on Design team and Ops and `priya` on Book club.
+
+### Changed
+- Unread and mention counts stop at 100 per chat. Badges show "99+", and the
+  tab title shows "(99+)" once the total reaches 100 or any chat is capped.
+- Unread and mention counts for the room list come from one grouped query,
+  with each room's last read time as a subquery, instead of one condition
+  per room.
+- An inbox socket no longer loads the room for each new message: the event
+  says whether it's a group, and the socket reads its read state first and
+  counts at most 100 rows (up to three small queries).
+- History pages take three queries: messages, reactions and mentions.
+- Edits recompute mentions; `message_updated` carries the new list, and a
+  deleted message has `"mentions": []`.
+- **Clear history** also removes your mentions in the messages you cleared.
+- Demo counts for `maya`: Design team 5 unread (2 "@"), Ops 6 (1 "@"); the
+  tab title reads "(12) Chats · Relay".
+
+### Fixed
+- An edit racing a delete of the same message (from another tab) could
+  write the text back onto the deleted message; it now changes nothing.
+
 ## Phase 10b: reactions
 
 React to a text message with one of six emoji. The message shows a chip per

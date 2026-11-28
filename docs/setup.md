@@ -90,3 +90,9 @@ the message table once, so on a large database it takes a moment.
 Django checks every foreign key in the database after the migration, which
 takes about 1 second per 100,000 messages. Plan for that pause on a large
 database.
+
+`chat/0007_mention` creates the `chat_mention` table for
+[mentions](./data-model.md#chatmention). `Message.mentions` is added to the
+model state only, so the message table isn't rebuilt. It fills in nothing:
+messages sent before the upgrade show no mentions and don't count towards
+the "@" badge.
