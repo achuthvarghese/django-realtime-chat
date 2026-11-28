@@ -35,6 +35,11 @@ class Message(models.Model):
         on_delete=models.SET_NULL,
         related_name="replies",
     )
+    # Current members named with @username when the message was saved or last
+    # edited (see chat/mentions.py). Removed when the message is deleted.
+    mentions = models.ManyToManyField(
+        User, through="Mention", related_name="mentioned_in", blank=True
+    )
 
     class Meta:
         ordering = ["created_at"]
@@ -95,6 +100,27 @@ class Reaction(models.Model):
 
     def __str__(self):
         return f"{self.user} {self.emoji} on {self.message_id}"
+
+
+class Mention(models.Model):
+    """One member named with @username in one text message. Written in the
+    same transaction as the message, recomputed on edit, removed on delete."""
+
+    # No separate index: the unique constraint below starts with `message`.
+    message = models.ForeignKey(
+        Message, on_delete=models.CASCADE, related_name="mention_rows", db_index=False
+    )
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="mention_rows"
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["message", "user"], name="unique_mention")
+        ]
+
+    def __str__(self):
+        return f"@{self.user} in {self.message_id}"
 
 
 class Room(models.Model):
