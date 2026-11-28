@@ -64,7 +64,7 @@
         "keydown",
         (event) => {
             if (event.key !== "Escape" || panel.hidden) return;
-            if (document.querySelector("dialog[open], details[data-popover][open], .reaction-picker, .reaction__tip:not([hidden])")) return;
+            if (document.querySelector("dialog[open], details[data-popover][open], .reaction-picker, button.reaction:focus .reaction__tip:not([hidden])")) return;
             if (replying()) return;
             // Escape in an inline message edit cancels the edit (chat.js).
             if (document.activeElement?.closest(".msg__edit")) return;

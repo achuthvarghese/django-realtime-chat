@@ -169,8 +169,10 @@ Styles `account/static/account/css/auth.css`, script
   the bottom of the transcript, it stays there as the bar opens and closes.
 - **Sending** sends the reply and closes the bar. Esc in the composer or the
   bar, or ×, cancels the reply ("Reply cancelled"). Escape closes the
-  innermost thing first: an open dialog, menu, reaction picker or chip
-  tooltip, then the reply, then the Details panel. If the message you're replying to is deleted, the bar closes
+  innermost thing first: an open dialog, menu, reaction picker or the
+  tooltip of a chip with keyboard focus, then the reply, then the Details
+  panel. A tooltip shown only by mouse hover hides on Escape but doesn't
+  hold it back. If the message you're replying to is deleted, the bar closes
   with "The message you were replying to was deleted."
 - If the server refuses the reply (the message was deleted or hidden
   meanwhile), the toast says "You can't reply to that message" and your text

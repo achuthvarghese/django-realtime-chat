@@ -1505,7 +1505,7 @@
     // Escape in the composer cancels a reply (details.js leaves it to us).
     // An open dialog or menu takes Escape first.
     const overlayOpen = () =>
-        !!document.querySelector("dialog[open], details[data-popover][open], .reaction-picker, .reaction__tip:not([hidden])");
+        !!document.querySelector("dialog[open], details[data-popover][open], .reaction-picker, button.reaction:focus .reaction__tip:not([hidden])");
     composer.addEventListener("keydown", (event) => {
         if (event.key !== "Escape" || !replyTarget || event.isComposing || overlayOpen()) return;
         event.preventDefault();

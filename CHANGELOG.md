@@ -52,8 +52,9 @@ changes appear live for everyone who can see the message.
 - Deleting a message removes its reactions in the same transaction.
 - On touch screens only the selected row shows its action bar, and hover
   tints no longer stick after a tap.
-- Escape closes an open reaction picker or chip tooltip before the reply and
-  the Details panel.
+- Escape closes an open reaction picker or a keyboard-focused chip tooltip
+  before the reply and the Details panel; a hover-only tooltip doesn't hold
+  Escape back.
 
 ### Fixed
 - `TestReplyMigration` left the test database at `chat/0005`; it now
