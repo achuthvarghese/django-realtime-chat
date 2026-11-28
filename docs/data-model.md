@@ -11,6 +11,8 @@ erDiagram
     Message |o--o{ Message : "replied to by (reply_to)"
     Message ||--o{ Reaction : "has"
     User ||--o{ Reaction : "reacts with"
+    Message ||--o{ Mention : "names"
+    User ||--o{ Mention : "is named in"
     User ||--o{ ReadState : "has"
     Room ||--o{ ReadState : "tracked by"
     User ||--o{ Connection : "has open"
@@ -63,6 +65,7 @@ creator.
 | `deleted_at` | Set when the author deletes it; `content` is emptied at the same time |
 | `visible_for` | Members who can still see the message. Set to all room members on send; **Clear history** removes the requesting user |
 | `reply_to` | The message this one replies to, or null. Foreign key to `Message` (`message.replies`), `on_delete=SET_NULL`, indexed. Never changed by an edit |
+| `mentions` | Members named with `@username` in the text. Many-to-many to `User` (`user.mentioned_in`) through [`Mention`](#chatmention); no column of its own |
 
 One check constraint, `message_reply_valid`, guards replies:
 `reply_to` is null, or the message is a `text` message and doesn't reply to
@@ -129,6 +132,66 @@ a page of messages in one query.
 Migration `chat/0006_reaction` creates the table and its constraints. It
 changes no data and can be reversed.
 
+## `chat.Mention`
+
+One member named with `@username` in one text message.
+
+| Field | Notes |
+| --- | --- |
+| `message` | Foreign key to `Message` (`message.mention_rows`), `on_delete=CASCADE`. No separate index: the unique constraint starts with `message` |
+| `user` | Foreign key to `User` (`user.mention_rows`), `on_delete=CASCADE` |
+
+One constraint, `unique_mention`: one row per `message` and `user`.
+`Message.mentions` reaches the same rows as a many-to-many field.
+
+`chat/mentions.py` finds mentions in the text when the message is saved, in
+the same transaction:
+
+- A mention is `@` followed by a candidate's exact username. Candidates are
+  the room's current members other than the author. Anyone else (yourself,
+  an unknown name, a non-member, someone who left) stays plain text, and the
+  author isn't told.
+- Case doesn't matter: both sides are compared with `casefold()`, so
+  `@MAYA` names `maya`.
+- The `@` must not follow a letter, digit or underscore, so `x@maya`
+  names nobody. The username must not run on into a longer word or handle:
+  `@mayabee` and `@lee.chen` don't name `lee`, but `@lee,` and `@lee.` do.
+- Where two usernames both fit at the same `@` (`lee` and `lee.chen`), the
+  longer one wins.
+- Each person counts once per message, in order of their first mention.
+- Only the first 200 eligible `@` signs of a message are looked at, so a
+  message made of `@` signs costs no more than a normal one.
+
+Usernames are matched directly rather than with a username pattern, so
+accounts made with `createsuperuser` (which may contain `@`, `+` or `.`) can
+be mentioned too.
+
+When the author edits the text, the mentions are worked out again against
+the current members other than the author, and rows are added or removed to
+match. Who has cleared their history isn't consulted, so the edit can't tell
+the author who did. An unchanged edit keeps the rows as they are. Deleting a
+message removes its mentions in the same transaction, as with reactions.
+**Clear history** leaves the rows alone: a Mention records what the text
+says, so the author's view of their own message never changes when someone
+clears (which would reveal who did). Everything that is "for you" (the "@"
+count, `for_you`, and anything added later such as notifications) also
+requires the message to be in your `visible_for`, so cleared messages never
+count or surface for you. Deleting the user, or removing the
+message row, removes them through the cascade. Direct chats store mentions
+too, but they never count towards the "@" badge.
+
+`chat/presenters.py: mentions_for_messages` builds the `mentions` list of
+every message object (see
+[the protocol](./websocket-protocol.md#mentions-and-the-mentions-list)) for a
+page of messages in one query.
+
+Migration `chat/0007_mention` creates the table with its constraint. It adds
+`Message.mentions` to the model state only
+(`SeparateDatabaseAndState`): the field has no column, and adding it as a
+normal field would make SQLite rebuild the whole `chat_message` table. It
+fills in nothing for older messages (they show no mentions) and can be
+reversed.
+
 ## `chat.ReadState`
 
 | Field | Notes |
@@ -137,8 +200,13 @@ changes no data and can be reversed.
 | `last_read_at` | Messages from others after this are unread. No row means everything from others is unread |
 
 Updated when the user opens the room, sends a `read` frame, or sends a
-message. `chat/presence.py: unread_counts` counts unread messages for many rooms
-in one query (visible, not deleted, not your own).
+message. `chat/presence.py: unread_and_mentions` counts, for many rooms in one
+grouped query, the unread messages (text messages from others after
+`last_read_at` that you can see and that aren't deleted) and how many of
+those are "for you": they mention you or reply to one of your messages that
+you can still see (groups only). Each room's `last_read_at` comes from a correlated subquery. Both
+counts stop at 100 per room. `unread_counts` returns just the unread part.
+There is no separate read state for mentions: reading the room clears both.
 
 ## `chat.Connection`
 

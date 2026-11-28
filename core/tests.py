@@ -183,13 +183,47 @@ class TestSeedDemo:
         maya = User.objects.get(username="maya")
         by_name = {r.name: r.pk for r in maya.rooms.all()}
         unread = unread_counts(maya, list(by_name.values()))
-        assert unread[by_name["Design team"]] == 3
-        assert unread[by_name["Ops"]] == 4
+        assert unread[by_name["Design team"]] == 5
+        assert unread[by_name["Ops"]] == 6
         assert unread[by_name["Book club"]] == 0
         assert not User.objects.get(username="sam").rooms.exists()
         priya = User.objects.get(username="priya")
         books = Message.objects.filter(room__name="Book club")
         assert books.filter(visible_for=priya).count() < books.count()
+
+    @override_settings(DEBUG=True)
+    def test_mentions_seeded(self):
+        from chat.models import Mention
+        from chat.presence import unread_and_mentions
+        from chat.presenters import room_summaries
+        from chat.views import history_page
+
+        self.run()
+        User = get_user_model()
+        maya = User.objects.get(username="maya")
+        priya = User.objects.get(username="priya")
+        # 7 in the script. Priya cleared the one before her clear point, but
+        # the row stays (it records the text); she just can't see it.
+        assert Mention.objects.count() == 7
+        # Every mention names a member other than the sender.
+        for mention in Mention.objects.select_related("message__room"):
+            assert mention.user_id != mention.message.user_id
+            assert mention.message.room.members.filter(pk=mention.user_id).exists()
+
+        rows = {r["title"]: r for r in room_summaries(maya)}
+        # Design: arjun's @maya and lee's reply to her, both after her read.
+        assert rows["Design team"]["mentions"] == 2
+        assert rows["Ops"]["mentions"] == 1
+        assert rows["Book club"]["mentions"] == 0
+        assert all(r["mentions"] == 0 for r in rows.values() if r["type"] == "private")
+
+        # Priya sees the mention after her clear point, not the one before.
+        books = next(r for r in maya.rooms.all() if r.name == "Book club")
+        assert unread_and_mentions(priya, [books.pk])[books.pk][1] == 1
+        page, _ = history_page(books, priya, limit=100)
+        mentioned = [m for m in page if m["mentions"]]
+        assert [m["message"] for m in mentioned] == ["@Priya same, it made me cry"]
+        assert mentioned[0]["mentions"] == [{"user": "priya", "name": "Priya Nair"}]
 
     @override_settings(DEBUG=True)
     def test_reactions_seeded(self):

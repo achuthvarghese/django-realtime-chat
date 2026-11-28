@@ -34,7 +34,8 @@ ROOMS = [
 
 # Short scripted conversations: (room, sender, text, minutes before now),
 # optionally followed by the exact text of an earlier line in the same room
-# that this one replies to.
+# that this one replies to. "@username" names a member, as when typed in the
+# app (see chat/mentions.py).
 SCRIPT = [
     # Design team, three days ago to now
     ("design", "arjun", "Morning all. Kicking off the chat redesign this week.", 4320),
@@ -46,6 +47,7 @@ SCRIPT = [
     ),
     ("design", "maya", "Let's agree on a direction by Wednesday.", 4310),
     ("design", "lee", "I'll pull together a few moodboards.", 4300),
+    ("design", "lee", "@arjun the moodboards are in the shared folder", 4290),
     ("design", "arjun", "Pushed the new spine layout to staging", 2900),
     ("design", "arjun", "Rows are one line now unless the text wraps", 2899),
     ("design", "maya", "Looks great. The day markers really help.", 2890),
@@ -59,6 +61,7 @@ SCRIPT = [
         78,
         "Can we keep Graphite + Coral as the default?",
     ),
+    ("design", "arjun", "@maya @anika can you both review the spacing tokens?", 55),
     ("design", "arjun", "Typing indicator and unread badges are live too", 40),
     (
         "design",
@@ -73,9 +76,18 @@ SCRIPT = [
         "Edit and delete work on your own messages. Press ↑ to fix the last one",
         12,
     ),
+    # A reply to Maya after she last read the room: "@" on her Design row.
+    (
+        "design",
+        "lee",
+        "Handy, I use ↑ all the time now",
+        10,
+        "Edit and delete work on your own messages. Press ↑ to fix the last one",
+    ),
     ("design", "anika", "Shipping it after lunch 🚀", 3),
     # Ops
     ("ops", "omar", "Deploy window is 14:00 today.", 300),
+    ("ops", "omar", "@lee can you watch the error rates after the deploy?", 290),
     ("ops", "sofia", "Database backups verified this morning.", 240),
     # Replies to a line deleted below, so its quote reads "Message deleted".
     (
@@ -85,6 +97,7 @@ SCRIPT = [
         30,
         "Database backups verified this morning.",
     ),
+    ("ops", "sofia", "@maya the status page copy is ready for review", 20),
     ("ops", "omar", "Deploy finished: relay v1.0 is live", 8),
     ("ops", "lee", "Smoke tests passed", 6, "Deploy finished: relay v1.0 is live"),
     # Book club
@@ -92,6 +105,8 @@ SCRIPT = [
     ("books", "sofia", "Yes please, I've been meaning to read it.", 10070),
     ("books", "priya", "I'm in. Meeting on the 30th?", 10000),
     ("books", "omar", "Works for me.", 9990),
+    # Before Priya's clear point: she never sees this mention.
+    ("books", "anika", "@priya the 30th works, I'll book a table", 9985),
     # Priya cleared the older history, so she can't see what Maya quotes.
     (
         "books",
@@ -101,6 +116,8 @@ SCRIPT = [
         "Next pick: The Left Hand of Darkness?",
     ),
     ("books", "priya", "Chapter 7 is so good", 200),
+    # After it: Priya sees this one ("@" on her Book club row).
+    ("books", "sofia", "@Priya same, it made me cry", 190),
     # Direct chats
     ("maya-arjun", "arjun", "Got a minute to look at the PR?", 30),
     (

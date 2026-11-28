@@ -86,6 +86,10 @@ The text is the same for every reason, so the error doesn't reveal whether a
 message you can't see exists. The same error is sent if the original is
 removed from the database while the reply is being saved.
 
+`@username` in the text mentions a current member (see
+[Mentions](#mentions-and-the-mentions-list)). Nothing in the frame marks a
+mention: the server finds them in `message`.
+
 ### `edit_message`
 
 ```json
@@ -94,7 +98,9 @@ removed from the database while the reply is being saved.
 
 Changes the text of one of your own messages in this room. The same rules as
 `save_message` apply to `message`. Deleted messages can't be edited. An edit
-never changes what a reply replies to; a `reply_to` key is ignored.
+never changes what a reply replies to; a `reply_to` key is ignored. The
+message's mentions follow the new text. An edit that races a delete of the
+same message (from another tab) changes nothing.
 
 ### `delete_message`
 
@@ -190,7 +196,8 @@ socket.
 ```
 
 Hides every message currently in the room for the requesting user only. Other
-members keep their history.
+members keep their history. Your mentions in those messages are removed too,
+so they no longer count towards your "@" badge.
 
 ## Server to client
 
@@ -231,7 +238,8 @@ sends `room_updated`. A failed send is logged and skipped.
   "deleted": false,
   "kind": "text",
   "reply_to": null,
-  "reactions": []
+  "reactions": [],
+  "mentions": []
 }
 ```
 
@@ -304,6 +312,30 @@ The page gets the six emoji from `<script id="reaction-emoji">` (Django's
 `json_script`): `[{"key": "thumbs_up", "char": "👍", "label": "Thumbs up"}, …]`
 in display order.
 
+#### Mentions and the `mentions` list
+
+Every message object (the page's initial JSON, `GET /chat/rooms/<uuid>/messages/`,
+`save_message`, `message_updated` and the message in inbox `room_activity`
+frames) has a `mentions` key: the members the text names, each once, in the
+order they first appear.
+
+```json
+"mentions": [{"user": "maya", "name": "Maya Rao"}, {"user": "anika", "name": "Anika Shah"}]
+```
+
+- A mention is `@` and a member's exact username in any case, not right after
+  a letter, digit or underscore, and not running on into a longer handle. Only
+  the room's current members other than the author count. The full rules are
+  in [the data model](./data-model.md#chatmention).
+- `user` is the username and `name` the full name, or the username when no
+  name is set. Both are plain text.
+- Text that names nobody, deleted messages and system messages have
+  `"mentions": []`. An edit sends the new list in `message_updated`.
+- Clients highlight only the names in the list, finding them in `message`
+  with the same rules, and insert them as text. There is no other marker in
+  `message`.
+- Messages from before mentions existed have `[]`.
+
 ### `reactions_updated` (to people who can see the message)
 
 ```json
@@ -339,9 +371,10 @@ if it's open.
 ### `message_updated` (to people who can see the message)
 
 Sent after an edit or delete, with the same fields as `save_message`. A deleted
-message has `"deleted": true`, an empty `message`, `"reply_to": null` and
-`"reactions": []` (deleting a message removes its reactions); an edited one
-has `"edited": true` and keeps its current `reactions`. The same people also get a `room_refresh` frame on their
+message has `"deleted": true`, an empty `message`, `"reply_to": null`,
+`"reactions": []` and `"mentions": []` (deleting a message removes its
+reactions and mentions); an edited one has `"edited": true`, keeps its
+current `reactions` and carries its new `mentions`. The same people also get a `room_refresh` frame on their
 inbox socket (see below).
 
 You can only edit or delete your own messages that you can still see. After
@@ -410,20 +443,33 @@ connection) or goes offline (their last connection closes).
 ```
 
 **`room_activity`**, to every member when a message is sent in one of their
-rooms, with their unread count for that room. The page uses it to update the
-preview, move the room to the top and show the unread badge, except for the
-room already open. The embedded message always has `"reply_to": null` and
-`"reactions": []`: the room list shows a reply's own text, never its quote,
-and never shows reactions.
+rooms, with their own counts for that room. The page uses it to update the
+preview, move the room to the top and show the unread and "@" badges, except
+for the room already open. The embedded message always has `"reply_to": null`
+and `"reactions": []`: the room list shows a reply's own text, never its
+quote, and never shows reactions. It carries the message's `mentions` list.
 
 ```json
 {
   "type": "room_activity",
   "room": "<room uuid>",
   "unread": 3,
-  "message": {"id": "…", "message": "standup in 5", "user": "anika", "…": "…", "reply_to": null, "reactions": []}
+  "mentions": 1,
+  "for_you": "mention",
+  "message": {"id": "…", "message": "@maya standup in 5", "user": "anika", "…": "…", "reply_to": null, "reactions": [], "mentions": [{"user": "maya", "name": "Maya Rao"}]}
 }
 ```
+
+| Key | Value |
+| --- | --- |
+| `unread` | Your unread messages in the room, up to 100 |
+| `mentions` | How many of those mention you or reply to one of your messages that you can still see, up to 100. Always `0` in direct chats |
+| `for_you` | This message relative to you: `"mention"` if it names you, `"reply"` if it replies to a message of yours you can still see, else `null`. A reply that also names you is `"mention"`. Always `null` in direct chats and for the author |
+
+The channel layer event behind it also holds the room type, the author's id,
+the mentioned ids and the replied-to author's id, so each inbox socket can
+work out its own counts without loading the room. None of these reach the
+client.
 
 **`room_added`**, **`room_changed`**, **`room_removed`**, **`room_refresh`**:
 keep the room list live. All four are sent only after the database change
@@ -445,10 +491,15 @@ titled with the other person's name):
   "room": {
     "id": "<room uuid>", "title": "Launch prep", "initials": "LP", "type": "group",
     "member_count": 3, "last_content": "", "last_at": null, "last_is_mine": false,
-    "unread": 0, "other_username": "", "member_usernames": ["arjun", "maya", "sam"]
+    "unread": 0, "mentions": 0, "other_username": "", "member_usernames": ["arjun", "maya", "sam"]
   }
 }
 ```
+
+`unread` is your unread messages in the room. `mentions` is how many of those
+mention you or reply to one of your messages that you can still see; it is
+always `0` for direct chats. Both stop at 100 (the page shows "99+"). There is
+no separate read state: opening or reading the room clears both.
 
 `room_changed` is one partial room object, the same for every member, and is
 only sent for groups. It has only these keys; the page applies them and never
@@ -505,8 +556,8 @@ list (a `room_added` frame was missed), the page fetches the row from
 
 Every time the inbox socket opens, the page fetches the whole list from
 `GET /chat/rooms/summaries/` and makes the page match it: missing rooms are
-added, rooms not in the list are removed, and titles, previews and unread
-counts are updated. This includes the first connect after page load: frames
+added, rooms not in the list are removed, and titles, previews, unread and
+"@" counts are updated. This includes the first connect after page load: frames
 sent between the server rendering the page and the socket joining its group
 would otherwise be lost.
 

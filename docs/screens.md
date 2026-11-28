@@ -77,7 +77,7 @@ Styles `account/static/account/css/auth.css`, script
 | Width | Room list | Open room |
 | --- | --- | --- |
 | 1024px and up | Names, last-message preview and time | Beside the list |
-| 600 to 1023px | Icon rail of initials; name on hover. Screen readers still hear each room's name, preview and unread count, and the New chat button's name | Beside the rail |
+| 600 to 1023px | Icon rail of initials; name on hover. Screen readers still hear each room's name, preview and unread count, and the New chat button's name. A row with mentions shows only the "@" chip; its unread count stays in the accessible name | Beside the rail |
 | Under 600px | Full screen when no room is open | Full screen with a back arrow |
 
 ### Room list
@@ -90,8 +90,17 @@ Styles `account/static/account/css/auth.css`, script
 - Group rooms have round avatars; private rooms square, with a dot that turns
   green while the other person is online.
 - Rooms with unread messages show a count badge and bold text; the browser
-  tab title shows the total, for example "(3) Chats · Relay". New messages in
-  other rooms update the preview and move the room to the top live.
+  tab title shows the total, for example "(3) Chats · Relay". Counts stop at
+  100 per chat: a badge shows "99+", and the title shows "(99+)" once the
+  total reaches 100 or any chat is capped. New messages in other rooms update
+  the preview and move the room to the top live.
+- **"@" chip**: a group with unread messages that mention you, or reply to a
+  message of yours you can still see, shows an outlined "@" chip before the
+  unread count. Screen readers hear "Mentions and replies: 2. Unread: 5." The
+  chip updates live and clears when you open the chat; there is no separate
+  "read" for mentions. Direct chats never show it, since every message there
+  is for you. The tab title counts unread messages only. Each row carries
+  `data-room-type` (`group` or `private`) and `data-mentions` (its count).
 - The list changes live, without a reload: a chat or group someone starts
   with you grows into place at the top and briefly flashes the accent colour,
   a renamed group updates its title, and a group you're removed from (or
@@ -145,7 +154,7 @@ Styles `account/static/account/css/auth.css`, script
   transcript.
 - **Composer**: grows with the text up to about six lines. Enter sends,
   Shift+Enter adds a line, ↑ in an empty composer edits your last message. Send is disabled while disconnected; the text stays
-  in the box.
+  in the box. Typing `@` opens the [mention list](#mentions).
 - **Group events** ("Maya added Lee", "Arjun is now an admin") appear as muted
   one-line rows with a small diamond on the spine. They never join a sender's
   group of messages, can't be edited, and don't count as unread or show as the
@@ -169,9 +178,9 @@ Styles `account/static/account/css/auth.css`, script
   the bottom of the transcript, it stays there as the bar opens and closes.
 - **Sending** sends the reply and closes the bar. Esc in the composer or the
   bar, or ×, cancels the reply ("Reply cancelled"). Escape closes the
-  innermost thing first: an open dialog, menu, reaction picker or the
-  tooltip of a chip with keyboard focus, then the reply, then the Details
-  panel. A tooltip shown only by mouse hover hides on Escape but doesn't
+  innermost thing first: the mention list, an open dialog, menu, reaction
+  picker or the tooltip of a chip with keyboard focus, then the reply, then
+  the Details panel. A tooltip shown only by mouse hover hides on Escape but doesn't
   hold it back. If the message you're replying to is deleted, the bar closes
   with "The message you were replying to was deleted."
 - If the server refuses the reply (the message was deleted or hidden
@@ -237,6 +246,44 @@ Styles `account/static/account/css/auth.css`, script
   its reactions. A reaction that adds or removes a line of chips keeps the
   messages you're reading in place.
 
+#### Mentions
+
+- **Highlights**: `@username` naming a current member shows as a bold
+  accent-coloured name; its tooltip is the person's name ("You" for you). A
+  mention of you is stronger: a tinted fill with an accent edge. Only the names
+  the server matched are highlighted (see
+  [the data model](./data-model.md#chatmention)), so `x@maya`, `@mayabee`
+  or a non-member stay plain text, and the sender isn't told.
+- **For you**: in a group, a message from someone else that mentions you, or
+  replies to a message of yours you can still see, gets a 3px accent edge on
+  the left and a faint tint. Direct chats don't, since every message there is
+  for you.
+- **Edits and deletes**: an edit updates the highlights for everyone live;
+  a deleted message has none.
+- **Autocomplete**: typing `@` (not right after a letter, digit or
+  underscore) and the start of a name opens a list above the composer (and
+  above the reply bar when replying). It shows up to 8 members, not you, each
+  with initials, name and @username. Usernames that start with what you typed
+  come first, then names where the whole name, any word of it or any part of a
+  hyphenated word starts with it: "@ch" finds Lee Chen, and "@smith" would
+  find "Jo Lee-Smith". Case doesn't matter, and names in any script work.
+- **Keys** while the list is open: ↑ and ↓ move (wrapping round), Enter or Tab
+  inserts `@username ` in place of what you typed, and Escape closes it (it
+  stays closed for that `@` until you type again). Those keys do nothing else
+  meanwhile: Enter doesn't send, ↑ doesn't edit your last message, Escape
+  doesn't cancel the reply. Ctrl, Cmd or Alt+Enter closes the list and sends
+  as usual. A click or tap picks a person; moving focus away closes the list.
+  The composer hint reads "↑↓ choose · ↵ insert · Esc close" while it's open.
+- **Screen readers**: the composer points at the active option
+  (`aria-activedescendant`). A polite status says "3 people match. Up and down
+  to choose, Enter to insert." when the list opens or the number changes,
+  "No one matches" when typing narrows it to nobody, and clears when it closes.
+- **Escape order**: the mention list first, then an open dialog, menu or
+  reaction picker, then the reply, then the Details panel.
+- Touch screens: options are 44px tall and the list is at most four and a half
+  rows (or 45% of the screen) high. Members who join while the room is open
+  appear in the list by username until the page reloads.
+
 #### When the open room goes away
 
 When you're removed from the open group, leave it in another tab, or it's
@@ -254,7 +301,8 @@ deleted, the room is replaced by a pane that names the chat:
   tall on touch screens and phones).
 - Focus moves to the heading, which is the page's only `h1`. The room title
   in the header becomes a plain paragraph.
-- The unread count prefix in the tab title, for example "(2)", still works.
+- The unread count prefix in the tab title, for example "(2)" or "(99+)",
+  still works.
 - Which copy you see comes from the room socket: the page reconnects it and
   the server's close code (`4403` or `4404`) picks the text. If there's no
   answer within 3 seconds (for example, you're offline), it shows the
@@ -277,8 +325,8 @@ hidden, they show at the top of the room list instead.
 
 The **Details** button in the room header opens a panel: a third column on
 desktop and tablet, full screen on phones. Escape closes the innermost open
-thing first (a menu or dialog, then a reply you're writing when focus is in
-the composer, then the panel). Escape in an inline message edit cancels the
+thing first (the mention list, then a menu or dialog, then a reply you're
+writing when focus is in the composer, then the panel). Escape in an inline message edit cancels the
 edit and leaves the panel open.
 
 | Part | Who sees it | What it does |

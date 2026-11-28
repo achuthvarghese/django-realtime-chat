@@ -2889,6 +2889,7 @@ class TestReplyReviewSockets:
             "kind",
             "reply_to",
             "reactions",
+            "mentions",
         }
         assert (frame["type"], frame["message"], frame["edited"]) == (
             "message_updated",
@@ -3469,3 +3470,709 @@ class TestRedisSettings:
         finally:
             monkeypatch.delenv("REDIS_URL", raising=False)
             importlib.reload(base)
+
+
+# Mentions (P10c)
+
+
+@pytest.fixture
+def team(maya, arjun, lee):
+    """A group with maya, arjun, lee and "Lee.Chen" (a createsuperuser-style
+    username); first names so mentions carry names."""
+    from chat.services import create_group_room
+
+    User.objects.filter(pk=maya.pk).update(first_name="Maya", last_name="Rao")
+    User.objects.filter(pk=arjun.pk).update(first_name="Arjun", last_name="Kumar")
+    User.objects.create_user("Lee.Chen", password="pw")
+    return create_group_room(maya, "Team", ["arjun", "lee", "Lee.Chen"])
+
+
+def mentioned_usernames(message):
+    from chat.models import Mention
+
+    return sorted(
+        Mention.objects.filter(message=message).values_list("user__username", flat=True)
+    )
+
+
+@pytest.mark.django_db
+class TestFindMentions:
+    @pytest.fixture
+    def people(self, db):
+        return {
+            name: User.objects.create_user(name, password="pw")
+            for name in ("maya", "lee", "lee.chen", "a+b", "ops-bot")
+        }
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("@maya hi", ["maya"]),
+            ("hi @maya", ["maya"]),
+            ("@MAYA and @Lee", ["maya", "lee"]),
+            ("@lee, @maya.", ["lee", "maya"]),
+            ("(@lee) @maya! @maya?", ["lee", "maya"]),
+            ("@lee: done; @maya", ["lee", "maya"]),
+            ("@lee.", ["lee"]),
+            ("@lee...", ["lee"]),
+            ("mail a@maya.com", []),
+            ("x@maya", []),
+            ("9@maya _@maya", []),
+            ("@mayabee", []),
+            ("@may", []),
+            ("@ maya", []),
+            ("@lee.chen ships", ["lee.chen"]),
+            ("@lee.chenx", []),
+            ("@a+b and @ops-bot", ["a+b", "ops-bot"]),
+            ("@maya@lee", []),
+            ("@@maya", ["maya"]),
+            ("@unknown", []),
+            ("", []),
+            ("@maya @maya @MAYA", ["maya"]),
+            ("@lee then @maya then @lee", ["lee", "maya"]),
+        ],
+    )
+    def test_table(self, people, text, expected):
+        from chat.mentions import find_mentions
+
+        found = find_mentions(text, people.values())
+        assert [u.username for u in found] == expected
+
+    def test_only_candidates_match(self, people):
+        from chat.mentions import find_mentions
+
+        assert find_mentions("@maya @lee", [people["lee"]]) == [people["lee"]]
+        assert find_mentions("@maya", []) == []
+
+
+def send_and_receive(room, user, payload):
+    """Send one frame from `user` on a fresh room socket and return the first
+    frame back (the sender's own copy)."""
+    from asgiref.sync import async_to_sync
+
+    async def run():
+        socket = make_communicator(room.id, user)
+        assert (await socket.connect())[0]
+        await socket.send_json_to(payload)
+        frame = await socket.receive_json_from(timeout=2)
+        await socket.disconnect()
+        return frame
+
+    return async_to_sync(run)()
+
+
+@pytest.mark.django_db(transaction=True)
+class TestMentionsOnSave:
+    def test_save_stores_and_sends_mentions_in_order(self, team, maya):
+        frame = send_and_receive(
+            team, maya, {"type": "save_message", "message": "@lee then @Arjun"}
+        )
+        assert frame["type"] == "save_message"
+        assert frame["mentions"] == [
+            {"user": "lee", "name": "Lee"},
+            {"user": "arjun", "name": "Arjun Kumar"},
+        ]
+        message = Message.objects.get(id=frame["id"])
+        assert mentioned_usernames(message) == ["arjun", "lee"]
+        assert list(message.mentions.order_by("username")) == list(
+            User.objects.filter(username__in=["arjun", "lee"]).order_by("username")
+        )
+
+    def test_self_unknown_non_member_and_email_are_plain(self, team, maya):
+        User.objects.create_user("eve", password="pw")
+        frame = send_and_receive(
+            team,
+            maya,
+            {"type": "save_message", "message": "@maya @eve @nobody lee@arjun.com"},
+        )
+        assert frame["mentions"] == []
+        assert mentioned_usernames(Message.objects.get(id=frame["id"])) == []
+
+    def test_removed_member_is_not_mentioned(self, team, maya, lee):
+        from chat import groups
+
+        groups.remove_member(team, maya, lee)
+        frame = send_and_receive(
+            team, maya, {"type": "save_message", "message": "@lee are you there?"}
+        )
+        assert frame["mentions"] == []
+
+    def test_superuser_style_username(self, team, maya):
+        frame = send_and_receive(
+            team, maya, {"type": "save_message", "message": "ping @lee.chen."}
+        )
+        assert [m["user"] for m in frame["mentions"]] == ["Lee.Chen"]
+
+    def test_direct_chat_mentions_are_stored(self, room, maya):
+        frame = send_and_receive(
+            room, maya, {"type": "save_message", "message": "@arjun look"}
+        )
+        assert [m["user"] for m in frame["mentions"]] == ["arjun"]
+
+
+@pytest.mark.django_db(transaction=True)
+class TestMentionsOnEditDelete:
+    def test_edit_adds_and_removes(self, team, maya):
+        message = visible_text(team, maya, "@lee hi")
+        from chat.mentions import find_mentions, sync_mentions
+
+        sync_mentions(message, find_mentions(message.content, team.members.all()))
+        assert mentioned_usernames(message) == ["lee"]
+        frame = send_and_receive(
+            team,
+            maya,
+            {"type": "edit_message", "id": str(message.id), "message": "@arjun hi"},
+        )
+        assert frame["type"] == "message_updated"
+        assert [m["user"] for m in frame["mentions"]] == ["arjun"]
+        assert mentioned_usernames(message) == ["arjun"]
+
+    def test_edit_mentions_dont_reveal_who_cleared(self, team, maya, arjun, lee):
+        # lee cleared it: the author's frame mustn't differ from when he
+        # hadn't, and he still doesn't get a count for it.
+        from chat.presence import unread_and_mentions
+
+        message = visible_text(team, maya, "hi", visible=[maya, arjun])
+        frame = send_and_receive(
+            team,
+            maya,
+            {"type": "edit_message", "id": str(message.id), "message": "@lee @arjun"},
+        )
+        assert [m["user"] for m in frame["mentions"]] == ["lee", "arjun"]
+        assert unread_and_mentions(lee, [team.pk])[team.pk] == (0, 0)
+        assert unread_and_mentions(arjun, [team.pk])[team.pk] == (1, 1)
+
+    def test_unchanged_edit_keeps_mentions(self, team, maya):
+        from chat.mentions import find_mentions, sync_mentions
+
+        message = visible_text(team, maya, "@lee hi")
+        sync_mentions(message, find_mentions(message.content, team.members.all()))
+        frame = send_and_receive(
+            team,
+            maya,
+            {"type": "edit_message", "id": str(message.id), "message": "@lee hi"},
+        )
+        assert [m["user"] for m in frame["mentions"]] == ["lee"]
+
+    def test_delete_removes_mentions(self, team, maya):
+        from chat.mentions import find_mentions, sync_mentions
+
+        message = visible_text(team, maya, "@lee @arjun")
+        sync_mentions(message, find_mentions(message.content, team.members.all()))
+        frame = send_and_receive(
+            team, maya, {"type": "delete_message", "id": str(message.id)}
+        )
+        assert frame["deleted"] is True
+        assert frame["mentions"] == []
+        assert mentioned_usernames(message) == []
+
+    def test_deleting_the_message_row_cascades(self, team, maya):
+        from chat.mentions import find_mentions, sync_mentions
+        from chat.models import Mention
+
+        message = visible_text(team, maya, "@lee")
+        sync_mentions(message, find_mentions(message.content, team.members.all()))
+        message.delete()
+        assert not Mention.objects.exists()
+
+
+def mention(message, *users):
+    from chat.models import Mention
+
+    for user in users:
+        Mention.objects.create(message=message, user=user)
+    return message
+
+
+@pytest.mark.django_db
+class TestMentionsInHistory:
+    def test_history_and_page_carry_mentions(self, client, team, maya, arjun, lee):
+        message = mention(visible_text(team, arjun, "@lee and @maya"), maya, lee)
+        system = Message.objects.create(
+            content="@lee joined", room=team, user=maya, kind=Message.Kinds.SYSTEM
+        )
+        system.visible_for.add(maya)
+        client.force_login(maya)
+        response = client.get(reverse("chat:chat"), {"room": team.id})
+        rows = {m["id"]: m for m in response.context["room_messages"]}
+        # In order of appearance, not of the rows.
+        assert rows[str(message.id)]["mentions"] == [
+            {"user": "lee", "name": "Lee"},
+            {"user": "maya", "name": "Maya Rao"},
+        ]
+        assert rows[str(system.id)]["mentions"] == []
+        data = client.get(reverse("chat:history", args=[team.id])).json()
+        found = next(m for m in data["messages"] if m["id"] == str(message.id))
+        assert [m["user"] for m in found["mentions"]] == ["lee", "maya"]
+
+    def test_deleted_message_has_no_mentions(self, team, maya, lee):
+        from django.utils import timezone
+
+        from chat.views import history_page
+
+        message = mention(visible_text(team, maya, "@lee"), lee)
+        Message.objects.filter(pk=message.pk).update(deleted_at=timezone.now())
+        page, _ = history_page(team, maya)
+        assert page[-1]["mentions"] == []
+
+    def test_history_adds_one_flat_query(self, team, maya, arjun, lee):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from chat.views import history_page
+
+        counts = []
+        for total in (1, 30):
+            while Message.objects.filter(room=team).count() < total:
+                mention(visible_text(team, arjun, "@lee @maya"), lee, maya)
+            with CaptureQueriesContext(connection) as ctx:
+                history_page(team, maya)
+            counts.append(len(ctx.captured_queries))
+            assert any("chat_mention" in q["sql"] for q in ctx.captured_queries)
+        assert counts[0] == counts[1] == 3
+
+    def test_page_has_room_members_sorted_by_name(self, client, team, maya):
+        client.force_login(maya)
+        response = client.get(reverse("chat:chat"), {"room": team.id})
+        members = response.context["room_members"]
+        assert [m["username"] for m in members] == ["arjun", "lee", "Lee.Chen", "maya"]
+        assert members[0] == {
+            "username": "arjun",
+            "name": "Arjun Kumar",
+            "initials": "AK",
+        }
+        assert client.get(reverse("chat:chat")).context["room_members"] == []
+
+
+@pytest.mark.django_db
+class TestMentionCounts:
+    def summaries(self, user):
+        from chat.presenters import room_summaries
+
+        return {r["id"]: r for r in room_summaries(user)}
+
+    def test_mentions_and_replies_to_you_count(self, team, maya, arjun, lee):
+        own = visible_text(team, maya, "question")
+        mention(visible_text(team, arjun, "@maya look"), maya)
+        reply(team, lee, own, "answer")
+        visible_text(team, arjun, "plain")
+        mention(visible_text(team, arjun, "@lee"), lee)
+        row = self.summaries(maya)[str(team.id)]
+        assert (row["unread"], row["mentions"]) == (4, 2)
+        assert self.summaries(lee)[str(team.id)]["mentions"] == 1
+
+    def test_a_reply_that_mentions_you_counts_once(self, team, maya, arjun):
+        own = visible_text(team, maya, "q")
+        mention(reply(team, arjun, own, "@maya a"), maya)
+        assert self.summaries(maya)[str(team.id)]["mentions"] == 1
+
+    def test_own_messages_and_hidden_ones_dont_count(self, team, maya, arjun):
+        own = visible_text(team, maya, "q")
+        reply(team, maya, own, "self reply")
+        mention(visible_text(team, arjun, "@maya", visible=[arjun]), maya)
+        assert self.summaries(maya)[str(team.id)]["mentions"] == 0
+
+    def test_direct_chats_are_always_zero(self, room, maya, arjun):
+        own = visible_text(room, maya, "q")
+        reply(room, arjun, own, "a")
+        mention(visible_text(room, arjun, "@maya"), maya)
+        row = self.summaries(maya)[str(room.id)]
+        assert (row["unread"], row["mentions"]) == (2, 0)
+
+    def test_cleared_on_read(self, team, maya, arjun):
+        from chat import presence
+
+        mention(visible_text(team, arjun, "@maya"), maya)
+        presence.mark_read(maya, team)
+        assert self.summaries(maya)[str(team.id)]["mentions"] == 0
+
+    def test_summaries_endpoint(self, client, team, maya, arjun):
+        mention(visible_text(team, arjun, "@maya"), maya)
+        client.force_login(maya)
+        rooms = client.get(reverse("chat:summaries")).json()["rooms"]
+        assert rooms[0]["mentions"] == 1
+        one = client.get(reverse("chat:summary", args=[team.id])).json()
+        assert one["mentions"] == 1
+
+    def test_room_summaries_for_users_matches(self, team, maya, arjun, lee):
+        from chat.presenters import room_summaries_for_users, room_summary
+
+        own = visible_text(team, maya, "q")
+        reply(team, lee, own, "a")
+        mention(visible_text(team, arjun, "@maya @lee"), maya, lee)
+        users = list(team.members.all())
+        many = room_summaries_for_users(team.id, users)
+        for user in users:
+            assert many[user.pk] == room_summary(user, team.id)
+        assert many[maya.pk]["mentions"] == 2
+        assert many[lee.pk]["mentions"] == 1
+        assert many[arjun.pk]["mentions"] == 0
+
+    def test_room_summaries_for_users_direct_is_zero(self, room, maya, arjun):
+        from chat.presenters import room_summaries_for_users
+
+        mention(visible_text(room, arjun, "@maya"), maya)
+        assert room_summaries_for_users(room.id, [maya])[maya.pk]["mentions"] == 0
+
+    def test_no_extra_query(self, team, maya, arjun):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from chat.presence import unread_and_mentions
+
+        counts = []
+        for total in (1, 20):
+            while Message.objects.filter(room=team).count() < total:
+                mention(visible_text(team, arjun, "@maya"), maya)
+            with CaptureQueriesContext(connection) as ctx:
+                result = unread_and_mentions(maya, [team.pk])
+            counts.append(len(ctx.captured_queries))
+            assert result[team.pk] == (total, total)
+        # One grouped count; read states come in a subquery.
+        assert counts == [1, 1]
+
+    def test_rooms_for_queries_stay_flat(self, maya, arjun):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from chat.presenters import rooms_for
+
+        counts = []
+        for total in (2, 8):
+            while maya.rooms.count() < total:
+                r = Room.objects.create(name="g", type=Room.RoomTypes.GROUP)
+                r.members.add(maya, arjun)
+                mention(visible_text(r, arjun, "@maya"), maya)
+            with CaptureQueriesContext(connection) as ctx:
+                rows = rooms_for(maya)
+            counts.append(len(ctx.captured_queries))
+            assert all(r["mentions"] == 1 for r in rows)
+        assert counts[0] == counts[1]
+
+    def test_room_summaries_for_users_queries_stay_flat(self, maya):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from chat.presenters import room_summaries_for_users
+        from chat.services import MAX_GROUP_MEMBERS
+
+        people = make_users("p", MAX_GROUP_MEMBERS - 1)
+        group = Room.objects.create(name="big", type=Room.RoomTypes.GROUP)
+        group.members.add(maya, *people)
+        counts = []
+        for size in (2, MAX_GROUP_MEMBERS):
+            viewers = [maya, *people][:size]
+            mention(visible_text(group, people[0], "@x"), *viewers[1:2])
+            with CaptureQueriesContext(connection) as ctx:
+                room_summaries_for_users(group.id, viewers)
+            counts.append(len(ctx.captured_queries))
+        assert counts[0] == counts[1]
+
+
+@pytest.mark.django_db(transaction=True)
+class TestMentionInboxFrames:
+    async def activity_for(self, room, sender, payload, *recipients):
+        inboxes = []
+        for user in recipients:
+            inbox = make_inbox(user)
+            await inbox.connect()
+            await inbox.receive_json_from()  # snapshot
+            inboxes.append(inbox)
+        socket = make_communicator(room.id, sender)
+        await socket.connect()
+        await socket.send_json_to(payload)
+        frames = [await next_frame_of_type(i, "room_activity") for i in inboxes]
+        await socket.disconnect()
+        for inbox in inboxes:
+            await inbox.disconnect()
+        return frames
+
+    async def test_mention_reply_and_plain_per_recipient(self, team, maya, arjun, lee):
+        own = await database_sync_to_async(visible_text)(team, arjun, "question")
+        to_maya, to_arjun, to_lee = await self.activity_for(
+            team,
+            lee,
+            {"type": "save_message", "message": "@maya see", "reply_to": str(own.id)},
+            maya,
+            arjun,
+            lee,
+        )
+        assert (to_maya["for_you"], to_maya["mentions"], to_maya["unread"]) == (
+            "mention",
+            1,
+            2,
+        )
+        assert (to_arjun["for_you"], to_arjun["mentions"]) == ("reply", 1)
+        # The sender: never for them, and sending marks the room read.
+        assert (to_lee["for_you"], to_lee["mentions"], to_lee["unread"]) == (
+            None,
+            0,
+            0,
+        )
+        assert to_maya["message"]["mentions"] == [{"user": "maya", "name": "Maya Rao"}]
+        assert to_maya["message"]["reply_to"] is None
+
+    async def test_direct_chat_is_never_for_you(self, room, maya, arjun):
+        own = await database_sync_to_async(visible_text)(room, arjun, "q")
+        (frame,) = await self.activity_for(
+            room,
+            maya,
+            {"type": "save_message", "message": "@arjun a", "reply_to": str(own.id)},
+            arjun,
+        )
+        assert (frame["for_you"], frame["mentions"]) == (None, 0)
+
+    def test_inbox_message_is_one_query_without_loading_the_room(
+        self, team, maya, arjun
+    ):
+        from unittest import mock
+
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from chat.channels.consumers import InboxConsumer
+
+        mention(visible_text(team, arjun, "@maya"), maya)
+        consumer = InboxConsumer()
+        consumer.user = maya
+        sent = []
+        event = {
+            "type": "inbox.message",
+            "room": str(team.id),
+            "group": True,
+            "author": arjun.pk,
+            "mentioned": [maya.pk],
+            "reply_to_author": None,
+            "data": {"id": "x"},
+        }
+        with mock.patch.object(
+            consumer, "send", side_effect=lambda text_data: sent.append(text_data)
+        ):
+            with CaptureQueriesContext(connection) as ctx:
+                consumer.inbox_message(event)
+        # Read state, then the capped unread and mention counts.
+        assert len(ctx.captured_queries) == 3
+        # The room itself is never read (only its messages and read state).
+        assert all('"chat_room"' not in q["sql"] for q in ctx.captured_queries)
+        frame = json.loads(sent[0])
+        assert (frame["unread"], frame["mentions"], frame["for_you"]) == (
+            1,
+            1,
+            "mention",
+        )
+
+
+# Mentions review fixes (P10c round 2)
+
+
+@pytest.mark.django_db
+class TestFindMentionsFolding:
+    def test_case_folding_changes_length(self):
+        from chat.mentions import find_mentions
+
+        ilker = User.objects.create_user("İlker", password="pw")
+        strasse = User.objects.create_user("straße", password="pw")
+        found = find_mentions("hi @İLKER and @STRASSE, @İlker", [ilker, strasse])
+        assert found == [ilker, strasse]
+        assert find_mentions("@ilkerx", [ilker]) == []
+
+    def test_crafted_text_is_fast(self):
+        import time
+
+        from chat.channels.consumers import MAX_MESSAGE_LENGTH
+        from chat.mentions import find_mentions
+
+        people = [
+            User.objects.create_user(f"user{'x' * i}", password="pw") for i in range(50)
+        ]
+        texts = [
+            "@" * MAX_MESSAGE_LENGTH,
+            " @" * (MAX_MESSAGE_LENGTH // 2),
+            " @userxxxxxxxxxxxxxxxxxxxxxxxxx" * (MAX_MESSAGE_LENGTH // 31),
+        ]
+        for text in texts:
+            start = time.perf_counter()
+            for _ in range(10):
+                find_mentions(text, people)
+            assert (time.perf_counter() - start) / 10 < 0.02
+
+    def test_only_the_first_signs_are_scanned(self):
+        from chat.mentions import MAX_MENTION_SIGNS, find_mentions
+
+        lee = User.objects.create_user("lee", password="pw")
+        text = "@x " * MAX_MENTION_SIGNS + "@lee"
+        assert find_mentions(text, [lee]) == []
+        assert find_mentions("@x " * (MAX_MENTION_SIGNS - 1) + "@lee", [lee]) == [lee]
+
+
+@pytest.mark.django_db
+class TestMentionCountsRound2:
+    def test_counts_are_capped(self, team, maya, arjun):
+        from chat.models import Mention
+        from chat.presence import COUNT_CAP, room_counts, unread_and_mentions
+        from chat.presenters import room_summaries_for_users, room_summary
+
+        messages = [
+            Message(content="@maya", room=team, user=arjun)
+            for _ in range(COUNT_CAP + 5)
+        ]
+        Message.objects.bulk_create(messages)
+        Message.visible_for.through.objects.bulk_create(
+            Message.visible_for.through(message_id=m.pk, user_id=maya.pk)
+            for m in messages
+        )
+        Mention.objects.bulk_create(Mention(message=m, user=maya) for m in messages)
+        assert unread_and_mentions(maya, [team.pk])[team.pk] == (COUNT_CAP, COUNT_CAP)
+        assert room_counts(maya, team.pk, True) == (COUNT_CAP, COUNT_CAP)
+        row = room_summary(maya, team.id)
+        assert (row["unread"], row["mentions"]) == (COUNT_CAP, COUNT_CAP)
+        many = room_summaries_for_users(team.id, [maya])[maya.pk]
+        assert (many["unread"], many["mentions"]) == (COUNT_CAP, COUNT_CAP)
+
+    def test_grouped_counts_match_a_per_room_count(self, maya, arjun, lee):
+        """A mixed scenario: rooms read and never opened, direct and group,
+        mentions, replies, hidden and deleted messages."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from chat import presence
+        from chat.models import Mention
+        from chat.presence import room_counts, unread_and_mentions
+
+        now = timezone.now()
+        rooms = []
+        for i, kind in enumerate(["group", "group", "private", "group"]):
+            r = Room.objects.create(name=f"r{i}", type=kind)
+            r.members.add(maya, arjun, *([lee] if kind == "group" else []))
+            rooms.append(r)
+        for i, r in enumerate(rooms):
+            own = timed_message(r, maya, "mine", now - timedelta(minutes=50))
+            for j in range(6):
+                m = timed_message(
+                    r,
+                    arjun if j % 2 else lee if r.type == "group" else arjun,
+                    "@maya" if j % 3 == 0 else "x",
+                    now - timedelta(minutes=40 - j * 5),
+                    visible=None if j != 4 else [arjun],
+                )
+                if j % 3 == 0:
+                    Mention.objects.create(message=m, user=maya)
+                if j == 2:
+                    Message.objects.filter(pk=m.pk).update(reply_to=own)
+                if j == 5:
+                    Message.objects.filter(pk=m.pk).update(deleted_at=now)
+        presence.mark_read(maya, rooms[0], now - timedelta(minutes=30))
+        presence.mark_read(maya, rooms[2], now - timedelta(minutes=30))
+        grouped = unread_and_mentions(maya, [r.pk for r in rooms])
+        for r in rooms:
+            assert grouped[r.pk] == room_counts(maya, r.pk, r.type == "group")
+        # Never opened: 4 visible, not deleted (2 mentions + 1 reply);
+        # read 30 minutes ago: only the mention at -25 counts (-20 is hidden,
+        # -15 deleted).
+        assert grouped[rooms[1].pk] == (4, 3)
+        assert grouped[rooms[0].pk] == (1, 1)
+        assert grouped[rooms[2].pk][1] == 0
+
+    def test_reply_counts_only_while_you_see_the_original(self, team, maya, arjun):
+        from chat.presence import room_counts, unread_and_mentions
+        from chat.presenters import room_summaries_for_users
+
+        own = visible_text(team, maya, "q")
+        reply(team, arjun, own, "a")
+        assert unread_and_mentions(maya, [team.pk])[team.pk] == (1, 1)
+        maya.visible_for.remove(own)
+        assert unread_and_mentions(maya, [team.pk])[team.pk] == (1, 0)
+        assert room_counts(maya, team.pk, True) == (1, 0)
+        assert room_summaries_for_users(team.id, [maya])[maya.pk]["mentions"] == 0
+
+
+@pytest.mark.django_db(transaction=True)
+class TestMentionSocketsRound2:
+    async def test_reply_to_a_cleared_original_is_not_for_you(self, team, maya, arjun):
+        def build():
+            own = visible_text(team, arjun, "q")
+            arjun.visible_for.remove(own)
+            return own
+
+        own = await database_sync_to_async(build)()
+        # arjun can't see his original any more; maya still can.
+        (frame,) = await TestMentionInboxFrames().activity_for(
+            team,
+            maya,
+            {"type": "save_message", "message": "a", "reply_to": str(own.id)},
+            arjun,
+        )
+        assert (frame["for_you"], frame["mentions"]) == (None, 0)
+
+    def test_clear_room_keeps_mentions_but_not_counts(self, team, maya, arjun, lee):
+        """Clearing doesn't touch Mention rows (the author's view of their
+        own message must not change), but the message no longer counts for
+        the person who cleared it, nor reaches their history."""
+        from chat.mentions import find_mentions, sync_mentions
+        from chat.presence import room_counts
+        from chat.views import history_page
+
+        message = visible_text(team, arjun, "@maya @lee")
+        sync_mentions(message, find_mentions(message.content, [maya, lee]))
+        frame = send_and_receive(team, maya, {"type": "clear_room"})
+        assert frame["cleared"] is True
+        assert sorted(mentioned_usernames(message)) == ["lee", "maya"]
+        assert room_counts(maya, team.id, True) == (0, 0)
+        page, _ = history_page(team, maya)
+        assert str(message.id) not in [m["id"] for m in page]
+        author_page, _ = history_page(team, arjun)
+        (row,) = [m for m in author_page if m["id"] == str(message.id)]
+        assert [m["user"] for m in row["mentions"]] == ["maya", "lee"]
+
+    def test_edit_racing_a_delete_changes_nothing(self, team, maya):
+        from unittest import mock
+
+        from django.utils import timezone
+
+        from chat.channels.consumers import ChatConsumer
+
+        message = visible_text(team, maya, "hi")
+        stale = Message.objects.select_related("user").get(pk=message.pk)
+        Message.objects.filter(pk=message.pk).update(
+            deleted_at=timezone.now(), content=""
+        )
+        consumer = ChatConsumer()
+        consumer.user = maya
+        consumer.room = team
+        with (
+            mock.patch.object(consumer, "own_message", return_value=stale),
+            mock.patch.object(consumer, "broadcast_update") as broadcast,
+        ):
+            consumer.handle_edit_message({"message": "@lee back", "id": str(stale.id)})
+        broadcast.assert_not_called()
+        message.refresh_from_db()
+        assert (message.content, message.edited_at) == ("", None)
+        assert mentioned_usernames(message) == []
+
+
+@pytest.mark.django_db(transaction=True)
+class TestMentionMigration:
+    def test_migration_applies_and_reverses(self):
+        from django.db import connection
+        from django.db.migrations.executor import MigrationExecutor
+
+        def tables():
+            return set(connection.introspection.table_names())
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([("chat", "0006_reaction")])
+        assert "chat_mention" not in tables()
+        executor = MigrationExecutor(connection)
+        executor.migrate([("chat", "0007_mention")])
+        assert "chat_mention" in tables()
+        with connection.cursor() as cursor:
+            constraints = connection.introspection.get_constraints(
+                cursor, "chat_mention"
+            )
+        assert any(
+            c["unique"] and c["columns"] == ["message_id", "user_id"]
+            for c in constraints.values()
+        )
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())

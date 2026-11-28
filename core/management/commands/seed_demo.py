@@ -18,6 +18,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from account.models import Preference
+from chat.mentions import (
+    clear_mentions,
+    find_mentions,
+    sync_mentions,
+)
 from chat.models import Membership, Message, Reaction, ReadState, Room
 from core import demo_data as data
 
@@ -166,7 +171,10 @@ class Command(BaseCommand):
             )
             by_text[(room_key, text)] = message
             Message.objects.filter(pk=message.pk).update(created_at=when)
-            message.visible_for.add(*room.members.all())
+            members = list(room.members.all())
+            message.visible_for.add(*members)
+            others = [m for m in members if m.pk != users[sender].pk]
+            sync_mentions(message, find_mentions(text, others), new=True)
 
         for room_key, actor, text, when in system_rows:
             room = rooms[room_key]
@@ -177,10 +185,18 @@ class Command(BaseCommand):
             message.visible_for.add(*room.members.all())
 
         for room_key, old, new in data.EDITED:
-            Message.objects.filter(room=rooms[room_key], content=old).update(
+            room = rooms[room_key]
+            members = list(room.members.all())
+            for message in Message.objects.filter(room=room, content=old):
+                # Mentions follow the edited text, as in the app.
+                others = [m for m in members if m.pk != message.user_id]
+                sync_mentions(message, find_mentions(new, others))
+            Message.objects.filter(room=room, content=old).update(
                 content=new, edited_at=now
             )
         for room_key, text in data.DELETED:
+            for message in Message.objects.filter(room=rooms[room_key], content=text):
+                clear_mentions(message)
             Message.objects.filter(room=rooms[room_key], content=text).update(
                 content="", deleted_at=now
             )

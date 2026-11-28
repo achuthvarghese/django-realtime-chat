@@ -38,13 +38,13 @@ volume, and the next `up` seeds a fresh copy.
 
 | Username | Name | Theme saved on the account | Good for testing |
 | --- | --- | --- | --- |
-| `maya` | Maya Rao | Default (Graphite + Coral, system, compact) | **Start here.** In every group plus two direct chats, with unread messages in Design team (3), Ops (4) and her chat with Anika (1) |
+| `maya` | Maya Rao | Default (Graphite + Coral, system, compact) | **Start here.** In every group plus two direct chats, with unread messages in Design team (5, two of them "@"), Ops (6, one "@") and her chat with Anika (1) |
 | `arjun` | Arjun Kumar | Slate + Electric, dark | Second window next to Maya: live messages, typing, presence; dark mode |
 | `anika` | Anika Shah | Plum + Rose, light, comfortable | Comfortable density; the edited message is hers |
 | `lee` | Lee Chen | Midnight + Saffron, system | Theme following the operating system |
 | `sofia` | Sofia Martins | Moss + Tangerine, dark, comfortable | Ops and Book club member; direct chat with Priya |
 | `omar` | Omar Haddad | Paper + Red, light | The light Paper palette |
-| `priya` | Priya Nair | Default | Has cleared older Book club history, so she sees only the recent messages |
+| `priya` | Priya Nair | Default | Has cleared older Book club history, so she sees only the recent messages; Book club shows 2 unread and an "@" for the mention she can see |
 | `sam` | Sam Taylor | Default | **No chats yet**: empty states and starting a first chat with New chat |
 | `noah` | Noah Kim | n/a | **Inactive account**: sign-in is refused and he never appears in people search |
 
@@ -56,9 +56,9 @@ with `python manage.py createsuperuser` if you need `/admin/`.
 
 | Room | Type | Members (admins in bold) | What's in it |
 | --- | --- | --- | --- |
-| Design team | Group, created by maya | **maya**, **arjun**, anika, lee | 135 messages over ten days, enough for **infinite scroll** (the room opens with 50); grouping and day separators; one **edited** message; two group events; two **replies**; **reactions** |
-| Ops | Group, created by lee | **lee**, omar, sofia, maya | Deploy chatter; one **deleted** message ("Message deleted"); a group event; two **replies**, one quoting the deleted message |
-| Book club | Group, created by anika | **anika**, sofia, priya, omar, maya | A week-old thread plus recent replies; Priya has cleared her older history; one **reply** whose original Priya can't see; **reactions** Priya can't see |
+| Design team | Group, created by maya | **maya**, **arjun**, anika, lee | 135 messages over ten days, enough for **infinite scroll** (the room opens with 50); grouping and day separators; one **edited** message; two group events; three **replies**; **reactions**; **mentions** |
+| Ops | Group, created by lee | **lee**, omar, sofia, maya | Deploy chatter; one **deleted** message ("Message deleted"); a group event; two **replies**, one quoting the deleted message; **mentions** |
+| Book club | Group, created by anika | **anika**, sofia, priya, omar, maya | A week-old thread plus recent replies; Priya has cleared her older history; one **reply** whose original Priya can't see; **reactions** Priya can't see; a **mention** of Priya on each side of her clear point |
 | Maya ↔ Arjun | Direct | maya, arjun | Short recent exchange, all read; one **reply**; a **reaction** |
 | Maya ↔ Anika | Direct | maya, anika | One unread message for Maya |
 | Arjun ↔ Lee | Direct | arjun, lee | Code review chat |
@@ -69,8 +69,8 @@ with `python manage.py createsuperuser` if you need `/admin/`.
 1. **Live chat**: sign in as `maya` in one browser and `arjun` in a private
    window. Open Design team in both and type: you'll see "… is typing…", the
    message appear instantly and Online in the Maya ↔ Arjun header.
-2. **Unread**: as `maya`, the tab title reads "(8) Chats · Relay". Open Ops
-   and the badge and count clear.
+2. **Unread**: as `maya`, the tab title reads "(12) Chats · Relay": Design
+   team 5, Ops 6, Maya ↔ Anika 1. Open Ops and the badge and count clear.
 3. **Infinite scroll**: open Design team and scroll to the top until "Start of
    the conversation".
 4. **Edit and delete**: as `maya`, press ↑ in an empty composer to edit your
@@ -95,6 +95,14 @@ with `python manage.py createsuperuser` if you need `/admin/`.
     chip (or Tab to it) to see who reacted. Use React to add a new emoji.
     As `priya`, open Book club: the reactions on the message she cleared
     never show.
+11. **Mentions**: as `maya`, Design team and Ops show an "@" chip next to
+    their unread counts (Book club and the direct chats don't). Open Design
+    team: arjun's "@maya @anika can you both review the spacing tokens?"
+    highlights your name and is marked for you, and so is lee's reply to
+    you. Type `@` in the composer to pick someone from the list, with ↑, ↓
+    and Enter. As `priya`, Book club shows an "@" for sofia's
+    "@Priya same, it made me cry"; the mention before her clear point never
+    shows.
 
 ### Seeded replies
 
@@ -106,6 +114,20 @@ with `python manage.py createsuperuser` if you need `/admin/`.
 | Ops | lee: "Smoke tests passed" | omar: "Deploy finished: relay v1.0 is live" | A quote of the message just above |
 | Book club | maya: "Halfway through, no spoilers please!" | anika: "Next pick: The Left Hand of Darkness?" | Everyone else sees the quote; `priya` cleared the original, so she sees "Original message unavailable" |
 | Maya ↔ Arjun | maya: "Sure, sending notes in a bit" | arjun: "Got a minute to look at the PR?" | A reply in a direct chat |
+
+### Seeded mentions
+
+| Room | Message | Mentions | What it shows |
+| --- | --- | --- | --- |
+| Design team | lee: "@arjun the moodboards are in the shared folder" | arjun | An old, read mention |
+| Design team | arjun: "@maya @anika can you both review the spacing tokens?" | maya, anika | Two people in one message; unread for Maya ("@" on her row) |
+| Design team | lee: "Handy, I use ↑ all the time now" (a reply to maya's "Edit and delete work on your own messages. Press ↑ to fix the last one") | none | A reply to Maya after she last read the room counts towards her "@" |
+| Ops | omar: "@lee can you watch the error rates after the deploy?" | lee | Read by Lee |
+| Ops | sofia: "@maya the status page copy is ready for review" | maya | Unread for Maya ("@" on her row) |
+| Book club | anika: "@priya the 30th works, I'll book a table" | none | Before Priya's clear point: the mention is stored, but she can't see the message, so it never counts for her |
+| Book club | sofia: "@Priya same, it made me cry" | priya | After her clear point, in a different case; "@" on Priya's row |
+
+Six `Mention` rows in all.
 
 ### Seeded reactions
 
@@ -128,6 +150,12 @@ a fifth item: the exact text of an earlier line in the same room. The loader
 links it to the latest message with that text so far, and stops with an error
 if no earlier line in that room matches.
 
+`@username` in a script line mentions a member other than the sender, as
+when typed in the app (see [the data model](./data-model.md#chatmention)).
+Edited lines get their mentions from the new text, deleted lines lose
+theirs, and cleared history hides them from the person who cleared
+(the rows stay, so the author's view doesn't change).
+
 Each `REACTIONS` line is `(room, exact text of a text message, emoji key,
 [usernames])`, the people in the order they reacted. It matches the
 message's final text (after edits). The loader stops with an error if the
@@ -137,5 +165,5 @@ before cleared history is applied, 20 seconds apart, starting 20 seconds
 after the message.
 
 If you change the data, update
-this page; `core/tests.py` checks the unread counts, the seeded reactions and
-the scenarios listed here, and `chat/tests.py` checks the seeded replies.
+this page; `core/tests.py` checks the unread counts, the seeded mentions and
+"@" counts, the seeded reactions and the scenarios listed here, and `chat/tests.py` checks the seeded replies.
