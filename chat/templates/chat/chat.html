@@ -24,7 +24,7 @@
         <ul class="room-list" id="room-list">
             {% for r in rooms %}
             <li>
-                <a class="room-link{% if r.unread %} room-link--unread{% endif %}" href="{% url 'chat:chat' %}?room={{ r.id }}" data-room-id="{{ r.id }}" data-title="{{ r.title|lower }}"
+                <a class="room-link{% if r.unread %} room-link--unread{% endif %}" href="{% url 'chat:chat' %}?room={{ r.id }}" data-room-id="{{ r.id }}" data-room-type="{{ r.type }}" data-title="{{ r.title|lower }}"
                    {% if r.other_username %}data-username="{{ r.other_username }}"{% endif %} data-unread="{{ r.unread }}" data-mentions="{{ r.mentions|default:0 }}"
                    title="{{ r.title }}" {% if room and r.id == room_summary.id %}aria-current="page"{% endif %}>
                     <span class="room-link__avatar-wrap">
@@ -38,8 +38,8 @@
                     <span class="room-link__meta">
                         <time class="room-link__time" {% if r.last_at %}datetime="{{ r.last_at|date:'c' }}" data-relative{% endif %}>{% if r.last_at %}{{ r.last_at|date:"H:i" }}{% endif %}</time>
                         <span class="room-link__badges">
-                            <span class="badge room-link__mentions" {% if not r.mentions %}hidden{% endif %}><span aria-hidden="true">@</span><span class="visually-hidden">Mentions: <span data-mention-count>{{ r.mentions|default:0 }}</span></span></span>
-                            <span class="badge room-link__unread" {% if not r.unread %}hidden{% endif %}><span class="visually-hidden">Unread: </span><span data-unread-count>{{ r.unread }}</span></span>
+                            <span class="badge room-link__mentions" {% if not r.mentions %}hidden{% endif %}><span aria-hidden="true">@</span><span class="visually-hidden">Mentions and replies: <span data-mention-count>{% if r.mentions > 99 %}99+{% else %}{{ r.mentions|default:0 }}{% endif %}</span>. </span></span>
+                            <span class="badge room-link__unread" {% if not r.unread %}hidden{% endif %}><span class="visually-hidden">Unread: </span><span data-unread-count>{% if r.unread > 99 %}99+{% else %}{{ r.unread }}{% endif %}</span></span>
                         </span>
                     </span>
                 </a>
@@ -78,7 +78,7 @@
     <main id="main" class="chat-main">
         {% if messages %}<div class="chat-notices{% if not room %} chat-notices--main{% endif %}">{% include "core/partials/notices.html" %}</div>{% endif %}
         {% if room %}
-        <header class="chat-head">
+        <header class="chat-head" data-room-type="{{ room_summary.type }}">
             <a class="chat-head__back btn btn--ghost btn--icon" href="{% url 'chat:chat' %}" aria-label="Back to chats">←</a>
             <span class="avatar avatar--lg{% if room_summary.type == 'group' %} room-link__avatar--group{% endif %}">{{ room_summary.initials }}</span>
             <div class="chat-head__text">
@@ -123,6 +123,7 @@
             <button class="btn btn--ghost btn--icon btn--sm reply-bar__cancel" type="button" data-reply-cancel aria-label="Cancel reply" title="Cancel reply (Esc)">×</button>
         </div>
         <p class="visually-hidden" id="reply-status" aria-live="polite"></p>
+        <p class="visually-hidden" id="mention-status" aria-live="polite"></p>
 
         <form class="composer" id="composer" autocomplete="off">
             <label class="visually-hidden" for="message">Message {{ room_summary.title }}</label>
