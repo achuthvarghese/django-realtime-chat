@@ -9,9 +9,15 @@ from channels.generic.websocket import WebsocketConsumer
 from django.db import IntegrityError, OperationalError, transaction
 from django.utils import timezone
 
-from chat import live_rooms, presence, reactions
+from chat import live_rooms, mentions, presence, reactions
 from chat.models import Message, Reaction, Room
-from chat.presenters import display_name, message_data, reactions_for_message
+from chat.presenters import (
+    display_name,
+    mentions_data,
+    mentions_for_messages,
+    message_data,
+    reactions_for_message,
+)
 from chat.realtime import inbox_group, room_group
 
 MAX_MESSAGE_LENGTH = 4000
@@ -172,11 +178,13 @@ class ChatConsumer(WebsocketConsumer):
             self.send_error("You can only change your own messages", code=403)
         return message
 
-    def send_message_frame(self, frame_type, message, visible_to, reactions=None):
+    def send_message_frame(
+        self, frame_type, message, visible_to, reactions=None, mentions=None
+    ):
         """Send `message` as a `frame_type` frame to the room sockets of the
         users in `visible_to`. For a reply, those who can also see the
         original get its quote; the rest get only {"id", "available": false}
-        (one extra query). `reactions` as for message_data."""
+        (one extra query). `reactions` and `mentions` as for message_data."""
         visible_to = list(visible_to)
         # Deleted replies carry no quote (see presenters.reply_data).
         if message.reply_to_id is not None and not message.is_deleted:
@@ -206,28 +214,39 @@ class ChatConsumer(WebsocketConsumer):
                             message,
                             reply_visible=reply_visible,
                             reactions=reactions,
+                            mentions=mentions,
                         ),
                     },
                     "visible_to": pks,
                 },
             )
 
-    def broadcast_update(self, message):
-        """Send the edit or delete only to people who can see the message
-        (not those who cleared it or joined after it), and ask the same
-        people's room lists to refresh this room's preview."""
-        # Current members who can still see it: not those who cleared it,
-        # joined after it, or left (even if their socket missed the revoke).
-        visible_to = list(
-            message.visible_for.filter(memberships__room=self.room).values_list(
-                "pk", flat=True
+    def current_viewers(self, message):
+        """Current members who can still see `message`: not those who
+        cleared it, joined after it, or left (even if their socket missed
+        the revoke)."""
+        return list(
+            message.visible_for.filter(memberships__room=self.room).only(
+                "pk", "username", "first_name", "last_name"
             )
         )
+
+    def broadcast_update(self, message, viewers=None, mentions=None):
+        """Send the edit or delete only to people who can see the message
+        (`viewers`, from current_viewers), and ask the same people's room
+        lists to refresh this room's preview (the counts may have changed
+        too). `mentions` is the message's `mentions` list; None loads it."""
+        if viewers is None:
+            viewers = self.current_viewers(message)
+        visible_to = [user.pk for user in viewers]
+        if mentions is None:
+            mentions = mentions_for_messages([message]).get(message.pk, [])
         self.send_message_frame(
             WSChatType.MESSAGE_UPDATED.value,
             message,
             visible_to,
             reactions=reactions_for_message(message),
+            mentions=mentions,
         )
         live_rooms.room_refresh(self.room.id, visible_to)
 
@@ -238,11 +257,24 @@ class ChatConsumer(WebsocketConsumer):
         message = self.own_message(payload)
         if message is None:
             return
+        viewers = self.current_viewers(message)
+        mentioned = None
         if content != message.content:
-            message.content = content
-            message.edited_at = timezone.now()
-            message.save(update_fields=["content", "edited_at"])
-        self.broadcast_update(message)
+            # Mentions follow the new text: only people who can see it, and
+            # never the author.
+            candidates = [u for u in viewers if u.pk != self.user.pk]
+            with transaction.atomic():
+                message.content = content
+                message.edited_at = timezone.now()
+                message.save(update_fields=["content", "edited_at"])
+                mentioned = mentions.sync_mentions(
+                    message, mentions.find_mentions(content, candidates)
+                )
+        self.broadcast_update(
+            message,
+            viewers,
+            mentions=None if mentioned is None else mentions_data(mentioned),
+        )
 
     def handle_delete_message(self, payload):
         message = self.own_message(payload)
@@ -254,7 +286,8 @@ class ChatConsumer(WebsocketConsumer):
             message.content = ""
             message.save(update_fields=["deleted_at", "content"])
             Reaction.objects.filter(message=message).delete()
-        self.broadcast_update(message)
+            mentions.clear_mentions(message)
+        self.broadcast_update(message, mentions=[])
 
     def reply_target(self, payload):
         """The message named by `reply_to` (locked to this room, a text
@@ -301,6 +334,13 @@ class ChatConsumer(WebsocketConsumer):
                     content=content, room=self.room, user=self.user, reply_to=original
                 )
                 message.visible_for.add(*members)
+                mentioned = mentions.sync_mentions(
+                    message,
+                    mentions.find_mentions(
+                        content, [m for m in members if m.pk != self.user.pk]
+                    ),
+                    new=True,
+                )
         except CantReply:
             self.send_error(CANT_REPLY)
             return
@@ -312,21 +352,35 @@ class ChatConsumer(WebsocketConsumer):
             return
         presence.mark_read(self.user, self.room, message.created_at)
 
+        mention_list = mentions_data(mentioned)
         self.send_message_frame(
-            WSChatType.SAVE_MESSAGE.value, message, [m.pk for m in members]
+            WSChatType.SAVE_MESSAGE.value,
+            message,
+            [m.pk for m in members],
+            mentions=mention_list,
         )
-        self.notify_inboxes(message, members)
+        self.notify_inboxes(message, members, mentioned, original, mention_list)
 
-    def notify_inboxes(self, message, members):
+    def notify_inboxes(self, message, members, mentioned, original, mention_list):
         """Tell every member's inbox socket about new activity in this room.
         The room list never shows quotes, so `reply_to` is always null here
-        (and the original's text can't reach anyone who can't see it)."""
-        data = {**message_data(message), "reply_to": None}
+        (and the original's text can't reach anyone who can't see it).
+
+        The event carries what each inbox needs to work out its own counts
+        and `for_you` without loading the room: the room type, who was
+        mentioned and whose message this replies to (server-side only)."""
+        data = {**message_data(message, mentions=mention_list), "reply_to": None}
+        event = {
+            "type": "inbox.message",
+            "room": str(self.room.id),
+            "group": self.room.type == Room.RoomTypes.GROUP,
+            "author": self.user.pk,
+            "mentioned": [user.pk for user in mentioned],
+            "reply_to_author": original.user_id if original is not None else None,
+            "data": data,
+        }
         for member in members:
-            async_to_sync(self.channel_layer.group_send)(
-                inbox_group(member.pk),
-                {"type": "inbox.message", "room": str(self.room.id), "data": data},
-            )
+            async_to_sync(self.channel_layer.group_send)(inbox_group(member.pk), event)
 
     def handle_read(self, payload):
         # A busy database (SQLite locked) shouldn't close the socket: the
@@ -542,16 +596,32 @@ class InboxConsumer(WebsocketConsumer):
         self.send(text_data=json.dumps({"type": "room_refresh", "room": event["room"]}))
 
     def inbox_message(self, event):
-        data = event["data"]
-        room = Room.objects.filter(id=event["room"]).first()
-        unread = presence.unread_count(self.user, room) if room else 0
+        """New message in one of this user's rooms: their counts for it (one
+        query, the room isn't loaded) and whether it's for them."""
+        unread, mention_count = presence.room_counts(
+            self.user, uuid.UUID(event["room"]), bool(event.get("group"))
+        )
         self.send(
             text_data=json.dumps(
                 {
                     "type": "room_activity",
                     "room": event["room"],
                     "unread": unread,
-                    "message": data,
+                    "mentions": mention_count,
+                    "for_you": self.for_you(event),
+                    "message": event["data"],
                 }
             )
         )
+
+    def for_you(self, event):
+        """ "mention" if the message names this user, "reply" if it answers
+        one of their messages, else None (always None in direct chats and
+        for the author)."""
+        if not event.get("group") or event.get("author") == self.user.pk:
+            return None
+        if self.user.pk in event.get("mentioned", ()):
+            return "mention"
+        if event.get("reply_to_author") == self.user.pk:
+            return "reply"
+        return None

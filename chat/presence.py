@@ -9,10 +9,10 @@ processes, whose rows simply go stale.
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q
+from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 
-from chat.models import Connection, Message, ReadState
+from chat.models import Connection, Mention, Message, ReadState, Room
 
 User = get_user_model()
 
@@ -70,9 +70,32 @@ def mark_read(user, room, when=None):
     )
 
 
-def unread_counts(user, room_ids):
-    """{room_id: unread count} for the given rooms, in one grouped query.
-    A room the user has never opened counts every message from others."""
+def _for_you(user, check_room=True):
+    """Messages "for" `user` in a group: they mention them, or reply to one
+    of their messages. Direct chats never count (`check_room=False` when
+    the caller already knows it's a group). Subqueries rather than joins,
+    so counting with it doesn't multiply or drop rows."""
+    for_you = Q(Exists(Mention.objects.filter(message=OuterRef("pk"), user=user))) | Q(
+        Exists(Message.objects.filter(pk=OuterRef("reply_to_id"), user=user))
+    )
+    if check_room:
+        for_you &= Q(room__type=Room.RoomTypes.GROUP)
+    return for_you
+
+
+def _unread_messages(user):
+    """Text messages from others that `user` can still see."""
+    return Message.objects.filter(
+        visible_for=user, deleted_at__isnull=True, kind=Message.Kinds.TEXT
+    ).exclude(user=user)
+
+
+def unread_and_mentions(user, room_ids):
+    """{room_id: (unread, mentions)} for the given rooms: unread messages
+    from others since the user last read each room (every one if they never
+    opened it), and how many of those mention them or reply to one of their
+    messages (always 0 in direct chats). One grouped query, plus one for the
+    read states."""
     room_ids = list(room_ids)
     if not room_ids:
         return {}
@@ -85,17 +108,45 @@ def unread_counts(user, room_ids):
     for room_id, when in last_read.items():
         scope |= Q(room_id=room_id, created_at__gt=when)
     rows = (
-        Message.objects.filter(
-            scope, visible_for=user, deleted_at__isnull=True, kind=Message.Kinds.TEXT
-        )
-        .exclude(user=user)
+        _unread_messages(user)
+        .filter(scope)
         .values("room_id")
-        .annotate(n=Count("pk"))
+        .annotate(n=Count("pk"), m=Count("pk", filter=_for_you(user)))
+        .values_list("room_id", "n", "m")
     )
-    counts = {r: 0 for r in room_ids}
-    counts.update({row["room_id"]: row["n"] for row in rows})
+    counts = {r: (0, 0) for r in room_ids}
+    counts.update({room_id: (n, m) for room_id, n, m in rows})
     return counts
+
+
+def unread_counts(user, room_ids):
+    """{room_id: unread count} for the given rooms (see unread_and_mentions)."""
+    return {r: n for r, (n, _m) in unread_and_mentions(user, room_ids).items()}
 
 
 def unread_count(user, room):
     return unread_counts(user, [room.pk])[room.pk]
+
+
+def room_counts(user, room_id, group):
+    """(unread, mentions) for one room in a single query, without loading
+    the room (the inbox socket asks this for every new message). `group`
+    says whether it's a group; direct chats always have 0 mentions."""
+    last_read = ReadState.objects.filter(user=user, room_id=room_id).values(
+        "last_read_at"
+    )[:1]
+    row = (
+        _unread_messages(user)
+        .filter(room_id=room_id)
+        .filter(
+            ~Exists(ReadState.objects.filter(user=user, room_id=room_id))
+            | Q(created_at__gt=Subquery(last_read))
+        )
+        .aggregate(
+            n=Count("pk"),
+            m=Count(
+                "pk", filter=_for_you(user, check_room=False) if group else Q(pk=None)
+            ),
+        )
+    )
+    return row["n"], row["m"]

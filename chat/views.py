@@ -14,6 +14,7 @@ from chat.models import Message
 from chat.presenters import (
     display_name,
     initials,
+    mentions_for_messages,
     message_data,
     reaction_emoji_table,
     reactions_for_messages,
@@ -57,10 +58,11 @@ def history_page(room, user, before=None, limit=PAGE_SIZE):
     """Up to `limit` messages the user can see, oldest first, ending just
     before `before` (a Message) when given. Returns (messages, has_more).
 
-    Two queries per page however many messages are replies or have
-    reactions: each reply's original and its author come joined in, whether
-    the user can see the original is an EXISTS on its visibility rows, and
-    every reaction on the page comes in one more query."""
+    Three queries per page however many messages are replies or have
+    reactions or mentions: each reply's original and its author come joined
+    in, whether the user can see the original is an EXISTS on its visibility
+    rows, and every reaction and every mention on the page come in one more
+    query each."""
     can_see_original = Message.visible_for.through.objects.filter(
         message_id=OuterRef("reply_to_id"),
         message__room_id=OuterRef("room_id"),  # never quote across rooms
@@ -83,9 +85,27 @@ def history_page(room, user, before=None, limit=PAGE_SIZE):
     reactions = reactions_for_messages(
         m.pk for m in page if not m.is_deleted and not m.is_system
     )
+    mentioned = mentions_for_messages(page)
     return [
-        message_data(m, reactions=reactions.get(m.pk, [])) for m in reversed(page)
+        message_data(
+            m, reactions=reactions.get(m.pk, []), mentions=mentioned.get(m.pk, [])
+        )
+        for m in reversed(page)
     ], has_more
+
+
+def room_members(room):
+    """The open room's current members for the composer's @ autocomplete:
+    [{username, name, initials}] sorted by name (the viewer included; the
+    page leaves them out)."""
+    members = []
+    for user in room.members.only("username", "first_name", "last_name"):
+        name = display_name(user)
+        members.append(
+            {"username": user.username, "name": name, "initials": initials(name)}
+        )
+    members.sort(key=lambda m: (m["name"].lower(), m["username"].lower()))
+    return members
 
 
 def room_url(room):
@@ -105,6 +125,7 @@ def chat(request):
     summary = None
     room_messages = []
     has_more = False
+    members = []
 
     room_id = request.GET.get("room")
     if room_id:
@@ -124,6 +145,7 @@ def chat(request):
             messages.info(request, ROOM_UNAVAILABLE)
             return redirect("chat:chat")
         room_messages, has_more = history_page(room, request.user)
+        members = room_members(room)
 
     me = display_name(request.user)
     context = {
@@ -136,6 +158,7 @@ def chat(request):
         "me": {"username": request.user.username, "name": me, "initials": initials(me)},
         "max_group_name": MAX_GROUP_NAME,
         "reaction_emoji": reaction_emoji_table(),
+        "room_members": members,
     }
     return render(request, "chat/chat.html", context)
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from chat.models import Message, Reaction, Room
+from chat.models import Mention, Message, Reaction, Room
 
 
 @admin.register(Message)
@@ -34,4 +34,12 @@ class ReactionAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
     raw_id_fields = ("message", "user")
     readonly_fields = ("created_at",)
+    search_fields = ("message__id", "user__username")
+
+
+@admin.register(Mention)
+class MentionAdmin(admin.ModelAdmin):
+    list_display = ("id", "message", "user")
+    list_select_related = ("user",)
+    raw_id_fields = ("message", "user")
     search_fields = ("message__id", "user__username")

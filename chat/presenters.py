@@ -1,10 +1,11 @@
 """Plain-data views of rooms and messages for templates, JSON and sockets."""
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count, F, Max, OuterRef, Q, Subquery
+from django.db.models import Count, Exists, F, Max, OuterRef, Q, Subquery, Value
 
-from chat.models import Message, Reaction, ReactionEmoji, ReadState, Room
-from chat.presence import unread_counts
+from chat.mentions import find_mentions
+from chat.models import Mention, Message, Reaction, ReactionEmoji, ReadState, Room
+from chat.presence import unread_and_mentions
 
 User = get_user_model()
 
@@ -42,7 +43,7 @@ def _visible_texts(room, user):
     )
 
 
-def _summary_row(room, user, last_content, last_at, last_user_id, unread):
+def _summary_row(room, user, last_content, last_at, last_user_id, unread, mentions=0):
     """One sidebar row. `room.members` must be prefetched."""
     members = list(room.members.all())
     title = room_title(room, user)
@@ -57,6 +58,8 @@ def _summary_row(room, user, last_content, last_at, last_user_id, unread):
         "last_at": last_at,
         "last_is_mine": last_user_id == user.pk,
         "unread": unread,
+        # Unread messages that mention the user or reply to them (groups).
+        "mentions": mentions,
         "other_username": (
             others[0].username
             if room.type == Room.RoomTypes.PRIVATE and len(others) == 1
@@ -89,7 +92,7 @@ def rooms_for(user, room_ids=None):
         last_user_id=Subquery(visible.values("user_id")[:1]),
     )
     rooms = list(rooms)
-    unread = unread_counts(user, [r.pk for r in rooms])
+    counts = unread_and_mentions(user, [r.pk for r in rooms])
     summaries = [
         _summary_row(
             room,
@@ -97,7 +100,7 @@ def rooms_for(user, room_ids=None):
             room.last_content,
             room.last_at,
             room.last_user_id,
-            unread[room.pk],
+            *counts[room.pk],
         )
         for room in rooms
     ]
@@ -165,7 +168,8 @@ def room_summaries_for_users(room_id, users):
                 latest[user_id] = (message_id, content, created_at, author_id)
 
     # Unread: messages from others after each person's last read (all of
-    # them if they never opened the room).
+    # them if they never opened the room), and in groups how many of those
+    # mention that person or reply to one of their messages.
     reads = dict(
         ReadState.objects.filter(room=room_id, user_id__in=pks).values_list(
             "user_id", "last_read_at"
@@ -174,13 +178,34 @@ def room_summaries_for_users(room_id, users):
     scope = Q(user_id__in=[pk for pk in pks if pk not in reads])
     for pk, when in reads.items():
         scope |= Q(user_id=pk, message__created_at__gt=when)
-    unread = dict(
-        seen.filter(scope)
+    if room.type == Room.RoomTypes.GROUP:
+        for_you = Count(
+            "pk",
+            filter=Q(
+                Exists(
+                    Mention.objects.filter(
+                        message=OuterRef("message_id"), user=OuterRef("user_id")
+                    )
+                )
+            )
+            | Q(
+                Exists(
+                    Message.objects.filter(
+                        pk=OuterRef("message__reply_to_id"), user=OuterRef("user_id")
+                    )
+                )
+            ),
+        )
+    else:
+        for_you = Value(0)
+    counts = {
+        user_id: (n, m)
+        for user_id, n, m in seen.filter(scope)
         .exclude(message__user_id=F("user_id"))
         .values("user_id")
-        .annotate(n=Count("pk"))
-        .values_list("user_id", "n")
-    )
+        .annotate(n=Count("pk"), m=for_you)
+        .values_list("user_id", "n", "m")
+    }
 
     summaries = {}
     for viewer in User.objects.filter(pk__in=pks):
@@ -189,7 +214,12 @@ def room_summaries_for_users(room_id, users):
         )
         summaries[viewer.pk] = _jsonable(
             _summary_row(
-                room, viewer, content, created_at, author_id, unread.get(viewer.pk, 0)
+                room,
+                viewer,
+                content,
+                created_at,
+                author_id,
+                *counts.get(viewer.pk, (0, 0)),
             )
         )
     return summaries
@@ -311,7 +341,51 @@ def reactions_for_message(message):
     return reactions_for_messages([message.pk]).get(message.pk, [])
 
 
-def message_data(message, reply_visible=None, reactions=None):
+class _Person:
+    """Just enough of a user for find_mentions and the `mentions` list."""
+
+    __slots__ = ("pk", "username", "data")
+
+    def __init__(self, pk, username, name):
+        self.pk = pk
+        self.username = username
+        self.data = {"user": username, "name": name}
+
+
+def mentions_for_messages(messages):
+    """{message id: `mentions` list} for these messages in one query, each
+    list in order of appearance in the text. Messages without mentions are
+    left out (use .get(id, [])). Deleted and system messages are skipped."""
+    by_id = {m.pk: m for m in messages if not m.is_deleted and not m.is_system}
+    if not by_id:
+        return {}
+    rows = Mention.objects.filter(message_id__in=list(by_id)).values_list(
+        "message_id", "user_id", "user__username", "user__first_name", "user__last_name"
+    )
+    people = {}
+    grouped = {}
+    for message_id, user_id, username, first, last in rows:
+        person = people.get(user_id)
+        if person is None:
+            # Same rule as display_name (User.get_full_name, else username).
+            name = f"{first} {last}".strip() or username
+            person = people[user_id] = _Person(user_id, username, name)
+        grouped.setdefault(message_id, []).append(person)
+    result = {}
+    for message_id, mentioned in grouped.items():
+        ordered = find_mentions(by_id[message_id].content, mentioned)
+        # Anyone the text no longer names (it shouldn't happen) goes last.
+        ordered += [p for p in mentioned if p not in ordered]
+        result[message_id] = [p.data for p in ordered]
+    return result
+
+
+def mentions_data(users):
+    """The `mentions` list for users from find_mentions, in that order."""
+    return [{"user": u.username, "name": display_name(u)} for u in users]
+
+
+def message_data(message, reply_visible=None, reactions=None, mentions=None):
     """The shape sent to the browser for one message (also used over the
     WebSocket; see docs/websocket-protocol.md).
 
@@ -321,8 +395,10 @@ def message_data(message, reply_visible=None, reactions=None):
     so nothing leaks by default.
 
     `reactions` is the message's `reactions` list (see
-    reactions_for_messages); None means none, as for a new message. Deleted
-    and system messages always get []."""
+    reactions_for_messages); None means none, as for a new message.
+    `mentions` is the message's `mentions` list (see mentions_for_messages
+    and mentions_data); None means none. Deleted and system messages always
+    get [] for both."""
     if reply_visible is None:
         reply_visible = getattr(message, "reply_visible", False)
     name = display_name(message.user)
@@ -341,5 +417,10 @@ def message_data(message, reply_visible=None, reactions=None):
             []
             if reactions is None or message.is_deleted or message.is_system
             else reactions
+        ),
+        "mentions": (
+            []
+            if mentions is None or message.is_deleted or message.is_system
+            else mentions
         ),
     }

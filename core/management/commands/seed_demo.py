@@ -18,6 +18,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from account.models import Preference
+from chat.mentions import clear_mentions, find_mentions, sync_mentions
 from chat.models import Membership, Message, Reaction, ReadState, Room
 from core import demo_data as data
 
@@ -166,7 +167,10 @@ class Command(BaseCommand):
             )
             by_text[(room_key, text)] = message
             Message.objects.filter(pk=message.pk).update(created_at=when)
-            message.visible_for.add(*room.members.all())
+            members = list(room.members.all())
+            message.visible_for.add(*members)
+            others = [m for m in members if m.pk != users[sender].pk]
+            sync_mentions(message, find_mentions(text, others), new=True)
 
         for room_key, actor, text, when in system_rows:
             room = rooms[room_key]
@@ -181,6 +185,8 @@ class Command(BaseCommand):
                 content=new, edited_at=now
             )
         for room_key, text in data.DELETED:
+            for message in Message.objects.filter(room=rooms[room_key], content=text):
+                clear_mentions(message)
             Message.objects.filter(room=rooms[room_key], content=text).update(
                 content="", deleted_at=now
             )
