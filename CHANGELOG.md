@@ -59,7 +59,8 @@ phase has no notification list, and no `@everyone` or `@here`.
 - History pages take three queries: messages, reactions and mentions.
 - Edits recompute mentions; `message_updated` carries the new list, and a
   deleted message has `"mentions": []`.
-- **Clear history** also removes your mentions in the messages you cleared.
+- Mentions in messages you cleared stay stored (so the author's view never
+  reveals who cleared) but never count or show as "for you".
 - Demo counts for `maya`: Design team 5 unread (2 "@"), Ops 6 (1 "@"); the
   tab title reads "(12) Chats · Relay".
 

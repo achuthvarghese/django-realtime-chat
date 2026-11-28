@@ -470,9 +470,9 @@ class ChatConsumer(WebsocketConsumer):
         # user's socket is told about it.
         with transaction.atomic():
             self.user.visible_for.remove(*self.room.messages.all())
-            # Their mentions in what they cleared go too, so nothing can
-            # surface those messages for them later.
-            mentions.forget_cleared(self.user, self.room.messages.all())
+            # Mention rows stay: they record what the text says, so the
+            # author's view of their own message doesn't change when someone
+            # clears. Everything "for you" filters by visible_for instead.
         self.send_json(
             {
                 "type": WSChatType.CLEAR_ROOM.value,

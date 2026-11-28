@@ -4105,14 +4105,25 @@ class TestMentionSocketsRound2:
         )
         assert (frame["for_you"], frame["mentions"]) == (None, 0)
 
-    def test_clear_room_forgets_your_mentions(self, team, maya, arjun, lee):
+    def test_clear_room_keeps_mentions_but_not_counts(self, team, maya, arjun, lee):
+        """Clearing doesn't touch Mention rows (the author's view of their
+        own message must not change), but the message no longer counts for
+        the person who cleared it, nor reaches their history."""
         from chat.mentions import find_mentions, sync_mentions
+        from chat.presence import room_counts
+        from chat.views import history_page
 
         message = visible_text(team, arjun, "@maya @lee")
         sync_mentions(message, find_mentions(message.content, [maya, lee]))
         frame = send_and_receive(team, maya, {"type": "clear_room"})
         assert frame["cleared"] is True
-        assert mentioned_usernames(message) == ["lee"]
+        assert sorted(mentioned_usernames(message)) == ["lee", "maya"]
+        assert room_counts(maya, team.id, True) == (0, 0)
+        page, _ = history_page(team, maya)
+        assert str(message.id) not in [m["id"] for m in page]
+        author_page, _ = history_page(team, arjun)
+        (row,) = [m for m in author_page if m["id"] == str(message.id)]
+        assert [m["user"] for m in row["mentions"]] == ["maya", "lee"]
 
     def test_edit_racing_a_delete_changes_nothing(self, team, maya):
         from unittest import mock

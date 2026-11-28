@@ -73,7 +73,7 @@ New in `chat/tests.py` for mentions:
 | `TestMentionCounts` | Mentions and replies to you count, a reply that mentions you counts once; your own and hidden messages don't; direct chats are always 0; reading clears the count; the summaries endpoint and `room_summaries_for_users` agree; no extra query, and query counts stay flat for `rooms_for` and `room_summaries_for_users` |
 | `TestMentionCountsRound2` | Unread and mention counts stop at 100 everywhere; the grouped counts match `room_counts` room by room in a mixed scenario; a reply counts only while you can see your original |
 | `TestMentionInboxFrames` | `room_activity` `for_you` and `mentions` per recipient (`"mention"`, `"reply"`, `null` for the sender); direct chats are never for you; `inbox_message` takes three queries and never reads the room |
-| `TestMentionSocketsRound2` | A reply to an original you cleared isn't for you; **Clear history** forgets your mentions; an edit racing a delete changes nothing |
+| `TestMentionSocketsRound2` | A reply to an original you cleared isn't for you; **Clear history** keeps mention rows (the author's view doesn't change) but they stop counting for you; an edit racing a delete changes nothing |
 | `TestMentionMigration` | `chat/0007_mention` applies and reverses |
 
 `TestReplyMigration` now migrates back to the latest schema when it's done,

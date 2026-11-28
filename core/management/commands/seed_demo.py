@@ -21,7 +21,6 @@ from account.models import Preference
 from chat.mentions import (
     clear_mentions,
     find_mentions,
-    forget_cleared,
     sync_mentions,
 )
 from chat.models import Membership, Message, Reaction, ReadState, Room
@@ -217,7 +216,6 @@ class Command(BaseCommand):
                 room=rooms[room_key], created_at__lt=now - timedelta(minutes=minutes)
             )
             users[username].visible_for.remove(*older)
-            forget_cleared(users[username], older)
 
     def seed_reactions(self, rooms, users, now):
         """data.REACTIONS, a few seconds apart after each message, oldest

@@ -124,7 +124,7 @@ with `python manage.py createsuperuser` if you need `/admin/`.
 | Design team | lee: "Handy, I use ↑ all the time now" (a reply to maya's "Edit and delete work on your own messages. Press ↑ to fix the last one") | none | A reply to Maya after she last read the room counts towards her "@" |
 | Ops | omar: "@lee can you watch the error rates after the deploy?" | lee | Read by Lee |
 | Ops | sofia: "@maya the status page copy is ready for review" | maya | Unread for Maya ("@" on her row) |
-| Book club | anika: "@priya the 30th works, I'll book a table" | none | Before Priya's clear point: clearing removed the mention, so she never sees it |
+| Book club | anika: "@priya the 30th works, I'll book a table" | none | Before Priya's clear point: the mention is stored, but she can't see the message, so it never counts for her |
 | Book club | sofia: "@Priya same, it made me cry" | priya | After her clear point, in a different case; "@" on Priya's row |
 
 Six `Mention` rows in all.
@@ -153,8 +153,8 @@ if no earlier line in that room matches.
 `@username` in a script line mentions a member other than the sender, as
 when typed in the app (see [the data model](./data-model.md#chatmention)).
 Edited lines get their mentions from the new text, deleted lines lose
-theirs, and cleared history removes the person's mentions in what they
-cleared.
+theirs, and cleared history hides them from the person who cleared
+(the rows stay, so the author's view doesn't change).
 
 Each `REACTIONS` line is `(room, exact text of a text message, emoji key,
 [usernames])`, the people in the order they reacted. It matches the

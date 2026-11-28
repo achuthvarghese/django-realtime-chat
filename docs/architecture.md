@@ -50,7 +50,7 @@ Inside `chat`, each module has one job:
 | `live_rooms.py` | After a commit, tell each affected person's inbox sockets that a room was added, changed, removed or needs a refresh. `room_changed` is one frame for every member; `room_added` summaries for any number of people are built with a fixed number of queries. A failed send is skipped and logged once per action (frame type, room id, failed user ids, count), so it never breaks the request |
 | `realtime.py` | Channel layer group names and helpers for sending to room and inbox sockets from views. The `*_after_commit` helpers queue room events until the transaction commits, keep their order, send nothing on rollback, and log failed sends |
 | `reactions.py` | Reactions: check and save a `react` frame (`set_reaction`), the per-user rate limit (`rate_limited`), and who gets `reactions_updated` (current members who can still see the message) |
-| `mentions.py` | Mentions: find the members a text names (`find_mentions`), make a message's `Mention` rows match (`sync_mentions`), remove them on delete (`clear_mentions`) and when someone clears their history (`forget_cleared`) |
+| `mentions.py` | Mentions: find the members a text names (`find_mentions`), make a message's `Mention` rows match (`sync_mentions`) and remove them on delete (`clear_mentions`); rows record the text, and every "for you" reader filters by `visible_for` |
 | `presenters.py` | Turn rooms and messages into plain data for templates, JSON and sockets, including every message's `reactions` and `mentions` lists |
 | `presence.py` | Online status (`Connection`), and unread and mention counts (`ReadState`) |
 | `views.py` | HTTP: chat page, people search, start chats, history pages, Details panel, group actions |

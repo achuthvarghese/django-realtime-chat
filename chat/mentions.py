@@ -15,6 +15,12 @@ that the sign-up form doesn't allow. Where two candidates' usernames both fit
 at the same "@" ("lee" and "lee.chen"), the longer one wins. Case is
 compared with casefold() on both sides. Only the first MAX_MENTION_SIGNS
 eligible "@" signs of a message are looked at.
+
+Mention rows record what a message's text says, whoever can see it now: they
+aren't removed or skipped when someone clears their history, because the
+author would then see the highlight change and learn who cleared. Anything
+that tells a user something is "for them" (counts, frames, notifications)
+must also require the message to be in their visible_for.
 """
 
 from chat.models import Mention
@@ -123,9 +129,3 @@ def sync_mentions(message, users, new=False):
 def clear_mentions(message):
     """Remove every mention of a message (it was deleted)."""
     Mention.objects.filter(message=message).delete()
-
-
-def forget_cleared(user, messages):
-    """Remove `user`'s mentions in `messages` (a queryset or list): they
-    cleared them, so nothing should surface them for that user again."""
-    Mention.objects.filter(user=user, message__in=messages).delete()

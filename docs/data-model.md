@@ -171,8 +171,12 @@ the current members other than the author, and rows are added or removed to
 match. Who has cleared their history isn't consulted, so the edit can't tell
 the author who did. An unchanged edit keeps the rows as they are. Deleting a
 message removes its mentions in the same transaction, as with reactions.
-**Clear history** removes your own mentions in the messages you cleared, so
-nothing can surface them for you again. Deleting the user, or removing the
+**Clear history** leaves the rows alone: a Mention records what the text
+says, so the author's view of their own message never changes when someone
+clears (which would reveal who did). Everything that is "for you" (the "@"
+count, `for_you`, and anything added later such as notifications) also
+requires the message to be in your `visible_for`, so cleared messages never
+count or surface for you. Deleting the user, or removing the
 message row, removes them through the cascade. Direct chats store mentions
 too, but they never count towards the "@" badge.
 

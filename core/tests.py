@@ -202,8 +202,9 @@ class TestSeedDemo:
         User = get_user_model()
         maya = User.objects.get(username="maya")
         priya = User.objects.get(username="priya")
-        # 7 in the script; Priya cleared the one before her clear point.
-        assert Mention.objects.count() == 6
+        # 7 in the script. Priya cleared the one before her clear point, but
+        # the row stays (it records the text); she just can't see it.
+        assert Mention.objects.count() == 7
         # Every mention names a member other than the sender.
         for mention in Mention.objects.select_related("message__room"):
             assert mention.user_id != mention.message.user_id
