@@ -41,6 +41,7 @@
 | #23 | dev-agent-sessions | Builders run as sub sessions; git author read from history |
 | #24 | dev-replies | Phase 10a: replies (first phase with builder sub sessions) |
 | #25 | dev-reactions | Phase 10b: reactions |
+| #26 | dev-mentions | Phase 10c: mentions |
 
 ## Key decisions
 
@@ -89,10 +90,18 @@
   limit 10/5 s in the cache (Redis cache when REDIS_URL is set), 503 on a busy
   DB; chips with tooltips and a names line on touch, picker, grouped action
   bar; 32px phone chips with a 44px tap area. Details in `phases/reactions/`.
+- **Phase 10c (mentions):** P10c split from notifications: mentions now,
+  P10d notifications and mute next (command palette → P10e). No bell, no
+  @everyone. Server-matched @username (casefold, boundaries, longest wins,
+  ≤200 @), `Mention` + 0007 (state-only M2M), "@" badge = unread mentions +
+  replies to you that you can see, counts capped at 100 (99+). **Rule:**
+  Mention rows record the text (kept on clear history); every "for you"
+  reader must filter visible_for — P10d notifications must too. Details in
+  `phases/mentions/`.
 
 ## Roadmap
 
-- P10c `dev-mentions-notifications` (+ mute,
+- P10d `dev-notifications-mute` (mute in Details + Settings list with Unmute selected, Settings → Notifications, browser notifications with 'Show message text', reaction notifications on by default, notification rate limit); P10e command palette. (Old P10c line follows:) (+ mute,
   Settings → Notifications; notifications need HTTPS); P10d
   `dev-command-palette` (⌘K, search, `/clear` `/invite` `/leave` `/me`).
 - P11a `dev-reading-aids` (new-messages line, jump to latest, drafts);
@@ -113,6 +122,8 @@
   near-bottom stick-to-newest snap on reactions, channels_redis 4.3 +
   redis-py 8.2 TimeoutError with REDIS_URL (pre-existing; check before
   production Redis), README screenshots with reactions.
+- Deferred from 10c: autocomplete in the inline edit box, clearing counts
+  across tabs, .badge contrast in Slate/Paper, README screenshots.
 
 ## Open questions for the user
 

@@ -1,0 +1,64 @@
+/* Proposed mention changes (mockup only). Each block is switched on by a
+   class on <html> set from the query string by mock.js. Signal tokens only. */
+
+/* Shared: the same "yours" edge the reaction chips use (.reaction--mine). */
+:root { --for-you-edge: color-mix(in srgb, var(--accent) 70%, var(--fg)); }
+
+/* Mention of you, option A: fill + 1px edge, the .reaction--mine language. */
+.prop-me-a .mention--me {
+    padding: 0 4px;
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    box-shadow: inset 0 0 0 1px var(--for-you-edge);
+    color: var(--fg);
+}
+/* Mention of you, option B: stronger fill only, no edge. */
+.prop-me-b .mention--me {
+    padding: 0 4px;
+    background: color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--fg);
+}
+
+/* Row: a 3px edge that passes 3:1 in every palette, and a lighter tint (3%) so
+   the 10px time keeps 4.5:1. */
+.prop-row .msg--for-you {
+    background: color-mix(in srgb, var(--accent) 3%, transparent);
+    box-shadow: inset 3px 0 0 var(--for-you-edge);
+}
+.prop-row .msg--for-you:focus-visible { box-shadow: inset 3px 0 0 var(--for-you-edge), inset var(--focus-ring); }
+
+/* Badges, option B: one chip, "@" in front of the unread count. */
+.prop-badge-combined .room-link__mentions { display: none; }
+.prop-badge-combined .room-link__badges:has(.room-link__mentions:not([hidden])) .room-link__unread::before {
+    content: "@";
+    margin-right: 1px;
+    font-weight: 700;
+}
+/* Badges, option C: keep two chips but make "@" an outline so it isn't read
+   as a second count. */
+.prop-badge-outline .room-link__mentions {
+    background: transparent;
+    color: var(--chrome-strong);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Autocomplete on touch: about 4.5 rows, so a cut-off row says "scroll" and
+   the list never reaches the header above the keyboard. */
+@media (pointer: coarse) {
+    .prop-ac .mention-list { max-height: min(calc(4.5 * 44px + 8px), 45dvh); }
+}
+/* ...and the gutter time a touch darker on these rows, for margin in Paper. */
+.prop-row .msg--for-you .msg__time { color: color-mix(in srgb, var(--muted) 88%, var(--fg)); }
+
+/* Recommended (C + rail): outlined "@" in the list; on the tablet rail, where
+   two chips cover the avatar, the "@" alone stands for the row (the count
+   stays in the link's accessible name). */
+.prop-badge-rec .room-link__mentions {
+    background: transparent;
+    color: var(--chrome-strong);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+@media (min-width: 600px) and (max-width: 1023px) {
+    .prop-badge-rec .room-link__badges:has(.room-link__mentions:not([hidden])) .room-link__unread {
+        position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+    }
+}
