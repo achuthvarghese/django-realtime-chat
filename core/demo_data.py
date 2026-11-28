@@ -53,7 +53,6 @@ SCRIPT = [
     ("design", "maya", "Looks great. The day markers really help.", 2890),
     ("design", "anika", "Morning! Reviewing the settings screen today", 95),
     ("design", "anika", "Palette cards are in, six of them", 94),
-    ("design", "arjun", "@maya @anika can you both review the spacing tokens?", 55),
     ("design", "lee", "Can we keep Graphite + Coral as the default?", 80),
     (
         "design",
@@ -62,6 +61,7 @@ SCRIPT = [
         78,
         "Can we keep Graphite + Coral as the default?",
     ),
+    ("design", "arjun", "@maya @anika can you both review the spacing tokens?", 55),
     ("design", "arjun", "Typing indicator and unread badges are live too", 40),
     (
         "design",

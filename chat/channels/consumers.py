@@ -179,12 +179,14 @@ class ChatConsumer(WebsocketConsumer):
         return message
 
     def send_message_frame(
-        self, frame_type, message, visible_to, reactions=None, mentions=None
+        self, frame_type, message, visible_to, reactions=None, mention_list=None
     ):
         """Send `message` as a `frame_type` frame to the room sockets of the
         users in `visible_to`. For a reply, those who can also see the
         original get its quote; the rest get only {"id", "available": false}
-        (one extra query). `reactions` and `mentions` as for message_data."""
+        (one extra query). `reactions` and `mention_list` are the message's
+        `reactions` and `mentions` for message_data. Returns the pks in
+        `visible_to` who can see the original (all of them for non-replies)."""
         visible_to = list(visible_to)
         # Deleted replies carry no quote (see presenters.reply_data).
         if message.reply_to_id is not None and not message.is_deleted:
@@ -214,12 +216,17 @@ class ChatConsumer(WebsocketConsumer):
                             message,
                             reply_visible=reply_visible,
                             reactions=reactions,
-                            mentions=mentions,
+                            mentions=mention_list,
                         ),
                     },
                     "visible_to": pks,
                 },
             )
+        return sees_original
+
+    def current_members(self):
+        """The room's current members (enough of each for mentions)."""
+        return list(self.room.members.only("pk", "username", "first_name", "last_name"))
 
     def current_viewers(self, message):
         """Current members who can still see `message`: not those who
@@ -231,22 +238,20 @@ class ChatConsumer(WebsocketConsumer):
             )
         )
 
-    def broadcast_update(self, message, viewers=None, mentions=None):
+    def broadcast_update(self, message, mention_list=None):
         """Send the edit or delete only to people who can see the message
-        (`viewers`, from current_viewers), and ask the same people's room
-        lists to refresh this room's preview (the counts may have changed
-        too). `mentions` is the message's `mentions` list; None loads it."""
-        if viewers is None:
-            viewers = self.current_viewers(message)
-        visible_to = [user.pk for user in viewers]
-        if mentions is None:
-            mentions = mentions_for_messages([message]).get(message.pk, [])
+        (current_viewers), and ask the same people's room lists to refresh
+        this room's preview (the counts may have changed too).
+        `mention_list` is the message's `mentions` list; None loads it."""
+        visible_to = [user.pk for user in self.current_viewers(message)]
+        if mention_list is None:
+            mention_list = mentions_for_messages([message]).get(message.pk, [])
         self.send_message_frame(
             WSChatType.MESSAGE_UPDATED.value,
             message,
             visible_to,
             reactions=reactions_for_message(message),
-            mentions=mentions,
+            mention_list=mention_list,
         )
         live_rooms.room_refresh(self.room.id, visible_to)
 
@@ -257,23 +262,31 @@ class ChatConsumer(WebsocketConsumer):
         message = self.own_message(payload)
         if message is None:
             return
-        viewers = self.current_viewers(message)
         mentioned = None
         if content != message.content:
-            # Mentions follow the new text: only people who can see it, and
-            # never the author.
-            candidates = [u for u in viewers if u.pk != self.user.pk]
+            # Mentions follow the new text, matched against current members
+            # other than the author, exactly as for a new message. Who can
+            # still see it isn't consulted, so the author's frame can't tell
+            # who cleared their history; counts and frames filter by
+            # visibility on their own.
+            candidates = [u for u in self.current_members() if u.pk != self.user.pk]
+            now = timezone.now()
             with transaction.atomic():
+                # Only while it isn't deleted: an edit racing a delete from
+                # another tab mustn't bring back text or mentions.
+                saved = Message.objects.filter(
+                    pk=message.pk, deleted_at__isnull=True
+                ).update(content=content, edited_at=now)
+                if not saved:
+                    return
                 message.content = content
-                message.edited_at = timezone.now()
-                message.save(update_fields=["content", "edited_at"])
+                message.edited_at = now
                 mentioned = mentions.sync_mentions(
                     message, mentions.find_mentions(content, candidates)
                 )
         self.broadcast_update(
             message,
-            viewers,
-            mentions=None if mentioned is None else mentions_data(mentioned),
+            mention_list=None if mentioned is None else mentions_data(mentioned),
         )
 
     def handle_delete_message(self, payload):
@@ -287,7 +300,7 @@ class ChatConsumer(WebsocketConsumer):
             message.save(update_fields=["deleted_at", "content"])
             Reaction.objects.filter(message=message).delete()
             mentions.clear_mentions(message)
-        self.broadcast_update(message, mentions=[])
+        self.broadcast_update(message, mention_list=[])
 
     def reply_target(self, payload):
         """The message named by `reply_to` (locked to this room, a text
@@ -353,22 +366,30 @@ class ChatConsumer(WebsocketConsumer):
         presence.mark_read(self.user, self.room, message.created_at)
 
         mention_list = mentions_data(mentioned)
-        self.send_message_frame(
+        sees_original = self.send_message_frame(
             WSChatType.SAVE_MESSAGE.value,
             message,
             [m.pk for m in members],
-            mentions=mention_list,
+            mention_list=mention_list,
         )
-        self.notify_inboxes(message, members, mentioned, original, mention_list)
+        # A reply is "for" the original's author only while they can still
+        # see the original (as in the room counts).
+        reply_to_author = None
+        if original is not None and original.user_id in sees_original:
+            reply_to_author = original.user_id
+        self.notify_inboxes(message, members, mentioned, reply_to_author, mention_list)
 
-    def notify_inboxes(self, message, members, mentioned, original, mention_list):
+    def notify_inboxes(
+        self, message, members, mentioned, reply_to_author, mention_list
+    ):
         """Tell every member's inbox socket about new activity in this room.
         The room list never shows quotes, so `reply_to` is always null here
         (and the original's text can't reach anyone who can't see it).
 
         The event carries what each inbox needs to work out its own counts
         and `for_you` without loading the room: the room type, who was
-        mentioned and whose message this replies to (server-side only)."""
+        mentioned and whose message this replies to, if they can see it
+        (server-side only)."""
         data = {**message_data(message, mentions=mention_list), "reply_to": None}
         event = {
             "type": "inbox.message",
@@ -376,7 +397,7 @@ class ChatConsumer(WebsocketConsumer):
             "group": self.room.type == Room.RoomTypes.GROUP,
             "author": self.user.pk,
             "mentioned": [user.pk for user in mentioned],
-            "reply_to_author": original.user_id if original is not None else None,
+            "reply_to_author": reply_to_author,
             "data": data,
         }
         for member in members:
@@ -447,7 +468,11 @@ class ChatConsumer(WebsocketConsumer):
     def handle_clear_room(self, payload):
         # Clearing only hides messages for the requesting user, so only that
         # user's socket is told about it.
-        self.user.visible_for.remove(*self.room.messages.all())
+        with transaction.atomic():
+            self.user.visible_for.remove(*self.room.messages.all())
+            # Their mentions in what they cleared go too, so nothing can
+            # surface those messages for them later.
+            mentions.forget_cleared(self.user, self.room.messages.all())
         self.send_json(
             {
                 "type": WSChatType.CLEAR_ROOM.value,

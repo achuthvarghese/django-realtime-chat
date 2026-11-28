@@ -12,14 +12,21 @@ is told.
 Usernames are matched directly rather than with a username pattern, because
 accounts made with createsuperuser may contain characters ("@", "+", ".")
 that the sign-up form doesn't allow. Where two candidates' usernames both fit
-at the same "@" ("lee" and "lee.chen"), the longer one wins.
+at the same "@" ("lee" and "lee.chen"), the longer one wins. Case is
+compared with casefold() on both sides. Only the first MAX_MENTION_SIGNS
+eligible "@" signs of a message are looked at.
 """
 
 from chat.models import Mention
 
 # Characters that may appear in a username besides letters and digits
 # (Django's default validator allows these).
-_USERNAME_PUNCTUATION = set("@.+-_")
+_USERNAME_PUNCTUATION = frozenset("@.+-_")
+
+# At most this many "@" signs are looked at per message, so a message made
+# of "@" signs costs no more than a normal one. 4000 characters fit at most
+# 2000 possible mentions; nobody names 200 people in one message.
+MAX_MENTION_SIGNS = 200
 
 
 def _word_char(char):
@@ -41,35 +48,55 @@ def _ends_handle(text, end):
     return True
 
 
+def _fold(text):
+    return text.casefold()
+
+
+def mention_positions(content, candidates):
+    """[(position, user)] for the candidates named in `content`, each once
+    at its first mention, in order. Positions are offsets in the case-folded
+    text (only useful for ordering)."""
+    if not content or "@" not in content:
+        return []
+    # {length: {folded username: user}}, longest first, so "lee.chen" wins
+    # over "lee" at the same "@". One dict lookup per distinct length.
+    by_length = {}
+    for user in candidates:
+        name = _fold(user.username or "")
+        if name:
+            by_length.setdefault(len(name), {})[name] = user
+    if not by_length:
+        return []
+    lengths = sorted(by_length, reverse=True)
+    # Matching works on the folded text throughout, so "İlker" and "STRASSE"
+    # compare correctly even where folding changes the length.
+    text = _fold(content)
+    found = []
+    seen = set()
+    signs = 0
+    position = text.find("@")
+    while position != -1 and signs < MAX_MENTION_SIGNS:
+        next_from = position + 1
+        if position == 0 or not _word_char(text[position - 1]):
+            signs += 1
+            start = position + 1
+            for length in lengths:
+                end = start + length
+                user = by_length[length].get(text[start:end])
+                if user is not None and _ends_handle(text, end):
+                    if user.pk not in seen:
+                        seen.add(user.pk)
+                        found.append((position, user))
+                    next_from = end
+                    break
+        position = text.find("@", next_from)
+    return found
+
+
 def find_mentions(content, candidates):
     """The users in `candidates` named in `content`, each once, in order of
     their first mention."""
-    if not content or "@" not in content:
-        return []
-    # Longest first, so "lee.chen" wins over "lee" at the same "@".
-    by_name = sorted(
-        ((user.username.lower(), user) for user in candidates if user.username),
-        key=lambda item: len(item[0]),
-        reverse=True,
-    )
-    if not by_name:
-        return []
-    found = []
-    seen = set()
-    position = content.find("@")
-    while position != -1:
-        if position == 0 or not _word_char(content[position - 1]):
-            start = position + 1
-            for name, user in by_name:
-                end = start + len(name)
-                if content[start:end].lower() == name and _ends_handle(content, end):
-                    if user.pk not in seen:
-                        seen.add(user.pk)
-                        found.append(user)
-                    position = end - 1
-                    break
-        position = content.find("@", position + 1)
-    return found
+    return [user for _position, user in mention_positions(content, candidates)]
 
 
 def sync_mentions(message, users, new=False):
@@ -96,3 +123,9 @@ def sync_mentions(message, users, new=False):
 def clear_mentions(message):
     """Remove every mention of a message (it was deleted)."""
     Mention.objects.filter(message=message).delete()
+
+
+def forget_cleared(user, messages):
+    """Remove `user`'s mentions in `messages` (a queryset or list): they
+    cleared them, so nothing should surface them for that user again."""
+    Mention.objects.filter(user=user, message__in=messages).delete()

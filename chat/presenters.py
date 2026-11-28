@@ -5,7 +5,7 @@ from django.db.models import Count, Exists, F, Max, OuterRef, Q, Subquery, Value
 
 from chat.mentions import find_mentions
 from chat.models import Mention, Message, Reaction, ReactionEmoji, ReadState, Room
-from chat.presence import unread_and_mentions
+from chat.presence import COUNT_CAP, unread_and_mentions
 
 User = get_user_model()
 
@@ -190,8 +190,11 @@ def room_summaries_for_users(room_id, users):
             )
             | Q(
                 Exists(
+                    # A reply counts only while they can see their original.
                     Message.objects.filter(
-                        pk=OuterRef("message__reply_to_id"), user=OuterRef("user_id")
+                        pk=OuterRef("message__reply_to_id"),
+                        user=OuterRef("user_id"),
+                        visible_for=OuterRef("user_id"),
                     )
                 )
             ),
@@ -199,7 +202,7 @@ def room_summaries_for_users(room_id, users):
     else:
         for_you = Value(0)
     counts = {
-        user_id: (n, m)
+        user_id: (min(n, COUNT_CAP), min(m, COUNT_CAP))
         for user_id, n, m in seen.filter(scope)
         .exclude(message__user_id=F("user_id"))
         .values("user_id")
