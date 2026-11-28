@@ -88,30 +88,40 @@
         const badge = link.querySelector(".room-link__unread");
         if (badge) {
             badge.hidden = n === 0;
-            badge.querySelector("[data-unread-count]").textContent = n > 99 ? "99+" : String(n);
+            badge.querySelector("[data-unread-count]").textContent = capped(n);
         }
         if (retitle) renderTitle();
     }
 
-    // The "@" badge: mentions of you and replies to you in a group, unread.
-    // Never on direct chats. Each row keeps its count in data-mentions
-    // (the tab title counts unread only).
+    // The server caps each chat's counts at 100: show "99+" from there.
+    const CAP = 100;
+    const capped = (n) => (n >= CAP ? "99+" : String(n));
+
+    // The "@" badge: unread mentions of you and replies to you in a group.
+    // Never on direct chats (data-room-type isn't "group"). Each row keeps
+    // its count in data-mentions (the tab title counts unread only).
     function setMentions(link, n) {
-        const count = link.dataset.username ? 0 : Math.max(0, Number(n) || 0);
+        const count = link.dataset.roomType === "group" ? Math.max(0, Number(n) || 0) : 0;
         link.dataset.mentions = String(count);
         const badge = link.querySelector(".room-link__mentions");
         if (badge) {
             badge.hidden = count === 0;
-            badge.querySelector("[data-mention-count]").textContent = String(count);
+            badge.querySelector("[data-mention-count]").textContent = capped(count);
         }
     }
 
+    // "(N)" unread in the tab title; "(99+)" once the sum reaches 100 or
+    // any chat's count is capped.
     function renderTitle() {
-        const total = [...document.querySelectorAll(".room-link")].reduce(
-            (sum, link) => sum + Number(link.dataset.unread || 0),
-            0
-        );
-        document.title = total > 0 ? `(${total}) ${baseTitle}` : baseTitle;
+        let total = 0;
+        let anyCapped = false;
+        for (const link of document.querySelectorAll(".room-link")) {
+            const n = Number(link.dataset.unread || 0);
+            total += n;
+            if (n >= CAP) anyCapped = true;
+        }
+        const shown = total >= CAP || anyCapped ? "99+" : String(total);
+        document.title = total > 0 ? `(${shown}) ${baseTitle}` : baseTitle;
     }
 
     // Live room list: rooms appear, change and disappear without a reload.
@@ -157,6 +167,7 @@
         const link = el("a", "room-link");
         link.href = `/chat/?room=${encodeURIComponent(room.id)}`;
         link.dataset.roomId = room.id;
+        link.dataset.roomType = room.type || "";
         if (room.other_username) link.dataset.username = room.other_username;
         link.dataset.unread = "0";
         link.dataset.mentions = "0";
@@ -179,10 +190,10 @@
         at.hidden = true;
         at.append(el("span", null, "@"));
         at.firstChild.setAttribute("aria-hidden", "true");
-        const atText = el("span", "visually-hidden", "Mentions: ");
+        const atText = el("span", "visually-hidden", "Mentions and replies: ");
         const atCount = el("span", null, "0");
         atCount.dataset.mentionCount = "";
-        atText.append(atCount);
+        atText.append(atCount, ". ");
         at.append(atText);
         const badge = el("span", "badge room-link__unread");
         badge.hidden = true;
@@ -201,6 +212,7 @@
 
     // Only the keys present are applied: room_changed frames are partial.
     function applyIdentity(link, room) {
+        if (typeof room.type === "string") link.dataset.roomType = room.type;
         if (typeof room.title === "string") {
             link.dataset.title = room.title.toLowerCase();
             link.title = room.title;
